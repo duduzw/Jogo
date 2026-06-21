@@ -1,0 +1,304 @@
+﻿﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro Player Simulator Elite</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body id="gameBody">
+
+<div id="toastContainer" class="toast-container"></div>
+
+<div id="modalBolaOuro" class="modal oculto">
+    <div class="modal-content golden-ball-modal slide-in">
+        <div style="padding: 40px;">
+            <div class="boladeouro-icon">🏆</div>
+            <h1>GALA BOLA DE OURO</h1>
+            <p style="color: white; font-size: 1.1rem;">O prémio de melhor futebolista do planeta este ano vai para...</p>
+            <img id="imgVencedorOuro" src="" class="golden-avatar" alt="Vencedor">
+            <h2 id="nomeVencedorOuro" class="gold-text-glow" style="margin-top:10px;">NOME</h2>
+            <p id="statsVencedorOuro" style="color: var(--gold); font-size: 1.2rem;">Golos Marcados: 0</p>
+            <button class="btn btn-warning pulse" style="margin-top: 25px;" id="btnFecharGala">Avançar para Nova Época ➔</button>
+        </div>
+    </div>
+</div>
+
+<div id="modalSorteio" class="modal oculto">
+    <div class="modal-content slide-in">
+        <div class="modal-header">
+            <h2 id="tituloSorteio" style="color: var(--theme-primary); text-align: center; width: 100%; margin:0;">🏆 Sorteio de Grupos</h2>
+        </div>
+        <div id="gridGruposSorteio" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 20px;"></div>
+        <div style="padding: 15px; text-align: center; border-top:1px solid var(--border);">
+            <button class="btn btn-primary pulse" id="btnFecharSorteio">Confirmar Chaves ➔</button>
+        </div>
+    </div>
+</div>
+
+<div id="modalPartida" class="modal oculto">
+    <div class="modal-content slide-in" style="background: var(--bg-dark); border: 1px solid var(--theme-primary);">
+        <div class="modal-header">
+            <h3 style="margin:0; font-weight:800;">📻 RELATO EM DIRETO</h3>
+            <span id="uiMinutoJogo" class="badge-time">0'</span>
+        </div>
+        <div class="match-scoreboard">
+            <div style="display:flex; flex-direction:column; align-items:center;">
+                <img id="imgTimeCasa" src="" class="match-logo">
+                <h2 id="placarTimeCasa">CASA</h2>
+                <span id="placarMarcadorCasa" class="score-number">0</span>
+            </div>
+            <div style="font-size:1.5rem; font-weight:bold; color:var(--text-muted);">X</div>
+            <div style="display:flex; flex-direction:column; align-items:center;">
+                <img id="imgTimeVisita" src="" class="match-logo">
+                <h2 id="placarTimeVisita">VISITA</h2>
+                <span id="placarMarcadorVisita" class="score-number">0</span>
+            </div>
+        </div>
+        <div id="uiConsolePartida" class="match-log">
+            <div>O árbitro prepara o apito inicial...</div>
+        </div>
+        <div style="padding: 15px; text-align:right; border-top: 1px solid var(--border);">
+            <button class="btn btn-success oculto" id="btnFecharModalPartida">Concluir Compromisso ➔</button>
+        </div>
+    </div>
+</div>
+
+<div id="modalPesquisa" class="modal oculto">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 style="margin:0;">🔎 Base de Dados Global</h2>
+            <button class="close-btn" id="btnFecharPesquisa">✖</button>
+        </div>
+        <div id="resultadoPesquisa" class="resultado-grid" style="max-height: 400px; overflow-y: auto; padding: 20px;"></div>
+    </div>
+</div>
+
+<div id="modalPerfilJogador" class="modal oculto">
+    <div class="modal-content slide-in">
+        <div class="modal-header" style="background: linear-gradient(90deg, var(--theme-primary), transparent);">
+            <h2 id="mpNome" style="margin: 0; font-size: 1.8rem; text-shadow: 0 2px 5px rgba(0,0,0,0.5);">Nome</h2>
+            <button class="close-btn" id="btnFecharPerfil">✖</button>
+        </div>
+        <div style="padding: 20px; display: flex; gap: 20px;">
+            <div style="flex: 1; text-align: center;">
+                <img id="mpImagem" src="" class="profile-avatar-large">
+                <h3 style="color: var(--warning); font-size: 2.2rem; margin: 10px 0;">OVR <span id="mpGeral">--</span></h3>
+            </div>
+            <div style="flex: 2; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border);">
+                <p><strong>Idade:</strong> <span id="mpIdade">--</span></p>
+                <p><strong>Vínculo:</strong> <span id="mpClube">--</span></p>
+                <p><strong>Nacionalidade:</strong> <span id="mpNac">--</span></p>
+                <p><strong>Avaliação de Mercado:</strong> <span id="mpValor" style="color: var(--success); font-weight: bold; font-size:1.1rem;">--</span></p>
+                <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 15px;">
+                    <h4 style="color: var(--theme-primary); margin-top: 0;">🏆 Histórico</h4>
+                    <div id="mpTitulos" style="font-size: 0.9rem; color: var(--text-muted); max-height: 120px; overflow-y: auto;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="telaCriacao" class="tela full-screen flex-center">
+    <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
+        <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:25px;">Gere a tua carreira e entra para o hall da fama internacional.</p>
+        
+        <div class="form-group">
+            <label>Nome Completo:</label>
+            <input type="text" id="inputNome" value="Memarkez">
+        </div>
+        <div class="form-group">
+            <label>Nacionalidade:</label>
+            <select id="selectNacionalidade">
+                <option value="Brasil">Brasil </option>
+                <option value="Portugal">Portugal </option>
+                <option value="Argentina">Argentina </option>
+                <option value="Espanha">Espanha </option>
+                <option value="Italia">Italia </option>
+                <option value="Inglaterra">Inglaterra </option>
+                <option value="Alemanha">Alemanha </option>
+                <option value="Turquia">Turquia </option>
+                <option value="Arabia">Arabia </option>
+                <option value="Uruguai">Uruguai </option>
+                <option value="Holanda">Holanda </option>
+                <option value="Belgica">Belgica </option>
+                <option value="França">França </option>
+                <option value="Estados Unidos">Estados Unidos </option>
+                <option value="Mexico">Mexico </option>
+                <option value="Nigeria">Nigeria </option>
+                <option value="Costa do Marfim">Costa do Marfim</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin-bottom: 25px;">
+            <label>Estilo / Posição:</label>
+            <select id="selectPosicao">
+                <option value="Atacante">Atacante (Finalizador)</option>
+                <option value="Ponta">Ponta (Velocidade e 1x1)</option>
+                <option value="Meia Ofensivo">Meia Ofensivo (Criador)</option>
+                <option value="Meio-Campista">Meio-Campista (Organizador)</option>
+                <option value="Volante">Volante (Marcação e saída)</option>
+                <option value="Lateral">Lateral (Apoio e defesa)</option>
+                <option value="Zagueiro">Zagueiro (Muralha)</option>
+                <option value="Goleiro">Goleiro (Última linha)</option>
+            </select>
+        </div>
+        <button class="btn btn-primary btn-block pulse" id="btnIniciarCarreira" style="font-size:1.1rem; padding:15px;">Assinar Primeiro Contrato ➔</button>
+    </div>
+</div>
+
+<div id="telaIntroducao" class="tela full-screen flex-center oculto">
+    <div class="card-criacao fade-in" style="width:100%; max-width:500px; text-align:center;">
+        <h2 style="color:var(--success); font-weight:800; margin:0; text-shadow: 0 0 10px rgba(16,185,129,0.5);">✍️ VÍNCULO ESTABELECIDO</h2>
+        <div id="textoIntroducao" style="line-height:1.6; color:var(--text-muted); font-size:1rem; margin:20px 0; text-align:left;"></div>
+        <button class="btn btn-success btn-block" id="btnEntrarNoJogo" style="padding:15px; font-size:1.1rem;">Aceder ao Balneário ➔</button>
+    </div>
+</div>
+
+<div id="view-hub" class="tela oculto dashboard-layout">
+    <aside class="sidebar glass-panel">
+        <div class="sidebar-header">
+            <div class="avatar-container">
+                <img id="sidePlayerImg" src="" alt="Jogador" class="player-avatar">
+            </div>
+            <h2 id="sideNome">Nome Jogador</h2>
+            <div class="clube-badge">
+                <img id="sideClubeLogo" src="" alt="Logo" class="clube-logo-small">
+                <span id="sideClube">Time</span>
+            </div>
+        </div>
+
+        <div class="sidebar-stats">
+            <div class="stat-row"><span>Nível (OVR):</span><strong id="sideGeral" style="color:var(--warning)">68</strong></div>
+            <div class="stat-row"><span>Idade:</span><strong id="uiIdade">17</strong></div>
+            <div class="stat-row"><span>Mercado:</span><strong id="uiValorMercadoSide" style="color:var(--success)">€0</strong></div>
+            <div class="stat-row"><span>Status:</span><strong id="uiStatusSelecao">Disputando vaga</strong></div>
+            
+            <div class="xp-container">
+                <div class="xp-text"><span>Energia Física</span> <span id="uiEnergiaTexto">100%</span></div>
+                <div class="bar-bg"><div id="uiEnergiaBarra" class="bar-fill" style="width:100%; background:var(--success);"></div></div>
+            </div>
+        </div>
+
+        <nav class="sidebar-menu">
+            <button class="menu-item ativo" data-view="view-home">🏟️ Hub da Época</button>
+            <button class="menu-item" data-view="view-classificacao">📊 Tabelas Globais</button>
+            <button class="menu-item" data-view="view-chaveamentos">🏆 Chaveamentos</button>
+            <button class="menu-item" data-view="view-mercado">💼 Negociações</button>
+            <button class="menu-item" data-view="view-transferencias">📋 Mercado Mundial</button>
+            <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
+            <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
+            <button class="menu-item" data-view="view-pesquisa-sel">🔎 Pesquisar Seleções</button>
+            <button class="menu-item" data-view="view-manager">🧠 Modo Manager</button>
+            <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
+            <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
+        </nav>
+        
+        <button class="btn btn-danger btn-block" id="btnReset" style="margin-top: auto; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: var(--danger);">Sair / Apagar Save</button>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar glass-panel">
+            <div class="search-bar">
+                <span>🔍</span>
+                <input type="text" id="inputPesquisa" placeholder="Pesquisar jogador ou clube no mundo...">
+                <button class="btn btn-primary" id="btnPesquisar" style="padding: 8px 15px;">Buscar</button>
+            </div>
+            <div class="topbar-date">Temporada <strong id="uiAnoAtual">2026</strong></div>
+        </header>
+
+        <div class="view-container">
+            <div id="view-home" class="view-section">
+                <div class="dashboard-card theme-border" style="padding:30px; margin-bottom:20px;">
+                    <h2 style="margin:0 0 15px 0; font-weight:800; letter-spacing: 1px;">📅 PRÓXIMO COMPROMISSO</h2>
+                    <div id="uiProximoComp" class="next-match-box">Sincronizando competições...</div>
+                    <div style="display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:15px;">
+                        <button class="btn btn-success btn-lg glow-btn" id="btnJogar">Entrar em Relvado ➔</button>
+                        <button class="btn btn-warning btn-lg" id="btnDescansar" style="color:#000;">🛌 Descansar</button>
+                        <button class="btn btn-primary btn-lg" id="btnTreinar">Treinar</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid-3">
+                    <div class="dashboard-card stat-box">
+                        <span class="stat-label">Golos Marcados</span>
+                        <h2 id="estGolsTemp" class="stat-value text-success">0</h2>
+                    </div>
+                    <div class="dashboard-card stat-box">
+                        <span class="stat-label">Jogos Realizados</span>
+                        <h2 id="estJogosTemp" class="stat-value text-primary">0</h2>
+                    </div>
+                    <div class="dashboard-card stat-box">
+                        <span class="stat-label">Nível Atual</span>
+                        <h2 id="estNivelGeral" class="stat-value text-warning">0</h2>
+                    </div>
+                </div>
+                <div class="dashboard-card" style="padding:18px; margin-top:15px; border-left:4px solid var(--gold);">
+                    <span class="stat-label">Melhor Atuação da Temporada</span>
+                    <p id="uiMelhorAtuacao" style="margin:8px 0 0; color:#ccc; font-weight:700;">Ainda sem destaque registrado.</p>
+                </div>
+                <div class="dashboard-card season-calendar-card">
+                    <div class="season-calendar-head">
+                        <div>
+                            <span class="stat-label">Calendário da Temporada</span>
+                            <h3>Próximos compromissos</h3>
+                        </div>
+                        <span id="uiCalendarioResumo" class="meta-pill">Sincronizando</span>
+                    </div>
+                    <div id="uiCalendarioTemporada" class="season-timeline"></div>
+                </div>
+            </div>
+
+            <div id="view-classificacao" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px;">
+                    <h3 style="margin:0 0 15px 0;">📊 Tabelas de Campeonatos</h3>
+                    <select id="selectFiltroLiga" class="modern-select"></select>
+                    <table class="data-table">
+                        <thead id="cabecalhoTabela"></thead>
+                        <tbody id="corpoTabela"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="view-chaveamentos" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px;">
+                    <h3 style="margin:0 0 15px 0;">🏆 Chaveamentos Continentais</h3>
+                    <select id="selectFiltroCopa" class="modern-select"></select>
+                    <div id="containerChaveamento" class="bracket-container">
+                        <div style="width:100%; text-align:center; padding:40px; color:var(--text-muted);">Selecione uma competição continental para visualizar a árvore do torneio.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-mercado" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px; border-top:4px solid var(--success);">
+                    <h2 style="margin-top:0;">💼 Ofertas de Transferência</h2>
+                    <p style="color:var(--text-muted); margin-bottom:20px;">O teu passe no mercado está avaliado em <strong id="uiValorMercado" style="color:var(--success); font-size:1.3rem;">€2.5M</strong></p>
+                    <div id="containerPropostasMercado"></div>
+                </div>
+            </div>
+            <div id="view-transferencias" class="view-section oculto"></div>
+            <div id="view-selecoes" class="view-section oculto"></div>
+            <div id="view-comp-int" class="view-section oculto"></div>
+            <div id="view-pesquisa-sel" class="view-section oculto"></div>
+            <div id="view-manager" class="view-section oculto"></div>
+
+            <div id="view-noticias" class="view-section oculto"></div>
+
+
+            <div id="view-historico" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px;">
+                    <h3 style="margin:0 0 15px 0;">📜 O Teu Legado</h3>
+                    <table class="data-table">
+                        <thead><tr><th>Ano</th><th>Clube</th><th>Partidas</th><th>Golos</th><th>Troféus</th></tr></thead>
+                        <tbody id="corpoHistorico"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>
