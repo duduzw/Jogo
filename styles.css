@@ -48,6 +48,96 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
 .btn-block { width: 100%; display: block; }
 .btn-lg { padding: 16px; font-size: 1.1rem; }
 .glow-btn { box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); }
+.btn-sm { padding: 8px 12px; font-size: 0.9rem; }
+
+/* Shared Universe UI */
+.status-banner { display: flex; align-items: center; gap: 10px; }
+.status-indicator.connected { background: var(--success); }
+.status-indicator.disconnected { background: var(--danger); }
+.status-indicator.pending { background: var(--warning); }
+
+.friend-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: all 0.3s;
+}
+
+.friend-card:hover {
+    background: rgba(0, 0, 0, 0.5);
+    border-color: var(--theme-primary);
+}
+
+.friend-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--border);
+}
+
+.friend-info {
+    flex: 1;
+}
+
+.friend-info h4 {
+    margin: 0 0 5px 0;
+    color: var(--text-main);
+}
+
+.friend-info p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.friend-stats {
+    color: var(--theme-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.lobby-player-card {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.lobby-player-card.ready {
+    border-color: var(--success);
+    background: rgba(16, 185, 129, 0.1);
+}
+
+.lobby-player-card.not-ready {
+    border-color: var(--warning);
+    background: rgba(250, 204, 21, 0.1);
+}
+
+.lobby-status-badge {
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.lobby-status-badge.ready {
+    background: var(--success);
+    color: #000;
+}
+
+.lobby-status-badge.not-ready {
+    background: var(--warning);
+    color: #000;
+}
 
 .form-group { margin-bottom: 20px; }
 .form-group label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }

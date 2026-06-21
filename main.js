@@ -20,6 +20,24 @@ let uiSelectCompInt = null;
 let managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [] };
 
 // ==========================================
+// 🔍 CLUB ROSTER FETCHING (WITH FRIENDS)
+// ==========================================
+
+function getElencoClube(clubeId, incluirAposentados = false) {
+    // Use Firebase integration if online mode is active
+    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
+        return window.firebaseIntegration.fetchClubRosterWithFriends(clubeId);
+    }
+    
+    // Fallback to original behavior
+    let elenco = jogadoresIA.filter(j => j.clubeId === clubeId && (incluirAposentados || !j.aposentado));
+    if (jogador && jogador.clubeId === clubeId) {
+        elenco.unshift({ ...jogador, id: 'player', isMe: true });
+    }
+    return elenco;
+}
+
+// ==========================================
 // 💾 SISTEMA DE GRAVAÇÃO (GLOBAL)
 // ==========================================
 window.salvarJogo = function() { 
@@ -32,6 +50,11 @@ window.salvarJogo = function() {
         managerEstado: managerEstado,
         clubesSave: clubes, npcsSave: jogadoresIA 
     })); 
+    
+    // Sync to Firebase if online mode is active
+    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
+        window.firebaseIntegration.syncPlayerDataToFirebase();
+    }
 };
 
 function carregarJogo() {
@@ -550,6 +573,11 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
             p.historicoCarreira[0].trofeus = p.historicoCarreira[0].trofeus === "-" ? nomeComp : p.historicoCarreira[0].trofeus + ", " + nomeComp;
         }
         p.pontosPremio = (p.pontosPremio || 0) + 45;
+        
+        // Push achievement to Firebase if this is the human player and online mode is active
+        if (pid === "player" && window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
+            window.firebaseIntegration.pushAchievementToFirebase(nomeComp, nomeComp);
+        }
     });
     const sel = SELECOES.find(s => s.id === selecaoId);
     registrarNoticia(`${sel?.nome || "Seleção"} campeã!`, `A Seleção ${sel?.nome} conquistou a ${nomeComp} ${anoAtual}!`, "Seleções");
@@ -2752,8 +2780,7 @@ window.abrirPerfilClube = function(clubeId) {
         </div>
     `;
     
-    let elenco = jogadoresIA.filter(j => j.clubeId === c.id && !j.aposentado);
-    if(jogador && jogador.clubeId === c.id) elenco.unshift({ ...jogador, id: 'player', isMe: true }); 
+    let elenco = getElencoClube(c.id); 
 
     let htmlElenco = elenco.sort((a,b)=>b.geral - a.geral).map(j => `
         <div style="background:rgba(0,0,0,0.4); padding:15px; border-radius:12px; border:2px solid ${j.isMe ? 'var(--theme-primary)' : '#222'}; margin-bottom:12px; cursor:pointer; display:flex; align-items:center; transition:0.2s;" onclick="abrirPerfilJogador('${j.id}')">
@@ -2806,8 +2833,7 @@ function inicializarOrcamentosEContratos() {
 function atualizarOVRClubes() {
     clubes.forEach(c => {
         if(!c.baseOvr) c.baseOvr = c.reputacao;
-        let plantel = jogadoresIA.filter(j => j.clubeId === c.id && !j.aposentado);
-        if (jogador && jogador.clubeId === c.id) plantel.push(jogador);
+        let plantel = getElencoClube(c.id);
         if (plantel.length >= 7) {
             let top11 = plantel.sort((a,b) => b.geral - a.geral).slice(0, 11);
             c.reputacao = Math.floor(top11.reduce((acc, j) => acc + j.geral, 0) / top11.length);
@@ -3624,8 +3650,7 @@ for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
             if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = []; 
             campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
             
-            let elencoCamp = jogadoresIA.filter(j => j.clubeId === campeaoClube.id); 
-            if(jogador.clubeId === campeaoClube.id) elencoCamp.push(jogador);
+            let elencoCamp = getElencoClube(campeaoClube.id);
             
             elencoCamp.forEach(j => { 
                 if(j.historicoCarreira?.[0]) j.historicoCarreira[0].trofeus = j.historicoCarreira[0].trofeus === "-" ? comp.nome : j.historicoCarreira[0].trofeus + ", " + comp.nome; 
@@ -3677,6 +3702,7 @@ for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
 // Executa as transferências de liga de forma definitiva
 descidas.forEach(d => d.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = d.to; }));
 subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = s.to; }));
+
         for (const [compId, estado] of Object.entries(copasEstado)) {
             let comp = competicoes.find(c => c.id === compId); if(!comp) continue;
             let campeaoCopaId = estado.campeaoId || estado.confrontos?.[0]?.vencedorId; 
@@ -3685,42 +3711,59 @@ subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId)
                 campeoesAnoAnterior.copas[compId] = campeaoCopaId;
                 if(campeaoClube) {
                     if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = []; campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
-                    let elencoCamp = jogadoresIA.filter(j => j.clubeId === campeaoClube.id); if(jogador.clubeId === campeaoClube.id) elencoCamp.push(jogador);
+                    let elencoCamp = getElencoClube(campeaoClube.id);
                     const bonusTitulo = ["continental", "supercopa_continental", "torneio_intercontinental"].includes(comp.tipo) ? 100 : 30;
                     elencoCamp.forEach(j => { if(j.historicoCarreira?.[0]) j.historicoCarreira[0].trofeus = j.historicoCarreira[0].trofeus === "-" ? comp.nome : j.historicoCarreira[0].trofeus + ", " + comp.nome; j.pontosPremio += bonusTitulo; });
                 }
             }
         }
 
-        anoAtual++;
-        rodadaAtual = 1;
-        agendaTemporada = [];
-        copasEstado = {};
-        selecoesEstado.torneios = {};
-        selecoesEstado.premiosLigaAno = {};
-        janelaMeioAnoProcessada = false;
-        
-        jogador.energia = 100;
-        jogador.melhorAtuacao = { gols: 0, assistencias: 0, nota: 0, adversario: "", rodada: 0 };
-        resetarStatsNovaTemporada();
-        gerarJovensGenericos(34);
+        // Check if all players are ready before advancing season (online mode)
+        if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
+            window.firebaseIntegration.canAdvanceToNextSeason().then(canAdvance => {
+                if (!canAdvance) {
+                    mostrarToast("Aguardando Amigo", "Seu amigo ainda não terminou a temporada atual.", "warning");
+                    document.getElementById("btnJogar").disabled = false;
+                    return;
+                }
+                // Proceed with season advancement
+                advanceSeasonInternal();
+            });
+            return; // Exit early, will be called by the promise
+        }
 
-        inicializarTabelas();
-        processarMercadoTransferencias("principal");
-        inicializarCopasNacionaisEContinentais();
-        gerarAgenda();
-
-        window.salvarJogo();
-        atualizarHub();
-
-        document.getElementById("btnJogar").disabled = false;
-        mostrarToast("Ano Novo", `Bem-vindo à Temporada ${anoAtual}!`, "success");
-
+        advanceSeasonInternal();
     } catch (e) {
         console.error("Erro ao avançar temporada:", e);
         mostrarToast("Erro Crítico", "Ocorreu um erro ao virar a temporada.", "danger");
     }
 };
+
+function advanceSeasonInternal() {
+    anoAtual++;
+    rodadaAtual = 1;
+    agendaTemporada = [];
+    copasEstado = {};
+    selecoesEstado.torneios = {};
+    selecoesEstado.premiosLigaAno = {};
+    janelaMeioAnoProcessada = false;
+    
+    jogador.energia = 100;
+    jogador.melhorAtuacao = { gols: 0, assistencias: 0, nota: 0, adversario: "", rodada: 0 };
+    resetarStatsNovaTemporada();
+    gerarJovensGenericos(34);
+
+    inicializarTabelas();
+    processarMercadoTransferencias("principal");
+    inicializarCopasNacionaisEContinentais();
+    gerarAgenda();
+
+    window.salvarJogo();
+    atualizarHub();
+
+    document.getElementById("btnJogar").disabled = false;
+    mostrarToast("Ano Novo", `Bem-vindo à Temporada ${anoAtual}!`, "success");
+}
 
 function processarFimTemporada() {
     forcarFimDeCopas();
@@ -4683,6 +4726,60 @@ function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador 
         }
     }
 }
+
+// ==========================================
+// MODE SELECTION EVENT HANDLERS
+// ==========================================
+
+document.getElementById("btnModoOffline")?.addEventListener("click", () => {
+    // Check for existing save
+    if (carregarJogo()) {
+        mudarTela("view-hub");
+    } else {
+        mudarTela("telaCriacao");
+    }
+});
+
+document.getElementById("btnModoOnline")?.addEventListener("click", () => {
+    // Initialize online mode
+    if (window.firebaseIntegration && window.firebaseIntegration.initializeOnlineMode()) {
+        // Check for existing save
+        if (carregarJogo()) {
+            mudarTela("view-hub");
+            mudarTela("view-amigos");
+        } else {
+            mudarTela("telaCriacao");
+        }
+    }
+});
+
+// ==========================================
+// FRIENDS LOBBY EVENT HANDLERS
+// ==========================================
+
+document.getElementById("btnCopyCode")?.addEventListener("click", () => {
+    const code = document.getElementById("myFriendCode").textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        alert("Código copiado para a área de transferência!");
+    });
+});
+
+document.getElementById("btnConnectFriend")?.addEventListener("click", () => {
+    const friendCode = document.getElementById("inputFriendCode").value.toUpperCase().trim();
+    if (friendCode.length === 6) {
+        if (window.firebaseIntegration) {
+            window.firebaseIntegration.connectWithFriend(friendCode);
+        }
+    } else {
+        alert("Código inválido. Deve ter 6 caracteres.");
+    }
+});
+
+document.getElementById("btnToggleReady")?.addEventListener("click", () => {
+    if (window.firebaseIntegration) {
+        window.firebaseIntegration.toggleReadyStatus();
+    }
+});
 
 document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     jogador = JSON.parse(JSON.stringify(jogadorModelo));

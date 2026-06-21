@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pro Player Simulator Elite</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body id="gameBody">
 
@@ -99,7 +101,28 @@
     </div>
 </div>
 
-<div id="telaCriacao" class="tela full-screen flex-center">
+<div id="telaModoSelecao" class="tela full-screen flex-center">
+    <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
+        <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">Escolhe o teu modo de jogo</p>
+        
+        <div style="display:flex; flex-direction:column; gap:15px;">
+            <button class="btn btn-primary btn-block pulse" id="btnModoOffline" style="font-size:1.1rem; padding:20px;">
+                <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
+                <div>Modo Offline</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Joga localmente com save no navegador</div>
+            </button>
+            
+            <button class="btn btn-success btn-block pulse" id="btnModoOnline" style="font-size:1.1rem; padding:20px;">
+                <div style="font-size:2rem; margin-bottom:10px;">🌐</div>
+                <div>Modo Online</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Joga com amigo em Universo Compartilhado</div>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="telaCriacao" class="tela full-screen flex-center oculto">
     <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:25px;">Gere a tua carreira e entra para o hall da fama internacional.</p>
@@ -191,6 +214,7 @@
             <button class="menu-item" data-view="view-pesquisa-sel">🔎 Pesquisar Seleções</button>
             <button class="menu-item" data-view="view-manager">🧠 Modo Manager</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
+            <button class="menu-item" data-view="view-amigos">👥 Universo Compartilhado</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
         </nav>
         
@@ -285,6 +309,53 @@
 
             <div id="view-noticias" class="view-section oculto"></div>
 
+            <div id="view-amigos" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px;">
+                    <h3 style="margin:0 0 15px 0;">👥 Universo Compartilhado</h3>
+                    
+                    <!-- Connection Status -->
+                    <div id="sharedUniverseStatus" class="status-banner" style="padding:15px; border-radius:8px; background:rgba(239,68,68,0.1); border:1px solid var(--danger); margin-bottom:20px;">
+                        <span class="status-indicator disconnected" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--danger); margin-right:10px;"></span>
+                        <span>Universo compartilhado desativado</span>
+                    </div>
+                    
+                    <!-- Friend Code Display -->
+                    <div id="friendCodeSection" class="oculto" style="margin-bottom:20px;">
+                        <p style="margin-bottom:10px;"><strong>Seu código de amigo:</strong></p>
+                        <div class="friend-code-display" style="display:flex; gap:10px; align-items:center;">
+                            <span id="myFriendCode" style="font-size:2rem; font-weight:800; letter-spacing:5px; color:var(--theme-primary);">---</span>
+                            <button class="btn btn-sm" id="btnCopyCode">📋 Copiar</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Connect with Friend -->
+                    <div id="connectSection" class="oculto" style="margin-bottom:20px;">
+                        <p style="margin-bottom:10px;"><strong>Conectar com amigo:</strong></p>
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" id="inputFriendCode" placeholder="Digite o código do amigo" maxlength="6" style="flex:1; padding:10px; border:1px solid var(--border); border-radius:6px; background:rgba(0,0,0,0.3); color:#fff;">
+                            <button class="btn btn-success" id="btnConnectFriend">Conectar</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Lobby / Ready Check -->
+                    <div id="lobbySection" class="oculto" style="margin-bottom:20px;">
+                        <h4 style="margin:0 0 15px 0;">🎮 Lobby da Temporada</h4>
+                        <div id="lobbyPlayers" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;"></div>
+                        <div id="lobbyStatus" style="padding:15px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); text-align:center;">
+                            <span id="lobbyStatusText">Aguardando jogadores...</span>
+                        </div>
+                        <button class="btn btn-primary btn-block" id="btnToggleReady" style="margin-top:15px; padding:15px;">
+                            ✅ Pronto para Iniciar
+                        </button>
+                    </div>
+                    
+                    <!-- Connected Friends List -->
+                    <div id="friendsList" class="oculto">
+                        <h4 style="margin:0 0 15px 0;">Amigos Conectados</h4>
+                        <div id="friendsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
+                </div>
+            </div>
 
             <div id="view-historico" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
@@ -299,6 +370,7 @@
     </main>
 </div>
 
+<script src="firebase-integration.js"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>

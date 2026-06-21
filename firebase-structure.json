@@ -1,0 +1,75 @@
+{
+  "players": {
+    "{playerId}": {
+      "profile": {
+        "nome": "string",
+        "idade": "number",
+        "nacionalidade": "string",
+        "posicao": "string",
+        "geral": "number",
+        "valorMercado": "string",
+        "clubeId": "string",
+        "foto": "string"
+      },
+      "stats": {
+        "jogos": "number",
+        "gols": "number",
+        "assistencias": "number",
+        "notas": "array"
+      },
+      "achievements": [
+        {
+          "trofeu": "string",
+          "ano": "number",
+          "competicao": "string"
+        }
+      ],
+      "lastUpdated": "timestamp",
+      "currentSeason": "number"
+    }
+  },
+  "connections": {
+    "{userId}": {
+      "friends": [
+        {
+          "friendId": "string",
+          "friendName": "string",
+          "connectedAt": "timestamp",
+          "status": "pending|accepted"
+        }
+      ],
+      "friendCode": "string"
+    }
+  },
+  "lobbies": {
+    "{lobbyId}": {
+      "players": {
+        "{playerId}": {
+          "nome": "string",
+          "ready": "boolean",
+          "currentSeason": "number",
+          "clubeId": "string"
+        }
+      },
+      "seasonSync": {
+        "currentSeason": "number",
+        "allPlayersReady": "boolean",
+        "seasonInProgress": "boolean"
+      },
+      "createdAt": "timestamp"
+    }
+  },
+  "events": {
+    "{playerId}": {
+      "achievements": [
+        {
+          "type": "CHAMPIONS_LEAGUE_WIN|LEAGUE_TITLE|BALLON_DOR|WORLD_CUP",
+          "trophy": "string",
+          "year": "number",
+          "timestamp": "timestamp",
+          "playerName": "string"
+        }
+      ]
+    }
+  }
+}

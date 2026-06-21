@@ -1,0 +1,676 @@
+// ==========================================
+// FIREBASE INTEGRATION FOR SHARED UNIVERSE
+// ==========================================
+// Add Firebase SDK scripts to index.html before this file:
+// <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+// <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+// Firebase Configuration - Replace with your own config
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
+// Global Firebase State
+let db = null;
+let playerId = null;
+let friendId = null;
+let lobbyId = null;
+let isOnlineMode = false;
+let friendData = null;
+let achievementListener = null;
+let lobbyListener = null;
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+
+function initializeFirebase() {
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        console.log("Firebase initialized successfully");
+        return true;
+    } catch (error) {
+        console.error("Firebase initialization error:", error);
+        return false;
+    }
+}
+
+function initializeOnlineMode() {
+    if (!db) {
+        const initialized = initializeFirebase();
+        if (!initialized) {
+            alert("Erro ao inicializar Firebase. Verifique a configuração.");
+            return false;
+        }
+    }
+
+    // Generate or retrieve player ID from localStorage
+    playerId = localStorage.getItem("sharedUniverse_playerId");
+    if (!playerId) {
+        playerId = "player_" + generateFriendCode();
+        localStorage.setItem("sharedUniverse_playerId", playerId);
+    }
+
+    isOnlineMode = true;
+    
+    // Generate friend code
+    const friendCode = generateFriendCode();
+    document.getElementById("myFriendCode").textContent = friendCode;
+    
+    // Store friend code in Firebase
+    db.ref(`connections/${playerId}/friendCode`).set(friendCode);
+    
+    // Update UI
+    updateConnectionUI(true);
+    
+    // Check for existing friend connection
+    checkExistingFriendConnection();
+    
+    // Set up achievement listener
+    setupAchievementListener();
+    
+    console.log("Online mode initialized with player ID:", playerId);
+    return true;
+}
+
+function generateFriendCode() {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+// ==========================================
+// CONNECTION MANAGEMENT
+// ==========================================
+
+function connectWithFriend(friendCode) {
+    if (!db || !playerId) {
+        alert("Modo online não inicializado");
+        return;
+    }
+
+    // Search for friend by code
+    db.ref("connections").orderByChild("friendCode").equalTo(friendCode).once("value")
+        .then((snapshot) => {
+            if (snapshot.exists()) {
+                const friendData = Object.entries(snapshot.val())[0];
+                const friendPlayerId = friendData[0];
+                
+                if (friendPlayerId === playerId) {
+                    alert("Não pode conectar consigo mesmo!");
+                    return;
+                }
+
+                // Send friend request
+                sendFriendRequest(friendPlayerId);
+            } else {
+                alert("Código de amigo não encontrado");
+            }
+        })
+        .catch((error) => {
+            console.error("Error searching for friend:", error);
+            alert("Erro ao buscar amigo");
+        });
+}
+
+function sendFriendRequest(targetPlayerId) {
+    const request = {
+        from: playerId,
+        timestamp: Date.now(),
+        status: "pending"
+    };
+
+    db.ref(`connections/${targetPlayerId}/friendRequests/${playerId}`).set(request)
+        .then(() => {
+            alert("Pedido de amigo enviado! Aguarde aceitação.");
+            listenForFriendRequests();
+        })
+        .catch((error) => {
+            console.error("Error sending friend request:", error);
+            alert("Erro ao enviar pedido");
+        });
+}
+
+function listenForFriendRequests() {
+    db.ref(`connections/${playerId}/friendRequests`).on("value", (snapshot) => {
+        const requests = snapshot.val();
+        if (requests) {
+            Object.entries(requests).forEach(([requesterId, request]) => {
+                if (request.status === "pending") {
+                    const accept = confirm(`Pedido de amigo de ${requesterId}. Aceitar?`);
+                    if (accept) {
+                        acceptFriendRequest(requesterId);
+                    } else {
+                        db.ref(`connections/${playerId}/friendRequests/${requesterId}`).remove();
+                    }
+                }
+            });
+        }
+    });
+}
+
+function acceptFriendRequest(requesterId) {
+    // Add to both players' friend lists
+    db.ref(`connections/${playerId}/friends/${requesterId}`).set({
+        friendId: requesterId,
+        connectedAt: Date.now(),
+        status: "accepted"
+    });
+
+    db.ref(`connections/${requesterId}/friends/${playerId}`).set({
+        friendId: playerId,
+        connectedAt: Date.now(),
+        status: "accepted"
+    });
+
+    // Remove request
+    db.ref(`connections/${playerId}/friendRequests/${requesterId}`).remove();
+
+    // Set as current friend
+    friendId = requesterId;
+    localStorage.setItem("sharedUniverse_friendId", friendId);
+
+    // Create lobby
+    createLobby();
+
+    alert("Amigo conectado com sucesso!");
+    updateConnectionUI(true);
+}
+
+function checkExistingFriendConnection() {
+    const savedFriendId = localStorage.getItem("sharedUniverse_friendId");
+    if (savedFriendId) {
+        friendId = savedFriendId;
+        db.ref(`connections/${playerId}/friends/${friendId}`).once("value")
+            .then((snapshot) => {
+                if (snapshot.exists()) {
+                    updateConnectionUI(true);
+                    showLobbySection();
+                    joinExistingLobby();
+                } else {
+                    localStorage.removeItem("sharedUniverse_friendId");
+                    friendId = null;
+                }
+            });
+    }
+}
+
+// ==========================================
+// LOBBY & READY CHECK SYSTEM
+// ==========================================
+
+function createLobby() {
+    lobbyId = `lobby_${playerId}_${friendId}`;
+    
+    const lobbyData = {
+        createdAt: Date.now(),
+        seasonSync: {
+            currentSeason: 2026,
+            allPlayersReady: false,
+            seasonInProgress: false
+        },
+        players: {}
+    };
+
+    db.ref(`lobbies/${lobbyId}`).set(lobbyData)
+        .then(() => {
+            addPlayerToLobby(playerId);
+            listenForLobbyUpdates();
+            showLobbySection();
+        })
+        .catch((error) => {
+            console.error("Error creating lobby:", error);
+        });
+}
+
+function joinExistingLobby() {
+    // Try to find existing lobby with friend
+    db.ref("lobbies").orderByChild(`players/${playerId}`).once("value")
+        .then((snapshot) => {
+            if (snapshot.exists()) {
+                const lobbyData = Object.entries(snapshot.val())[0];
+                lobbyId = lobbyData[0];
+                listenForLobbyUpdates();
+                showLobbySection();
+            } else {
+                createLobby();
+            }
+        });
+}
+
+function addPlayerToLobby(playerIdToAdd) {
+    if (!lobbyId || !db) return;
+
+    const playerData = {
+        nome: jogador.nome,
+        ready: false,
+        currentSeason: anoAtual,
+        clubeId: jogador.clubeId
+    };
+
+    db.ref(`lobbies/${lobbyId}/players/${playerIdToAdd}`).set(playerData);
+}
+
+function toggleReadyStatus() {
+    if (!lobbyId || !db) return;
+
+    db.ref(`lobbies/${lobbyId}/players/${playerId}/ready`).once("value")
+        .then((snapshot) => {
+            const currentStatus = snapshot.val() || false;
+            const newStatus = !currentStatus;
+            
+            db.ref(`lobbies/${lobbyId}/players/${playerId}/ready`).set(newStatus)
+                .then(() => {
+                    updateReadyButton(newStatus);
+                    checkAllPlayersReady();
+                });
+        });
+}
+
+function checkAllPlayersReady() {
+    if (!lobbyId || !db) return;
+
+    db.ref(`lobbies/${lobbyId}/players`).once("value")
+        .then((snapshot) => {
+            const players = snapshot.val();
+            if (!players) return;
+
+            const playerIds = Object.keys(players);
+            const allReady = playerIds.every(id => players[id].ready === true);
+
+            if (allReady && playerIds.length >= 2) {
+                db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(true);
+                document.getElementById("lobbyStatusText").textContent = "Todos prontos! Temporada pode começar.";
+                document.getElementById("lobbyStatus").style.borderColor = "var(--success)";
+            } else {
+                db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(false);
+            }
+        });
+}
+
+function listenForLobbyUpdates() {
+    if (!lobbyId || !db) return;
+
+    lobbyListener = db.ref(`lobbies/${lobbyId}`).on("value", (snapshot) => {
+        const lobbyData = snapshot.val();
+        if (!lobbyData) return;
+
+        updateLobbyUI(lobbyData);
+        checkSeasonSync(lobbyData);
+    });
+}
+
+function updateLobbyUI(lobbyData) {
+    const container = document.getElementById("lobbyPlayers");
+    container.innerHTML = "";
+
+    if (lobbyData.players) {
+        Object.entries(lobbyData.players).forEach(([pid, player]) => {
+            const isReady = player.ready;
+            const card = document.createElement("div");
+            card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
+            
+            card.innerHTML = `
+                <div style="flex:1;">
+                    <strong>${player.nome}</strong>
+                    <div style="font-size:0.85rem; color:var(--text-muted);">
+                        ${player.clubeId} • Temporada ${player.currentSeason}
+                    </div>
+                </div>
+                <span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}">
+                    ${isReady ? "PRONTO" : "AGUARDANDO"}
+                </span>
+            `;
+            
+            container.appendChild(card);
+        });
+    }
+}
+
+function checkSeasonSync(lobbyData) {
+    if (!lobbyData.seasonSync) return;
+
+    const seasonSync = lobbyData.seasonSync;
+    const statusText = document.getElementById("lobbyStatusText");
+
+    if (seasonSync.allPlayersReady) {
+        statusText.textContent = "Todos prontos! Temporada pode começar.";
+        document.getElementById("lobbyStatus").style.borderColor = "var(--success)";
+    } else {
+        statusText.textContent = "Aguardando jogadores ficarem prontos...";
+        document.getElementById("lobbyStatus").style.borderColor = "var(--border)";
+    }
+
+    // Check if seasons match
+    if (lobbyData.players) {
+        const seasons = Object.values(lobbyData.players).map(p => p.currentSeason);
+        const allMatch = seasons.every(s => s === seasons[0]);
+        
+        if (!allMatch) {
+            statusText.textContent = "⚠️ Temporadas desincronizadas! Aguarde amigo terminar temporada atual.";
+            document.getElementById("lobbyStatus").style.borderColor = "var(--danger)";
+        }
+    }
+}
+
+function updateReadyButton(isReady) {
+    const btn = document.getElementById("btnToggleReady");
+    if (isReady) {
+        btn.textContent = "⏸️ Cancelar Pronto";
+        btn.classList.remove("btn-primary");
+        btn.classList.add("btn-warning");
+    } else {
+        btn.textContent = "✅ Pronto para Iniciar";
+        btn.classList.remove("btn-warning");
+        btn.classList.add("btn-primary");
+    }
+}
+
+function canAdvanceToNextSeason() {
+    if (!isOnlineMode || !lobbyId || !db) return true;
+
+    return db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).once("value")
+        .then((snapshot) => {
+            const allReady = snapshot.val();
+            if (!allReady) {
+                alert("Aguarde seu amigo ficar pronto para avançar para a próxima temporada!");
+                return false;
+            }
+            return true;
+        });
+}
+
+function syncSeasonEnd() {
+    if (!isOnlineMode || !lobbyId || !db) return;
+
+    // Update current season in lobby
+    db.ref(`lobbies/${lobbyId}/players/${playerId}/currentSeason`).set(anoAtual + 1);
+    db.ref(`lobbies/${lobbyId}/players/${playerId}/ready`).set(false);
+    
+    // Reset season sync
+    db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(false);
+    
+    updateReadyButton(false);
+}
+
+// ==========================================
+// DATA SYNC
+// ==========================================
+
+function syncPlayerDataToFirebase() {
+    if (!isOnlineMode || !db || !playerId || !jogador) return;
+
+    const profileData = {
+        nome: jogador.nome,
+        idade: jogador.idade,
+        nacionalidade: jogador.nacionalidade,
+        posicao: jogador.posicao,
+        geral: jogador.geral,
+        valorMercado: jogador.valorMercado,
+        clubeId: jogador.clubeId,
+        foto: jogador.foto || ""
+    };
+
+    const statsData = {
+        jogos: jogador.estatisticasAtuais.jogos,
+        gols: jogador.estatisticasAtuais.gols,
+        assistencias: jogador.estatisticasAtuais.assistencias || 0,
+        notas: jogador.estatisticasAtuais.notas || []
+    };
+
+    const achievementsData = jogador.historicoCarreira.map(h => ({
+        trofeu: h.trofeus,
+        ano: h.ano,
+        competicao: h.clube
+    }));
+
+    db.ref(`players/${playerId}/profile`).set(profileData);
+    db.ref(`players/${playerId}/stats`).set(statsData);
+    db.ref(`players/${playerId}/achievements`).set(achievementsData);
+    db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
+    db.ref(`players/${playerId}/currentSeason`).set(anoAtual);
+}
+
+function getFriendData() {
+    if (!friendId || !db) return null;
+
+    return db.ref(`players/${friendId}`).once("value")
+        .then((snapshot) => {
+            if (snapshot.exists()) {
+                friendData = snapshot.val();
+                return friendData;
+            }
+            return null;
+        });
+}
+
+// ==========================================
+// ACHIEVEMENT SYNC
+// ==========================================
+
+function pushAchievementToFirebase(trophy, competition) {
+    if (!isOnlineMode || !db || !playerId) return;
+
+    const achievement = {
+        type: detectTrophyType(competition),
+        trophy: trophy,
+        year: anoAtual,
+        timestamp: Date.now(),
+        playerName: jogador.nome
+    };
+
+    db.ref(`events/${playerId}/achievements`).push(achievement);
+}
+
+function detectTrophyType(competition) {
+    const comp = competition.toLowerCase();
+    if (comp.includes("champions") || comp.includes("uefa_cl")) return "CHAMPIONS_LEAGUE_WIN";
+    if (comp.includes("libertadores") || comp.includes("conmebol_lib")) return "LIBERTADORES_WIN";
+    if (comp.includes("liga") || comp.includes("campeonato")) return "LEAGUE_TITLE";
+    if (comp.includes("bola") || comp.includes("ballon")) return "BALLON_DOR";
+    if (comp.includes("world") || comp.includes("copa do mundo")) return "WORLD_CUP";
+    return "OTHER_TROPHY";
+}
+
+function setupAchievementListener() {
+    if (!friendId || !db) return;
+
+    achievementListener = db.ref(`events/${friendId}/achievements`).on("child_added", (snapshot) => {
+        const achievement = snapshot.val();
+        addFriendAchievementToFeed(achievement);
+    });
+}
+
+function addFriendAchievementToFeed(achievement) {
+    if (!friendData) return;
+
+    const manchete = `🌟 ${achievement.playerName} venceu ${achievement.trophy}!`;
+    const corpo = `Seu amigo conquistou a ${achievement.trophy} na temporada ${achievement.year}.`;
+    
+    // Add to local feed
+    feedNoticias.unshift({
+        manchete: manchete,
+        corpo: corpo,
+        data: `Amigo • ${achievement.year}`
+    });
+
+    // Also add to eventosRecentes
+    eventosRecentes.unshift({
+        manchete: manchete,
+        corpo: corpo,
+        data: `Amigo • ${achievement.year}`
+    });
+
+    // Limit to 60 items
+    eventosRecentes = eventosRecentes.slice(0, 60);
+
+    console.log("Friend achievement added to feed:", achievement);
+}
+
+// ==========================================
+// CLUB ROSTER WITH FRIENDS
+// ==========================================
+
+function fetchClubRosterWithFriends(clubeId) {
+    // Get AI players for this club
+    let roster = jogadoresIA.filter(j => j.clubeId === clubeId);
+
+    // Add local human player if they belong to this club
+    if (jogador && jogador.clubeId === clubeId) {
+        roster.push({
+            id: "player",
+            nome: jogador.nome,
+            idade: jogador.idade,
+            geral: jogador.geral,
+            clubeId: jogador.clubeId,
+            nacionalidade: jogador.nacionalidade,
+            posicao: jogador.posicao,
+            foto: jogador.foto,
+            statsTemporada: jogador.estatisticasAtuais,
+            historicoCarreira: jogador.historicoCarreira
+        });
+    }
+
+    // Add friend's player if they belong to this club
+    if (friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
+        roster.push({
+            id: friendId,
+            nome: friendData.profile.nome,
+            idade: friendData.profile.idade,
+            geral: friendData.profile.geral,
+            clubeId: friendData.profile.clubeId,
+            nacionalidade: friendData.profile.nacionalidade,
+            posicao: friendData.profile.posicao,
+            foto: friendData.profile.foto,
+            statsTemporada: friendData.stats,
+            historicoCarreira: friendData.achievements
+        });
+    }
+
+    return roster;
+}
+
+// ==========================================
+// UI HELPERS
+// ==========================================
+
+function updateConnectionUI(connected) {
+    const statusBanner = document.getElementById("sharedUniverseStatus");
+    const indicator = statusBanner.querySelector(".status-indicator");
+    const text = statusBanner.querySelector("span:last-child");
+
+    if (connected) {
+        indicator.classList.remove("disconnected");
+        indicator.classList.add("connected");
+        text.textContent = "Universo compartilhado ativado";
+        statusBanner.style.background = "rgba(16, 185, 129, 0.1)";
+        statusBanner.style.borderColor = "var(--success)";
+        
+        document.getElementById("friendCodeSection").classList.remove("oculto");
+        document.getElementById("connectSection").classList.remove("oculto");
+    } else {
+        indicator.classList.remove("connected");
+        indicator.classList.add("disconnected");
+        text.textContent = "Universo compartilhado desativado";
+        statusBanner.style.background = "rgba(239, 68, 68, 0.1)";
+        statusBanner.style.borderColor = "var(--danger)";
+        
+        document.getElementById("friendCodeSection").classList.add("oculto");
+        document.getElementById("connectSection").classList.add("oculto");
+        document.getElementById("lobbySection").classList.add("oculto");
+        document.getElementById("friendsList").classList.add("oculto");
+    }
+}
+
+function showLobbySection() {
+    document.getElementById("lobbySection").classList.remove("oculto");
+    document.getElementById("friendsList").classList.remove("oculto");
+    document.getElementById("connectSection").classList.add("oculto");
+    renderFriendsList();
+}
+
+function renderFriendsList() {
+    const container = document.getElementById("friendsContainer");
+    container.innerHTML = "";
+
+    if (friendId && friendData) {
+        const card = document.createElement("div");
+        card.className = "friend-card";
+        card.innerHTML = `
+            <img src="${friendData.profile.foto || ''}" class="friend-avatar" alt="${friendData.profile.nome}">
+            <div class="friend-info">
+                <h4>${friendData.profile.nome}</h4>
+                <p>${friendData.profile.clubeId} • OVR ${friendData.profile.geral}</p>
+                <p class="friend-stats">${friendData.stats.gols} gols • ${friendData.stats.jogos} jogos</p>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="viewFriendProfile()">Ver Perfil</button>
+        `;
+        container.appendChild(card);
+    }
+}
+
+function viewFriendProfile() {
+    if (!friendData) return;
+
+    // Populate the existing modal with friend data
+    document.getElementById("mpNome").textContent = friendData.profile.nome;
+    document.getElementById("mpGeral").textContent = friendData.profile.geral;
+    document.getElementById("mpIdade").textContent = friendData.profile.idade;
+    document.getElementById("mpClube").textContent = friendData.profile.clubeId;
+    document.getElementById("mpNac").textContent = friendData.profile.nacionalidade;
+    document.getElementById("mpValor").textContent = friendData.profile.valorMercado;
+    document.getElementById("mpImagem").src = friendData.profile.foto || "";
+
+    // Show achievements
+    const titulosDiv = document.getElementById("mpTitulos");
+    if (friendData.achievements && friendData.achievements.length > 0) {
+        titulosDiv.innerHTML = friendData.achievements.map(a => 
+            `<div>${a.ano}: ${a.trofeu}</div>`
+        ).join("");
+    } else {
+        titulosDiv.innerHTML = "Sem troféus registrados";
+    }
+
+    // Show modal
+    document.getElementById("modalPerfilJogador").classList.remove("oculto");
+}
+
+// ==========================================
+// CLEANUP
+// ==========================================
+
+function cleanupFirebaseListeners() {
+    if (achievementListener) {
+        db.ref(`events/${friendId}/achievements`).off("child_added", achievementListener);
+        achievementListener = null;
+    }
+    if (lobbyListener) {
+        db.ref(`lobbies/${lobbyId}`).off("value", lobbyListener);
+        lobbyListener = null;
+    }
+}
+
+// Export functions for use in main.js
+window.firebaseIntegration = {
+    initializeOnlineMode,
+    connectWithFriend,
+    toggleReadyStatus,
+    fetchClubRosterWithFriends,
+    syncPlayerDataToFirebase,
+    pushAchievementToFirebase,
+    canAdvanceToNextSeason,
+    syncSeasonEnd,
+    cleanupFirebaseListeners,
+    isOnlineMode: () => isOnlineMode,
+    getFriendData
+};
