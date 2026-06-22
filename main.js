@@ -4781,6 +4781,21 @@ document.getElementById("btnToggleReady")?.addEventListener("click", () => {
     }
 });
 
+document.getElementById("btnLeaveLobby")?.addEventListener("click", () => {
+    if (window.firebaseIntegration) {
+        if (confirm("Tem certeza que deseja sair do lobby? Isso desconectará você do Universo Compartilhado.")) {
+            window.firebaseIntegration.leaveLobby();
+            mudarTela("view-hub");
+        }
+    }
+});
+
+document.getElementById("btnCancelarReconexao")?.addEventListener("click", () => {
+    if (window.firebaseIntegration) {
+        window.firebaseIntegration.cancelReconnection();
+    }
+});
+
 document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     jogador = JSON.parse(JSON.stringify(jogadorModelo));
     jogador.nome = document.getElementById("inputNome")?.value || "Craque";
@@ -4838,5 +4853,35 @@ window.assinarPrimeiroClube = function(clubeId) {
 };
 
 document.getElementById("btnEntrarNoJogo")?.addEventListener("click", () => { window.salvarJogo(); atualizarHub(); mudarTela("view-hub"); let homeV = document.getElementById("view-home"); if(homeV) { homeV.classList.remove("oculto"); homeV.style.display="block"; } });
-if(!carregarJogo()){ mudarTela("telaCriacao"); }
+
+// ==========================================
+// GAME INITIALIZATION WITH SESSION PERSISTENCE
+// ==========================================
+
+async function initializeGame() {
+    // Check for existing Firebase session first
+    if (window.firebaseIntegration && window.firebaseIntegration.hasExistingSession()) {
+        console.log("Existing session found, attempting auto-reconnect...");
+        const reconnected = await window.firebaseIntegration.autoReconnectToSession();
+        if (reconnected) {
+            return; // Successfully reconnected, don't show other screens
+        }
+        // If reconnection failed, fall through to normal initialization
+    }
+
+    // Normal initialization flow
+    if(!carregarJogo()){ 
+        mudarTela("telaModoSelecao"); 
+    } else {
+        mudarTela("view-hub");
+    }
+}
+
+// Initialize game when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeGame);
+} else {
+    initializeGame();
+}
+
 aplicarHistoricosReaisIniciais();

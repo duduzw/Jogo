@@ -122,6 +122,20 @@
     </div>
 </div>
 
+<div id="telaReconexao" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:500px; text-align:center;">
+        <div style="font-size:4rem; margin-bottom:20px; animation: spin 2s linear infinite;">🔄</div>
+        <h2 style="color:var(--theme-primary); font-weight:800; margin:0 0 15px 0;">Reconectando ao Universo Compartilhado</h2>
+        <p style="color:var(--text-muted); font-size:1rem; margin-bottom:25px;">Restaurando sessão anterior...</p>
+        <div id="reconexaoStatus" style="padding:15px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); margin-bottom:20px;">
+            <span style="color:var(--text-muted);">Inicializando conexão...</span>
+        </div>
+        <button class="btn btn-danger btn-block" id="btnCancelarReconexao" style="padding:15px;">
+            Cancelar e voltar ao menu
+        </button>
+    </div>
+</div>
+
 <div id="telaCriacao" class="tela full-screen flex-center oculto">
     <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
@@ -318,6 +332,11 @@
                         <span class="status-indicator disconnected" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--danger); margin-right:10px;"></span>
                         <span>Universo compartilhado desativado</span>
                     </div>
+                    
+                    <!-- Leave Lobby Button (shown when connected) -->
+                    <button class="btn btn-danger btn-block oculto" id="btnLeaveLobby" style="margin-bottom:20px; padding:15px;">
+                        🚪 Sair do Lobby
+                    </button>
                     
                     <!-- Friend Code Display -->
                     <div id="friendCodeSection" class="oculto" style="margin-bottom:20px;">

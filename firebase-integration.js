@@ -80,6 +80,148 @@ function initializeOnlineMode() {
     return true;
 }
 
+// ==========================================
+// SESSION PERSISTENCE & AUTO-RECONNECT
+// ==========================================
+
+function saveSessionToStorage(lobbyIdParam, friendIdParam) {
+    localStorage.setItem("sharedUniverse_lobbyId", lobbyIdParam);
+    localStorage.setItem("sharedUniverse_friendId", friendIdParam);
+    localStorage.setItem("sharedUniverse_isOnline", "true");
+    console.log("Session saved to localStorage:", { lobbyId: lobbyIdParam, friendId: friendIdParam });
+}
+
+function clearSessionFromStorage() {
+    localStorage.removeItem("sharedUniverse_lobbyId");
+    localStorage.removeItem("sharedUniverse_friendId");
+    localStorage.removeItem("sharedUniverse_isOnline");
+    console.log("Session cleared from localStorage");
+}
+
+function hasExistingSession() {
+    return localStorage.getItem("sharedUniverse_lobbyId") !== null;
+}
+
+async function autoReconnectToSession() {
+    const savedLobbyId = localStorage.getItem("sharedUniverse_lobbyId");
+    const savedFriendId = localStorage.getItem("sharedUniverse_friendId");
+    
+    if (!savedLobbyId || !savedFriendId) {
+        console.log("No existing session found");
+        return false;
+    }
+
+    console.log("Attempting to reconnect to session:", { lobbyId: savedLobbyId, friendId: savedFriendId });
+    
+    // Show reconnection screen
+    document.getElementById("telaReconexao").classList.remove("oculto");
+    document.getElementById("telaModoSelecao").classList.add("oculto");
+    updateReconnectionStatus("Inicializando Firebase...");
+    
+    // Initialize Firebase
+    if (!db) {
+        const initialized = initializeFirebase();
+        if (!initialized) {
+            updateReconnectionStatus("Erro ao inicializar Firebase", true);
+            return false;
+        }
+    }
+
+    // Retrieve or generate player ID
+    playerId = localStorage.getItem("sharedUniverse_playerId");
+    if (!playerId) {
+        playerId = "player_" + generateFriendCode();
+        localStorage.setItem("sharedUniverse_playerId", playerId);
+    }
+
+    isOnlineMode = true;
+    lobbyId = savedLobbyId;
+    friendId = savedFriendId;
+
+    updateReconnectionStatus("Verificando lobby...");
+
+    // Check if lobby still exists
+    try {
+        const lobbySnapshot = await db.ref(`lobbies/${lobbyId}`).once("value");
+        
+        if (!lobbySnapshot.exists()) {
+            updateReconnectionStatus("Lobby não encontrado", true);
+            setTimeout(() => {
+                clearSessionFromStorage();
+                alert("Lobby expirou ou foi fechado pelo outro jogador.");
+                document.getElementById("telaReconexao").classList.add("oculto");
+                document.getElementById("telaModoSelecao").classList.remove("oculto");
+            }, 2000);
+            return false;
+        }
+
+        const lobbyData = lobbySnapshot.val();
+        
+        // Check if player is still in the lobby
+        if (!lobbyData.players || !lobbyData.players[playerId]) {
+            updateReconnectionStatus("Jogador não encontrado no lobby", true);
+            setTimeout(() => {
+                clearSessionFromStorage();
+                alert("Você foi removido do lobby.");
+                document.getElementById("telaReconexao").classList.add("oculto");
+                document.getElementById("telaModoSelecao").classList.remove("oculto");
+            }, 2000);
+            return false;
+        }
+
+        updateReconnectionStatus("Reconectando ao lobby...");
+
+        // Re-attach lobby listener
+        listenForLobbyUpdates();
+        
+        // Re-attach achievement listener
+        setupAchievementListener();
+        
+        // Load friend data
+        await getFriendData();
+        
+        updateReconnectionStatus("Conexão restaurada com sucesso!");
+        
+        setTimeout(() => {
+            document.getElementById("telaReconexao").classList.add("oculto");
+            
+            // Load game save
+            if (window.carregarJogo && window.carregarJogo()) {
+                window.mudarTela("view-hub");
+                window.mudarTela("view-amigos");
+            } else {
+                document.getElementById("telaModoSelecao").classList.remove("oculto");
+            }
+        }, 1000);
+
+        return true;
+
+    } catch (error) {
+        console.error("Error during reconnection:", error);
+        updateReconnectionStatus("Erro ao reconectar", true);
+        setTimeout(() => {
+            clearSessionFromStorage();
+            alert("Erro ao reconectar: " + error.message);
+            document.getElementById("telaReconexao").classList.add("oculto");
+            document.getElementById("telaModoSelecao").classList.remove("oculto");
+        }, 2000);
+        return false;
+    }
+}
+
+function updateReconnectionStatus(message, isError = false) {
+    const statusEl = document.getElementById("reconexaoStatus");
+    if (statusEl) {
+        statusEl.innerHTML = `<span style="color: ${isError ? 'var(--danger)' : 'var(--text-muted)'};">${message}</span>`;
+    }
+}
+
+function cancelReconnection() {
+    clearSessionFromStorage();
+    document.getElementById("telaReconexao").classList.add("oculto");
+    document.getElementById("telaModoSelecao").classList.remove("oculto");
+}
+
 function generateFriendCode() {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let code = "";
@@ -227,6 +369,8 @@ function createLobby() {
             addPlayerToLobby(playerId);
             listenForLobbyUpdates();
             showLobbySection();
+            // Save session to localStorage for persistence
+            saveSessionToStorage(lobbyId, friendId);
         })
         .catch((error) => {
             console.error("Error creating lobby:", error);
@@ -242,6 +386,8 @@ function joinExistingLobby() {
                 lobbyId = lobbyData[0];
                 listenForLobbyUpdates();
                 showLobbySection();
+                // Save session to localStorage for persistence
+                saveSessionToStorage(lobbyId, friendId);
             } else {
                 createLobby();
             }
@@ -568,6 +714,7 @@ function updateConnectionUI(connected) {
     const statusBanner = document.getElementById("sharedUniverseStatus");
     const indicator = statusBanner.querySelector(".status-indicator");
     const text = statusBanner.querySelector("span:last-child");
+    const leaveLobbyBtn = document.getElementById("btnLeaveLobby");
 
     if (connected) {
         indicator.classList.remove("disconnected");
@@ -578,6 +725,11 @@ function updateConnectionUI(connected) {
         
         document.getElementById("friendCodeSection").classList.remove("oculto");
         document.getElementById("connectSection").classList.remove("oculto");
+        
+        // Show leave lobby button when connected to a lobby
+        if (leaveLobbyBtn && lobbyId) {
+            leaveLobbyBtn.classList.remove("oculto");
+        }
     } else {
         indicator.classList.remove("connected");
         indicator.classList.add("disconnected");
@@ -589,6 +741,11 @@ function updateConnectionUI(connected) {
         document.getElementById("connectSection").classList.add("oculto");
         document.getElementById("lobbySection").classList.add("oculto");
         document.getElementById("friendsList").classList.add("oculto");
+        
+        // Hide leave lobby button when disconnected
+        if (leaveLobbyBtn) {
+            leaveLobbyBtn.classList.add("oculto");
+        }
     }
 }
 
@@ -660,6 +817,40 @@ function cleanupFirebaseListeners() {
     }
 }
 
+function leaveLobby() {
+    // Remove player from lobby
+    if (lobbyId && playerId && db) {
+        db.ref(`lobbies/${lobbyId}/players/${playerId}`).remove()
+            .then(() => {
+                console.log("Player removed from lobby");
+            })
+            .catch((error) => {
+                console.error("Error removing player from lobby:", error);
+            });
+    }
+
+    // Clear session from localStorage
+    clearSessionFromStorage();
+
+    // Cleanup listeners
+    cleanupFirebaseListeners();
+
+    // Reset state
+    lobbyId = null;
+    friendId = null;
+    isOnlineMode = false;
+    friendData = null;
+
+    // Update UI
+    updateConnectionUI(false);
+    document.getElementById("lobbySection").classList.add("oculto");
+    document.getElementById("friendsList").classList.add("oculto");
+    document.getElementById("friendCodeSection").classList.add("oculto");
+    document.getElementById("connectSection").classList.remove("oculto");
+
+    console.log("Left lobby successfully");
+}
+
 // Export functions for use in main.js
 window.firebaseIntegration = {
     initializeOnlineMode,
@@ -671,6 +862,10 @@ window.firebaseIntegration = {
     canAdvanceToNextSeason,
     syncSeasonEnd,
     cleanupFirebaseListeners,
+    leaveLobby,
+    hasExistingSession,
+    autoReconnectToSession,
+    cancelReconnection,
     isOnlineMode: () => isOnlineMode,
     getFriendData
 };
