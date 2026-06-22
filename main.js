@@ -2,17 +2,20 @@
 import { MatchEngine } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
-let jogador; 
-let anoAtual = 2026; 
-let rodadaAtual = 1; 
-let agendaTemporada = []; 
+// Make jogadoresIA available globally for Firebase integration
+window.jogadoresIA = jogadoresIA;
+
+let jogador;
+let anoAtual = 2026;
+let rodadaAtual = 1;
+let agendaTemporada = [];
 let propostasPendentes = [];
 let premiosIndividuaisPendentes = [];
 let transferenciasHistorico = [];
 let eventosRecentes = [];
 let janelaMeioAnoProcessada = false;
 let copasEstado = {};
-let selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} }; 
+let selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} };
 window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [] };
 let campeoesAnoAnterior = { ligas: {}, copas: {} };
 let uiFiltroCompInt = "todos";
@@ -41,14 +44,6 @@ function getElencoClube(clubeId, incluirAposentados = false) {
 // 💾 SISTEMA DE GRAVAÇÃO (GLOBAL)
 // ==========================================
 window.salvarJogo = function() { 
-    // Garante o vínculo global antes de qualquer coisa
-    if (typeof jogador !== 'undefined') {
-        window.jogador = jogador;
-    }
-    if (typeof anoAtual !== 'undefined') {
-        window.anoAtual = anoAtual;
-    }
-
     localStorage.setItem("rumo_estrelato_pro_vivo", JSON.stringify({ 
         jogador, ano: anoAtual, rodada: rodadaAtual, agenda: agendaTemporada, 
         tabelas: tabelasLigas, copas: copasEstado, vagasContinentais: window.vagasContinentais, 
@@ -59,11 +54,9 @@ window.salvarJogo = function() {
         clubesSave: clubes, npcsSave: jogadoresIA 
     })); 
     
-    // Dispara a sincronização
-    if (typeof isOnlineMode !== 'undefined' && isOnlineMode) {
-        if (typeof syncPlayerDataToFirebase === 'function') {
-            syncPlayerDataToFirebase();
-        }
+    // Sync to Firebase if online mode is active
+    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
+        window.firebaseIntegration.syncPlayerDataToFirebase();
     }
 };
 
