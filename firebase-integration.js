@@ -6,15 +6,23 @@
 // <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
 // Firebase Configuration - Replace with your own config
+// 🔥 SUAS CREDENCIAIS REAIS DO FIREBASE:
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-    projectId: "YOUR_PROJECT",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAIvQluyh1X5ZVrlc40O-IlkMwgeqaKY3A",
+  authDomain: "jogo-61df7.firebaseapp.com",
+  databaseURL: "https://jogo-61df7-default-rtdb.firebaseio.com", // <-- IMPORTANTE: O Firebase não gera essa linha sozinho na Web, mas seu jogo precisa dela!
+  projectId: "jogo-61df7",
+  storageBucket: "jogo-61df7.firebasestorage.app",
+  messagingSenderId: "795951389443",
+  appId: "1:795951389443:web:4a960683e62a9d4be1e736",
+  measurementId: "G-PHMLWC5ZSW"
 };
+
+// Inicializa o Firebase usando a estrutura que o seu jogo já tem:
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+const database = firebase.database();
 
 // Global Firebase State
 let db = null;
