@@ -41,6 +41,11 @@ function getElencoClube(clubeId, incluirAposentados = false) {
 // 💾 SISTEMA DE GRAVAÇÃO (GLOBAL)
 // ==========================================
 window.salvarJogo = function() { 
+    // 1. Garante que as variáveis do jogo estão no escopo global para o Firebase ler
+    window.jogador = jogador;
+    window.anoAtual = anoAtual;
+
+    // 2. Salva no computador local (Modo Offline)
     localStorage.setItem("rumo_estrelato_pro_vivo", JSON.stringify({ 
         jogador, ano: anoAtual, rodada: rodadaAtual, agenda: agendaTemporada, 
         tabelas: tabelasLigas, copas: copasEstado, vagasContinentais: window.vagasContinentais, 
@@ -51,9 +56,13 @@ window.salvarJogo = function() {
         clubesSave: clubes, npcsSave: jogadoresIA 
     })); 
     
-    // Sync to Firebase if online mode is active
-    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
-        window.firebaseIntegration.syncPlayerDataToFirebase();
+    // 3. Sincroniza com o Firebase se o modo online estiver ativo
+    if (typeof isOnlineMode !== 'undefined' && isOnlineMode) {
+        if (typeof syncPlayerDataToFirebase === 'function') {
+            syncPlayerDataToFirebase();
+        } else if (window.firebaseIntegration && typeof window.firebaseIntegration.syncPlayerDataToFirebase === 'function') {
+            window.firebaseIntegration.syncPlayerDataToFirebase();
+        }
     }
 };
 
