@@ -6,23 +6,16 @@
 // <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
 // Firebase Configuration - Replace with your own config
-// 🔥 SUAS CREDENCIAIS REAIS DO FIREBASE:
 const firebaseConfig = {
   apiKey: "AIzaSyAIvQluyh1X5ZVrlc40O-IlkMwgeqaKY3A",
   authDomain: "jogo-61df7.firebaseapp.com",
-  databaseURL: "https://jogo-61df7-default-rtdb.firebaseio.com/", // <-- IMPORTANTE: O Firebase não gera essa linha sozinho na Web, mas seu jogo precisa dela!
+  databaseURL: "https://jogo-61df7-default-rtdb.firebaseio.com", // <-- IMPORTANTE: O Firebase não gera essa linha sozinho na Web, mas seu jogo precisa dela!
   projectId: "jogo-61df7",
   storageBucket: "jogo-61df7.firebasestorage.app",
   messagingSenderId: "795951389443",
   appId: "1:795951389443:web:4a960683e62a9d4be1e736",
   measurementId: "G-PHMLWC5ZSW"
 };
-
-// Inicializa o Firebase usando a estrutura que o seu jogo já tem:
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-const database = firebase.database();
 
 // Global Firebase State
 let db = null;
@@ -33,6 +26,7 @@ let isOnlineMode = false;
 let friendData = null;
 let achievementListener = null;
 let lobbyListener = null;
+let playersListener = null;
 
 // ==========================================
 // INITIALIZATION
@@ -83,6 +77,12 @@ function initializeOnlineMode() {
     
     // Set up achievement listener
     setupAchievementListener();
+    
+    // Load Firebase players into local state
+    loadFirebasePlayersIntoLocalState();
+    
+    // Set up Firebase players listener for real-time sync
+    setupFirebasePlayersListener();
     
     console.log("Online mode initialized with player ID:", playerId);
     return true;
@@ -184,6 +184,12 @@ async function autoReconnectToSession() {
         
         // Re-attach achievement listener
         setupAchievementListener();
+        
+        // Load Firebase players into local state
+        loadFirebasePlayersIntoLocalState();
+        
+        // Set up Firebase players listener for real-time sync
+        setupFirebasePlayersListener();
         
         // Load friend data
         await getFriendData();
@@ -562,49 +568,190 @@ function syncSeasonEnd() {
 // ==========================================
 
 function syncPlayerDataToFirebase() {
-    // Pegamos tudo do escopo global com segurança absoluta
-    const localPlayer = window.jogador;
-    const currentSeasonYear = window.anoAtual || 2026; 
-    const currentDb = typeof database !== 'undefined' ? database : (typeof db !== 'undefined' ? db : null);
+    if (!isOnlineMode || !db || !playerId || !jogador) return;
 
-    // Se não tiver jogador criado ainda ou o banco não iniciou, sai sem dar erro no console
-    if (!localPlayer || !currentDb || !playerId) {
-        console.log("Aguardando inicialização completa do jogador ou banco...");
+    const profileData = {
+        nome: jogador.nome,
+        idade: jogador.idade,
+        nacionalidade: jogador.nacionalidade,
+        posicao: jogador.posicao,
+        geral: jogador.geral,
+        valorMercado: jogador.valorMercado,
+        clubeId: jogador.clubeId,
+        foto: jogador.foto || ""
+    };
+
+    const statsData = {
+        jogos: jogador.estatisticasAtuais.jogos,
+        gols: jogador.estatisticasAtuais.gols,
+        assistencias: jogador.estatisticasAtuais.assistencias || 0,
+        notas: jogador.estatisticasAtuais.notas || []
+    };
+
+    const achievementsData = jogador.historicoCarreira.map(h => ({
+        trofeu: h.trofeus,
+        ano: h.ano,
+        competicao: h.clube
+    }));
+
+    db.ref(`players/${playerId}/profile`).set(profileData);
+    db.ref(`players/${playerId}/stats`).set(statsData);
+    db.ref(`players/${playerId}/achievements`).set(achievementsData);
+    db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
+    db.ref(`players/${playerId}/currentSeason`).set(anoAtual);
+}
+
+// ==========================================
+// LOAD FIREBASE PLAYERS INTO LOCAL STATE
+// ==========================================
+
+function loadFirebasePlayersIntoLocalState() {
+    if (!db || !window.jogadoresIA) {
+        console.error("Cannot load Firebase players: db or jogadoresIA not available");
         return;
     }
 
-    const profileData = {
-        nome: localPlayer.nome || "Jogador Online",
-        idade: localPlayer.idade || 18,
-        nacionalidade: localPlayer.nacionalidade || "Brasil",
-        posicao: localPlayer.posicao || "ATA",
-        geral: localPlayer.geral || 60,
-        valorMercado: localPlayer.valorMercado || 0,
-        clubeId: localPlayer.clubeId || 0,
-        foto: localPlayer.foto || ""
+    console.log("Loading Firebase players into local state...");
+
+    db.ref("players").once("value")
+        .then((snapshot) => {
+            if (!snapshot.exists()) {
+                console.log("No Firebase players found");
+                return;
+            }
+
+            const playersData = snapshot.val();
+            let loadedCount = 0;
+
+            Object.entries(playersData).forEach(([firebasePlayerId, playerData]) => {
+                // Skip current player (already in local state as 'jogador')
+                if (firebasePlayerId === playerId) return;
+
+                // Skip if player already exists in local array
+                const existingIndex = window.jogadoresIA.findIndex(j => j.id === firebasePlayerId);
+                if (existingIndex !== -1) {
+                    // Update existing player
+                    updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingIndex);
+                    loadedCount++;
+                    return;
+                }
+
+                // Convert Firebase data to local player structure
+                const localPlayer = convertFirebasePlayerToLocal(firebasePlayerId, playerData);
+                if (localPlayer) {
+                    window.jogadoresIA.push(localPlayer);
+                    loadedCount++;
+                }
+            });
+
+            console.log(`Loaded/updated ${loadedCount} Firebase players into local state`);
+        })
+        .catch((error) => {
+            console.error("Error loading Firebase players:", error);
+        });
+}
+
+function convertFirebasePlayerToLocal(firebasePlayerId, playerData) {
+    if (!playerData.profile) return null;
+
+    const profile = playerData.profile;
+    const stats = playerData.stats || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
+    const achievements = playerData.achievements || [];
+
+    return {
+        id: firebasePlayerId,
+        nome: profile.nome,
+        idade: profile.idade,
+        nacionalidade: profile.nacionalidade,
+        posicao: profile.posicao,
+        geral: profile.geral,
+        valorMercado: profile.valorMercado,
+        clubeId: profile.clubeId,
+        foto: profile.foto || "",
+        statsTemporada: {
+            jogos: stats.jogos || 0,
+            gols: stats.gols || 0,
+            assistencias: stats.assistencias || 0,
+            notas: stats.notas || []
+        },
+        historicoCarreira: achievements.map(a => ({
+            trofeus: a.trofeu,
+            ano: a.ano,
+            clube: a.competicao
+        })),
+        isFirebasePlayer: true // Flag to identify Firebase-loaded players
     };
+}
 
-    const currentStats = localPlayer.estatisticasAtuais || { jogos: 0, gols: 0, assistencias: 0 };
-    const statsData = {
-        jogos: currentStats.jogos || 0,
-        gols: currentStats.gols || 0,
-        assistencias: currentStats.assistencias || 0,
-        notas: currentStats.notas || []
+function updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingIndex) {
+    if (!playerData.profile) return;
+
+    const profile = playerData.profile;
+    const stats = playerData.stats || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
+    const achievements = playerData.achievements || [];
+
+    window.jogadoresIA[existingIndex] = {
+        ...window.jogadoresIA[existingIndex],
+        nome: profile.nome,
+        idade: profile.idade,
+        nacionalidade: profile.nacionalidade,
+        posicao: profile.posicao,
+        geral: profile.geral,
+        valorMercado: profile.valorMercado,
+        clubeId: profile.clubeId,
+        foto: profile.foto || "",
+        statsTemporada: {
+            jogos: stats.jogos || 0,
+            gols: stats.gols || 0,
+            assistencias: stats.assistencias || 0,
+            notas: stats.notas || []
+        },
+        historicoCarreira: achievements.map(a => ({
+            trofeus: a.trofeu,
+            ano: a.ano,
+            clube: a.competicao
+        }))
     };
+}
 
-    const currentHistory = localPlayer.historicoCarreira || [];
-    const achievementsData = currentHistory.map(h => ({
-        trofeu: h.trofeus || "",
-        ano: h.ano || currentSeasonYear,
-        competicao: h.clube || ""
-    }));
+function setupFirebasePlayersListener() {
+    if (!db || playersListener) return;
 
-    // Envia pro Firebase
-    currentDb.ref(`players/${playerId}/profile`).set(profileData);
-    currentDb.ref(`players/${playerId}/stats`).set(statsData);
-    currentDb.ref(`players/${playerId}/achievements`).set(achievementsData);
-    currentDb.ref(`players/${playerId}/lastUpdated`).set(Date.now());
-    currentDb.ref(`players/${playerId}/currentSeason`).set(currentSeasonYear);
+    console.log("Setting up Firebase players listener...");
+
+    playersListener = db.ref("players").on("value", (snapshot) => {
+        if (!snapshot.exists()) return;
+
+        const playersData = snapshot.val();
+
+        Object.entries(playersData).forEach(([firebasePlayerId, playerData]) => {
+            // Skip current player
+            if (firebasePlayerId === playerId) return;
+
+            const existingIndex = window.jogadoresIA.findIndex(j => j.id === firebasePlayerId);
+
+            if (existingIndex !== -1) {
+                // Update existing player
+                updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingIndex);
+            } else {
+                // Add new player
+                const localPlayer = convertFirebasePlayerToLocal(firebasePlayerId, playerData);
+                if (localPlayer) {
+                    window.jogadoresIA.push(localPlayer);
+                }
+            }
+        });
+
+        console.log("Firebase players synced to local state");
+    });
+}
+
+function removeFirebasePlayersListener() {
+    if (playersListener && db) {
+        db.ref("players").off("value", playersListener);
+        playersListener = null;
+        console.log("Firebase players listener removed");
+    }
 }
 
 function getFriendData() {
@@ -688,33 +835,29 @@ function addFriendAchievementToFeed(achievement) {
 // ==========================================
 
 function fetchClubRosterWithFriends(clubeId) {
-    // Busca os jogadores da IA direto do objeto global (usa uma lista vazia se ainda estiver carregando)
-    const baseJogadores = window.jogadoresIA || [];
-    let roster = baseJogadores.filter(j => j.clubeId === clubeId);
+    // Get AI players for this club
+    let roster = jogadoresIA.filter(j => j.clubeId === clubeId);
 
-    // Pega o jogador local direto do objeto global
-    const localPlayer = window.jogador;
-
-    // Adiciona o jogador humano local se ele pertencer a este clube
-    if (localPlayer && localPlayer.clubeId === clubeId) {
+    // Add local human player if they belong to this club
+    if (jogador && jogador.clubeId === clubeId) {
         roster.push({
             id: "player",
-            nome: localPlayer.nome,
-            idade: localPlayer.idade,
-            geral: localPlayer.geral,
-            clubeId: localPlayer.clubeId,
-            nacionalidade: localPlayer.nacionalidade,
-            posicao: localPlayer.posicao,
-            foto: localPlayer.foto,
-            statsTemporada: localPlayer.estatisticasAtuais,
-            historicoCarreira: localPlayer.historicoCarreira
+            nome: jogador.nome,
+            idade: jogador.idade,
+            geral: jogador.geral,
+            clubeId: jogador.clubeId,
+            nacionalidade: jogador.nacionalidade,
+            posicao: jogador.posicao,
+            foto: jogador.foto,
+            statsTemporada: jogador.estatisticasAtuais,
+            historicoCarreira: jogador.historicoCarreira
         });
     }
 
-    // Adiciona o jogador do seu amigo se ele pertencer a este clube
-    if (typeof friendData !== 'undefined' && friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
+    // Add friend's player if they belong to this club
+    if (friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
         roster.push({
-            id: typeof friendId !== 'undefined' ? friendId : "friend",
+            id: friendId,
             nome: friendData.profile.nome,
             idade: friendData.profile.idade,
             geral: friendData.profile.geral,
@@ -839,6 +982,7 @@ function cleanupFirebaseListeners() {
         db.ref(`lobbies/${lobbyId}`).off("value", lobbyListener);
         lobbyListener = null;
     }
+    removeFirebasePlayersListener();
 }
 
 function leaveLobby() {
@@ -891,5 +1035,8 @@ window.firebaseIntegration = {
     autoReconnectToSession,
     cancelReconnection,
     isOnlineMode: () => isOnlineMode,
-    getFriendData
+    getFriendData,
+    loadFirebasePlayersIntoLocalState,
+    setupFirebasePlayersListener,
+    removeFirebasePlayersListener
 };
