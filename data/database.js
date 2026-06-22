@@ -1,4 +1,4 @@
-import { competicoes } from './competicoes.js';
+import { competicoes } from './competiçoes.js';
 import { clubes } from './times.js';
 import { jogadoresIA } from './jogadores.js';
 
