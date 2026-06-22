@@ -1,3 +1,4 @@
+import { jogadoresIA } from './data/database.js';
 // ==========================================
 // FIREBASE INTEGRATION FOR SHARED UNIVERSE
 // ==========================================
