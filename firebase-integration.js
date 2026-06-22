@@ -877,39 +877,50 @@ function addFriendAchievementToFeed(achievement) {
 // ==========================================
 
 function fetchClubRosterWithFriends(clubeId) {
+    // 🔥 BUSCA O JOGADOR LOCAL DO ESCOPO GLOBAL DO NAVEGADOR
+    const localPlayer = window.jogador;
+
     // Get AI players for this club
     let roster = window.jogadoresIA ? window.jogadoresIA.filter(j => j.clubeId === clubeId) : [];
 
-    // Add local human player if they belong to this club
-    if (jogador && jogador.clubeId === clubeId) {
-        roster.push({
-            id: "player",
-            nome: jogador.nome,
-            idade: jogador.idade,
-            geral: jogador.geral,
-            clubeId: jogador.clubeId,
-            nacionalidade: jogador.nacionalidade,
-            posicao: jogador.posicao,
-            foto: jogador.foto,
-            statsTemporada: jogador.estatisticasAtuais,
-            historicoCarreira: jogador.historicoCarreira
-        });
+    // Add local human player if they belong to this club (Usando localPlayer com segurança)
+    if (localPlayer && localPlayer.clubeId === clubeId) {
+        // Evita duplicar se ele já estiver na lista por algum motivo
+        if (!roster.some(j => j.id === "player")) {
+            roster.push({
+                id: "player",
+                nome: localPlayer.nome,
+                idade: localPlayer.idade,
+                geral: localPlayer.geral,
+                clubeId: localPlayer.clubeId,
+                nacionalidade: localPlayer.nacionalidade,
+                posicao: localPlayer.posicao,
+                foto: localPlayer.foto,
+                statsTemporada: localPlayer.estatisticasAtuais,
+                historicoCarreira: localPlayer.historicoCarreira
+            });
+        }
     }
 
-    // Add friend's player if they belong to this club
-    if (friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
-        roster.push({
-            id: friendId,
-            nome: friendData.profile.nome,
-            idade: friendData.profile.idade,
-            geral: friendData.profile.geral,
-            clubeId: friendData.profile.clubeId,
-            nacionalidade: friendData.profile.nacionalidade,
-            posicao: friendData.profile.posicao,
-            foto: friendData.profile.foto,
-            statsTemporada: friendData.stats,
-            historicoCarreira: friendData.achievements
-        });
+    // Add friend's player if they belong to this club (Garante que as variáveis do amigo existem)
+    const currentFriendData = typeof friendData !== 'undefined' ? friendData : null;
+    const currentFriendId = typeof friendId !== 'undefined' ? friendId : null;
+
+    if (currentFriendData && currentFriendData.profile && currentFriendData.profile.clubeId === clubeId) {
+        if (currentFriendId && !roster.some(j => j.id === currentFriendId)) {
+            roster.push({
+                id: currentFriendId,
+                nome: currentFriendData.profile.nome,
+                idade: currentFriendData.profile.idade,
+                geral: currentFriendData.profile.geral,
+                clubeId: currentFriendData.profile.clubeId,
+                nacionalidade: currentFriendData.profile.nacionalidade,
+                posicao: currentFriendData.profile.posicao,
+                foto: currentFriendData.profile.foto,
+                statsTemporada: currentFriendData.stats,
+                historicoCarreira: currentFriendData.achievements
+            });
+        }
     }
 
     return roster;
