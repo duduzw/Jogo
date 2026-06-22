@@ -42,6 +42,100 @@ window.handleRoomUpdate = function(roomData) {
     atualizarHub();
 };
 
+// ==========================================
+// 🌐 ONLINE LOBBY SCREEN
+// ==========================================
+
+let lobbyReadyStates = {};
+
+function renderOnlineLobby() {
+    const el = document.getElementById("view-online-lobby");
+    if (!el) return;
+
+    const roomId = window.firebaseIntegration?.getRoomId();
+    if (!roomId) {
+        mostrarToast("Erro", "Não conectado a uma sala.", "danger");
+        return;
+    }
+
+    // Get room players from Firebase
+    const db = window.firebaseIntegration?.db;
+    if (!db) return;
+
+    db.ref(`rooms/${roomId}/players`).once("value", (snapshot) => {
+        const players = snapshot.val();
+        if (!players) return;
+
+        const container = document.getElementById("lobby-players-container");
+        container.innerHTML = "";
+
+        Object.entries(players).forEach(([playerId, playerData]) => {
+            const isMe = playerId === window.firebaseIntegration?.playerId;
+            const isReady = lobbyReadyStates[playerId] || playerData.readyForLobby || false;
+
+            const card = document.createElement("div");
+            card.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'}`;
+            card.innerHTML = `
+                <div class="lobby-player-info">
+                    <img src="${playerData.foto || ''}" class="lobby-player-avatar" onerror="this.src='https://via.placeholder.com/60'">
+                    <div class="lobby-player-details">
+                        <h4>${playerData.nome || 'Jogador'}</h4>
+                        <p>${playerData.nacionalidade || '—'} • ${playerData.posicao || '—'}</p>
+                    </div>
+                </div>
+                ${isMe ? `<button class="lobby-ready-toggle ${isReady ? 'ready' : 'not-ready'}" onclick="toggleLobbyReady('${playerId}')">
+                    ${isReady ? '✓ PRONTO' : 'AGUARDANDO'}
+                </button>` : `<div style="text-align:center; font-weight:700; color:${isReady ? 'var(--success)' : 'var(--warning)'}">
+                    ${isReady ? '✓ PRONTO' : 'AGUARDANDO'}
+                </div>`}
+            `;
+            container.appendChild(card);
+        });
+
+        // Check if all players are ready
+        const allReady = Object.values(players).every(p => lobbyReadyStates[p.id] || p.readyForLobby);
+        const advanceBtn = document.getElementById("btn-advance-to-team");
+        if (advanceBtn) {
+            advanceBtn.disabled = !allReady;
+        }
+    });
+}
+
+window.toggleLobbyReady = function(playerId) {
+    const isReady = !lobbyReadyStates[playerId];
+    lobbyReadyStates[playerId] = isReady;
+
+    // Update Firebase
+    const roomId = window.firebaseIntegration?.getRoomId();
+    const db = window.firebaseIntegration?.db;
+    if (roomId && db) {
+        db.ref(`rooms/${roomId}/players/${playerId}/readyForLobby`).set(isReady);
+    }
+
+    renderOnlineLobby();
+};
+
+document.getElementById("btn-advance-to-team")?.addEventListener("click", () => {
+    // All players ready, proceed to team selection
+    mudarTela("view-selecao-clube");
+});
+
+// Modify character creation flow to redirect to lobby when in online mode
+const originalFinalizarCriacao = window.finalizarCriacao;
+if (originalFinalizarCriacao) {
+    window.finalizarCriacao = function() {
+        originalFinalizarCriacao();
+
+        // Check if in online mode and redirect to lobby
+        if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+            renderOnlineLobby();
+            mudarTela("view-online-lobby");
+        } else {
+            mudarTela("view-selecao-clube");
+        }
+    };
+}
+
 let jogador;
 let anoAtual = 2026;
 let rodadaAtual = 1;
@@ -853,6 +947,16 @@ function simularTorneiosInternacionais() {
         if (["Campeão Definido", "Classificação Definida", "Vagas Definidas"].includes(estado.fase)) continue;
         const fmt = FORMATOS_INT[estado.compConfigId] || {};
         const maxRod = estado.maxRodadas || fmt.jogosGrupo || 3;
+
+        // FIX: Only simulate if player has an active fixture in this tournament for the current round
+        const hasPlayerFixture = agendaTemporada.some(a =>
+            a.compId === key &&
+            a.isSelecao &&
+            (a.adversarioId === jogador?.selecaoId || a.mandanteId === jogador?.selecaoId)
+        );
+
+        // If player doesn't have a fixture, only simulate with lower probability to prevent round skipping
+        if (!hasPlayerFixture && Math.random() > 0.3) continue;
 
         if (estado.tipo === "grupos" && estado.grupos && estado.rodadaAtual <= maxRod) {
             simularRodadaGruposInt(estado);
@@ -3534,7 +3638,14 @@ function simularRodadaMundial() {
 
     for (const [compId, estado] of Object.entries(copasEstado)) {
         if (estado.tipo === "grupos" && estado.rodadaAtual <= 6) {
-            if(Math.random() < 0.35 || rodadaAtual % 3 === 0 || !compAtual) {
+            // FIX: Only simulate if player has an active fixture in this cup
+            const hasPlayerFixture = agendaTemporada.some(a =>
+                a.compId === compId &&
+                (a.adversarioId === jogador?.clubeId || a.mandanteId === jogador?.clubeId)
+            );
+
+            // Only simulate if player has fixture or with lower probability
+            if (hasPlayerFixture || Math.random() < 0.25 || rodadaAtual % 4 === 0 || !compAtual) {
                 estado.grupos.forEach(grp => {
                     let tSim = grp.equipas.filter(e => e.id !== jogador.clubeId); tSim.sort(() => Math.random() - 0.5);
                     for(let i=0; i<tSim.length-1; i+=2) {

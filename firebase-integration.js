@@ -571,71 +571,70 @@ function syncSeasonEnd() {
 // ==========================================
 
 function syncPlayerDataToFirebase() {
-    // 🔥 Proteção de Escopo: Puxa o jogador e o ano atual diretamente do escopo global window
-    const jogadorRef = window.jogador;
-    const anoAtualRef = window.anoAtual || 2026; // Fallback seguro para o ano atual
+    if (!isOnlineMode || !db || !playerId) return;
 
-    // Verifica se o modo online está ativo e se as referências do Firebase e do jogador existem
-    if (!isOnlineMode || !db || !playerId || !jogadorRef) return;
+    // Safely access jogador from window scope
+    const jogador = window.jogador;
+    const anoAtual = window.anoAtual;
 
-    // Garante que sub-objetos essenciais existam para evitar erros de 'undefined'
-    const statsAtuais = jogadorRef.estatisticasAtuais || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
-    const historico = jogadorRef.historicoCarreira || [];
+    if (!jogador) {
+        console.warn("syncPlayerDataToFirebase: jogador not available yet");
+        return;
+    }
 
     const profileData = {
-        nome: jogadorRef.nome,
-        idade: jogadorRef.idade,
-        nacionalidade: jogadorRef.nacionalidade,
-        posicao: jogadorRef.posicao,
-        geral: jogadorRef.geral,
-        valorMercado: jogadorRef.valorMercado,
-        clubeId: jogadorRef.clubeId,
-        foto: jogadorRef.foto || ""
+        nome: jogador.nome,
+        idade: jogador.idade,
+        nacionalidade: jogador.nacionalidade,
+        posicao: jogador.posicao,
+        geral: jogador.geral,
+        valorMercado: jogador.valorMercado,
+        clubeId: jogador.clubeId,
+        foto: jogador.foto || ""
     };
 
     // Separate club and international stats
     const statsData = {
         club: {
-            jogos: statsAtuais.jogos || 0,
-            gols: statsAtuais.gols || 0,
-            assistencias: statsAtuais.assistencias || 0,
-            notas: statsAtuais.notas || []
+            jogos: jogador.estatisticasAtuais?.jogos || 0,
+            gols: jogador.estatisticasAtuais?.gols || 0,
+            assistencias: jogador.estatisticasAtuais?.assistencias || 0,
+            notas: jogador.estatisticasAtuais?.notas || []
         },
         international: {
-            jogos: jogadorRef.statsSelecao?.jogos || 0,
-            gols: jogadorRef.statsSelecao?.gols || 0,
-            assistencias: jogadorRef.statsSelecao?.assistencias || 0,
-            titulosSelecao: jogadorRef.titulosSelecao || []
+            jogos: jogador.statsSelecao?.jogos || 0,
+            gols: jogador.statsSelecao?.gols || 0,
+            assistencias: jogador.statsSelecao?.assistencias || 0,
+            titulosSelecao: jogador.titulosSelecao || []
         }
     };
 
-    // Mapeia o histórico de carreira local garantindo que não venham valores nulos
-    const achievementsData = historico.map(h => ({
-        trofeu: h.trofeus || "",
-        ano: h.ano || anoAtualRef,
-        competicao: h.clube || "",
+    const achievementsData = (jogador.historicoCarreira || []).map(h => ({
+        trofeu: h.trofeus,
+        ano: h.ano,
+        competicao: h.clube,
         tipo: "club"
     }));
 
     // Add international trophies to achievements
-    if (jogadorRef.titulosSelecao && Array.isArray(jogadorRef.titulosSelecao)) {
-        jogadorRef.titulosSelecao.forEach(t => {
+    if (jogador.titulosSelecao) {
+        jogador.titulosSelecao.forEach(t => {
             achievementsData.push({
-                trofeu: t.trofeu || "",
-                ano: t.ano || anoAtualRef,
-                competicao: t.competicao || "",
+                trofeu: t.trofeu,
+                ano: t.ano,
+                competicao: t.competicao,
                 tipo: "international"
             });
         });
     }
 
-    // Envia os dados estruturados e limpos para o Realtime Database
     db.ref(`players/${playerId}/profile`).set(profileData);
     db.ref(`players/${playerId}/stats`).set(statsData);
     db.ref(`players/${playerId}/achievements`).set(achievementsData);
     db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
-    db.ref(`players/${playerId}/currentSeason`).set(anoAtualRef);
+    db.ref(`players/${playerId}/currentSeason`).set(anoAtual || 2026);
 }
+
 // ==========================================
 // LOAD FIREBASE PLAYERS INTO LOCAL STATE
 // ==========================================
