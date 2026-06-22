@@ -721,40 +721,70 @@ function updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingInd
 }
 
 function setupFirebasePlayersListener() {
-    if (!db || playersListener) return;
+    const currentDb = typeof database !== 'undefined' ? database : (typeof db !== 'undefined' ? db : null);
+    if (!currentDb || playersListener) return;
 
     console.log("Setting up Firebase players listener...");
 
-    playersListener = db.ref("players").on("value", (snapshot) => {
+    playersListener = currentDb.ref("players").on("value", (snapshot) => {
         if (!snapshot.exists()) return;
 
-        // Check if jogadoresIA is available
+        // 🔥 CORREÇÃO 1: Em vez de dar return e desistir, nós criamos o array se ele não existir
         if (!window.jogadoresIA) {
-            console.warn("jogadoresIA not available in listener, skipping sync");
-            return;
+            window.jogadoresIA = [];
         }
 
         const playersData = snapshot.val();
 
         Object.entries(playersData).forEach(([firebasePlayerId, playerData]) => {
-            // Skip current player
+            // Pula o próprio jogador local para não duplicar
             if (firebasePlayerId === playerId) return;
+
+            // 🔥 CORREÇÃO 2: Proteção caso o perfil do player no Firebase esteja incompleto
+            if (!playerData || !playerData.profile) return;
 
             const existingIndex = window.jogadoresIA.findIndex(j => j.id === firebasePlayerId);
 
-            if (existingIndex !== -1) {
-                // Update existing player
-                updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingIndex);
-            } else {
-                // Add new player
-                const localPlayer = convertFirebasePlayerToLocal(firebasePlayerId, playerData);
-                if (localPlayer) {
-                    window.jogadoresIA.push(localPlayer);
+            try {
+                if (existingIndex !== -1) {
+                    // Se você tiver a função abaixo, garanta que ela use try/catch ou use a nossa direta:
+                    if (typeof updateLocalPlayerFromFirebase === 'function') {
+                        updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingIndex);
+                    } else {
+                        // Atualização direta e segura caso a outra função quebre
+                        const p = playerData.profile;
+                        window.jogadoresIA[existingIndex].nome = p.nome;
+                        window.jogadoresIA[existingIndex].geral = p.geral || 60;
+                        window.jogadoresIA[existingIndex].clubeId = p.clubeId;
+                    }
+                } else {
+                    // Adicionar novo jogador com segurança
+                    if (typeof convertFirebasePlayerToLocal === 'function') {
+                        const localPlayer = convertFirebasePlayerToLocal(firebasePlayerId, playerData);
+                        if (localPlayer) window.jogadoresIA.push(localPlayer);
+                    } else {
+                        // Criação direta e segura
+                        const p = playerData.profile;
+                        window.jogadoresIA.push({
+                            id: firebasePlayerId,
+                            nome: p.nome,
+                            idade: p.idade || 18,
+                            nacionalidade: p.nacionalidade || "Brasil",
+                            posicao: p.posicao || "ATA",
+                            geral: p.geral || 60,
+                            clubeId: p.clubeId,
+                            valorMercado: p.valorMercado || 0,
+                            foto: p.foto || "",
+                            isOnlinePlayer: true
+                        });
+                    }
                 }
+            } catch (err) {
+                console.error("Erro ao processar dados de um player específico:", firebasePlayerId, err);
             }
         });
 
-        console.log("Firebase players synced to local state");
+        console.log("Firebase players synced to local state successfully.");
     });
 }
 
