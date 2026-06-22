@@ -584,18 +584,40 @@ function syncPlayerDataToFirebase() {
         foto: jogador.foto || ""
     };
 
+    // Separate club and international stats
     const statsData = {
-        jogos: jogador.estatisticasAtuais.jogos,
-        gols: jogador.estatisticasAtuais.gols,
-        assistencias: jogador.estatisticasAtuais.assistencias || 0,
-        notas: jogador.estatisticasAtuais.notas || []
+        club: {
+            jogos: jogador.estatisticasAtuais.jogos,
+            gols: jogador.estatisticasAtuais.gols,
+            assistencias: jogador.estatisticasAtuais.assistencias || 0,
+            notas: jogador.estatisticasAtuais.notas || []
+        },
+        international: {
+            jogos: jogador.statsSelecao?.jogos || 0,
+            gols: jogador.statsSelecao?.gols || 0,
+            assistencias: jogador.statsSelecao?.assistencias || 0,
+            titulosSelecao: jogador.titulosSelecao || []
+        }
     };
 
     const achievementsData = jogador.historicoCarreira.map(h => ({
         trofeu: h.trofeus,
         ano: h.ano,
-        competicao: h.clube
+        competicao: h.clube,
+        tipo: "club"
     }));
+
+    // Add international trophies to achievements
+    if (jogador.titulosSelecao) {
+        jogador.titulosSelecao.forEach(t => {
+            achievementsData.push({
+                trofeu: t.trofeu,
+                ano: t.ano,
+                competicao: t.competicao,
+                tipo: "international"
+            });
+        });
+    }
 
     db.ref(`players/${playerId}/profile`).set(profileData);
     db.ref(`players/${playerId}/stats`).set(statsData);

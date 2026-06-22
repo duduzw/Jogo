@@ -5,6 +5,43 @@ import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTime
 // Make jogadoresIA available globally for Firebase integration
 window.jogadoresIA = jogadoresIA;
 
+// ==========================================
+// 🌐 ROOM-BASED MULTIPLAYER SYNC
+// ==========================================
+
+window.handleRoomUpdate = function(roomData) {
+    if (!roomData) return;
+
+    const seasonState = roomData.seasonState;
+    const matchData = roomData.matchData;
+
+    // Sync season and round
+    if (seasonState) {
+        if (seasonState.currentSeason && seasonState.currentSeason !== window.anoAtual) {
+            console.log("Syncing season from room:", seasonState.currentSeason);
+            window.anoAtual = seasonState.currentSeason;
+        }
+        if (seasonState.currentRound && seasonState.currentRound !== window.rodadaAtual) {
+            console.log("Syncing round from room:", seasonState.currentRound);
+            window.rodadaAtual = seasonState.currentRound;
+        }
+    }
+
+    // Sync match results if available
+    if (matchData && matchData.matchResults) {
+        const results = matchData.matchResults;
+        Object.keys(results).forEach(matchId => {
+            const result = results[matchId];
+            // Apply match results to local state
+            // This would integrate with your existing match result handling
+            console.log("Syncing match result:", matchId, result);
+        });
+    }
+
+    // Update UI to reflect synced state
+    atualizarHub();
+};
+
 let jogador;
 let anoAtual = 2026;
 let rodadaAtual = 1;
@@ -2204,12 +2241,17 @@ window.toggleConquistaDetalhes = function(el) {
 function montarCardConquista(nome, detalhes) {
     const safeNome = nome || "Conquista";
     const detalheHTML = detalhes.map(d => `<div>${d.ano || "-"} - ${d.clube || "Clube"}</div>`).join("");
+
+    // Check if this is an international trophy (contains "Seleção" in any detail)
+    const isInternational = detalhes.some(d => d.clube && d.clube.includes("Seleção"));
+
     return `
-        <div class="card-conquista conquista-stack" onclick="toggleConquistaDetalhes(this)">
+        <div class="card-conquista conquista-stack ${isInternational ? 'international-trophy' : ''}" onclick="toggleConquistaDetalhes(this)">
             <img src="${obterUrlImagem(safeNome, 'trofeu')}" style="width:60px; height:60px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.6));">
             ${detalhes.length > 1 ? `<span class="conquista-count">x${detalhes.length}</span>` : ""}
+            ${isInternational ? `<span class="international-badge">🌍</span>` : ""}
             <div>
-                <strong style="color:var(--gold); font-size:1.35rem;">${safeNome}</strong><br>
+                <strong style="color:${isInternational ? 'var(--world-cup-gold)' : 'var(--gold)'}; font-size:1.35rem;">${safeNome}</strong><br>
                 <span style="font-size:0.95rem; color:#aaa;">${detalhes.length > 1 ? "Clique para ver anos e clubes" : `Ano ${detalhes[0]?.ano || "-"} - ${detalhes[0]?.clube || "Clube"}`}</span>
                 <div class="conquista-detalhes">${detalheHTML}</div>
             </div>
@@ -3830,6 +3872,14 @@ function simularGalaEpica(ranking) {
     const atualizarTrofeu = (nome) => { const el = document.getElementById("trofeuGalaAtual"); if(el) el.innerHTML = renderTrofeu(nome); };
     const finalizarGala = () => {
         mB.classList.add("oculto");
+
+        // Set ready for season end if in online room mode
+        if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+            window.firebaseIntegration.setReadyForSeasonEnd(true);
+            mostrarToast("Sala Online", "Aguardando amigo para avançar temporada...", "info");
+            return;
+        }
+
         window.avancarTemporada();
         if(propostasPendentes.length > 0) {
             mostrarToast("MERCADO ABERTO", "Propostas recebidas!", "warning");
@@ -4491,9 +4541,26 @@ document.addEventListener("change", function(event) {
 // ==========================================
 document.getElementById("btnJogar")?.addEventListener("click", () => {
     inicializarEstadoCarreiraJogador();
-    let comp = agendaTemporada[rodadaAtual - 1]; 
+    let comp = agendaTemporada[rodadaAtual - 1];
     let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
-    
+
+    // Check if in online room mode and handle ready state
+    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+        if (textoBtn.includes("gala")) {
+            processarFimTemporada();
+            return;
+        }
+
+        if (!textoBtn.includes("avançar semana") && comp) {
+            // Set ready for match and wait for room sync
+            window.firebaseIntegration.setReadyForMatch(true);
+            mostrarToast("Sala Online", "Aguardando amigo para simular partida...", "info");
+            document.getElementById("btnJogar").disabled = true;
+            document.getElementById("btnJogar").innerText = "Aguardando...";
+            return;
+        }
+    }
+
     if (textoBtn.includes("avançar semana")) {
         simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
         mostrarToast("Simulação", "Semana global avançada com sucesso.", "info");
@@ -4530,20 +4597,20 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
 
     let imgC = document.getElementById("imgTimeCasa"); if(imgC) imgC.src = isSel ? (casaObj?.logo || "") : obterUrlImagem(casaObj, 'clube');
     let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
-    setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante); 
+    setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
     setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
     setText("uiConsolePartida", "<div style='color:#00ff88; text-align:center;'>⚽ O árbitro apita para o início do jogo!</div>");
 
     engine.simularPartidaAoVivo((min, gc, gv, log) => {
         setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
-        if(log) { 
-            let c = document.getElementById("uiConsolePartida"); 
-            if(c){ 
+        if(log) {
+            let c = document.getElementById("uiConsolePartida");
+            if(c){
                 const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
                 const golTime = !meuGol && (log.includes("GOLO") || log.includes("GOL"));
-                c.innerHTML += `<div class="${meuGol ? "gol-meu" : (golTime ? "gol-time" : "")}">${meuGol ? "⭐ " : ""}${log}</div>`; 
-                c.scrollTop = c.scrollHeight; 
-            } 
+                c.innerHTML += `<div class="${meuGol ? "gol-meu" : (golTime ? "gol-time" : "")}">${meuGol ? "⭐ " : ""}${log}</div>`;
+                c.scrollTop = c.scrollHeight;
+            }
         }
     }, (gc, gv) => {
         const vindoDoBanco = jogador.titularidade < 68;
@@ -4558,14 +4625,25 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         let golosAAtribuir = souMandante ? gc : gv;
         if(vindoDoBanco) golosAAtribuir = Math.max(0, Math.floor(golosAAtribuir * 0.55));
         let golsJogadorPartida = 0; let assistsJogadorPartida = 0;
+
+        // Track stats separately for club vs international
         if(!isSel) {
             jogador.estatisticasAtuais.jogos++;
             if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
             if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
             registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
-        } else if(golosAAtribuir > 0) {
-            for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) golsJogadorPartida++; else if(Math.random() < pAssist) assistsJogadorPartida++; }
+        } else {
+            // International stats tracking
+            if(!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
+            jogador.statsSelecao.jogos++;
+            if(golosAAtribuir > 0) {
+                for(let i=0; i<golosAAtribuir; i++) {
+                    if(Math.random() < pGolo) { jogador.statsSelecao.gols++; golsJogadorPartida++; }
+                    else if(Math.random() < pAssist) { jogador.statsSelecao.assistencias++; assistsJogadorPartida++; }
+                }
+            }
         }
+
         registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
         if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
         else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
@@ -4581,6 +4659,11 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
                 jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
                 if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
                 simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+
+                // Reset ready state after match
+                if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+                    window.firebaseIntegration.setReadyForMatch(false);
+                }
             };
         }
     });

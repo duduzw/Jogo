@@ -12,16 +12,31 @@
         "foto": "string"
       },
       "stats": {
-        "jogos": "number",
-        "gols": "number",
-        "assistencias": "number",
-        "notas": "array"
+        "club": {
+          "jogos": "number",
+          "gols": "number",
+          "assistencias": "number",
+          "notas": "array"
+        },
+        "international": {
+          "jogos": "number",
+          "gols": "number",
+          "assistencias": "number",
+          "titulosSelecao": [
+            {
+              "trofeu": "string",
+              "ano": "number",
+              "competicao": "string"
+            }
+          ]
+        }
       },
       "achievements": [
         {
           "trofeu": "string",
           "ano": "number",
-          "competicao": "string"
+          "competicao": "string",
+          "tipo": "club|international"
         }
       ],
       "lastUpdated": "timestamp",
