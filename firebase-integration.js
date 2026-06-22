@@ -676,29 +676,33 @@ function addFriendAchievementToFeed(achievement) {
 // ==========================================
 
 function fetchClubRosterWithFriends(clubeId) {
-    // Get AI players for this club
-    let roster = jogadoresIA.filter(j => j.clubeId === clubeId);
+    // Busca os jogadores da IA direto do objeto global (usa uma lista vazia se ainda estiver carregando)
+    const baseJogadores = window.jogadoresIA || [];
+    let roster = baseJogadores.filter(j => j.clubeId === clubeId);
 
-    // Add local human player if they belong to this club
-    if (jogador && jogador.clubeId === clubeId) {
+    // Pega o jogador local direto do objeto global
+    const localPlayer = window.jogador;
+
+    // Adiciona o jogador humano local se ele pertencer a este clube
+    if (localPlayer && localPlayer.clubeId === clubeId) {
         roster.push({
             id: "player",
-            nome: jogador.nome,
-            idade: jogador.idade,
-            geral: jogador.geral,
-            clubeId: jogador.clubeId,
-            nacionalidade: jogador.nacionalidade,
-            posicao: jogador.posicao,
-            foto: jogador.foto,
-            statsTemporada: jogador.estatisticasAtuais,
-            historicoCarreira: jogador.historicoCarreira
+            nome: localPlayer.nome,
+            idade: localPlayer.idade,
+            geral: localPlayer.geral,
+            clubeId: localPlayer.clubeId,
+            nacionalidade: localPlayer.nacionalidade,
+            posicao: localPlayer.posicao,
+            foto: localPlayer.foto,
+            statsTemporada: localPlayer.estatisticasAtuais,
+            historicoCarreira: localPlayer.historicoCarreira
         });
     }
 
-    // Add friend's player if they belong to this club
-    if (friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
+    // Adiciona o jogador do seu amigo se ele pertencer a este clube
+    if (typeof friendData !== 'undefined' && friendData && friendData.profile && friendData.profile.clubeId === clubeId) {
         roster.push({
-            id: friendId,
+            id: typeof friendId !== 'undefined' ? friendId : "friend",
             nome: friendData.profile.nome,
             idade: friendData.profile.idade,
             geral: friendData.profile.geral,
