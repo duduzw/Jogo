@@ -606,8 +606,14 @@ function syncPlayerDataToFirebase() {
 // ==========================================
 
 function loadFirebasePlayersIntoLocalState() {
-    if (!db || !window.jogadoresIA) {
-        console.error("Cannot load Firebase players: db or jogadoresIA not available");
+    if (!db) {
+        console.error("Cannot load Firebase players: db not available");
+        return;
+    }
+
+    if (!window.jogadoresIA) {
+        console.warn("jogadoresIA not yet available, will retry in 500ms");
+        setTimeout(loadFirebasePlayersIntoLocalState, 500);
         return;
     }
 
@@ -721,6 +727,12 @@ function setupFirebasePlayersListener() {
 
     playersListener = db.ref("players").on("value", (snapshot) => {
         if (!snapshot.exists()) return;
+
+        // Check if jogadoresIA is available
+        if (!window.jogadoresIA) {
+            console.warn("jogadoresIA not available in listener, skipping sync");
+            return;
+        }
 
         const playersData = snapshot.val();
 
@@ -836,7 +848,7 @@ function addFriendAchievementToFeed(achievement) {
 
 function fetchClubRosterWithFriends(clubeId) {
     // Get AI players for this club
-    let roster = jogadoresIA.filter(j => j.clubeId === clubeId);
+    let roster = window.jogadoresIA ? window.jogadoresIA.filter(j => j.clubeId === clubeId) : [];
 
     // Add local human player if they belong to this club
     if (jogador && jogador.clubeId === clubeId) {
