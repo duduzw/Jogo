@@ -41,22 +41,78 @@
       "friendCode": "string"
     }
   },
-  "lobbies": {
-    "{lobbyId}": {
+  "rooms": {
+    "{roomId}": {
+      "metadata": {
+        "createdAt": "timestamp",
+        "hostId": "string",
+        "maxPlayers": "number",
+        "status": "waiting|in_progress|season_end"
+      },
       "players": {
         "{playerId}": {
           "nome": "string",
-          "ready": "boolean",
+          "clubeId": "string",
           "currentSeason": "number",
-          "clubeId": "string"
+          "readyForMatch": "boolean",
+          "readyForSeasonEnd": "boolean",
+          "joinedAt": "timestamp"
         }
       },
-      "seasonSync": {
+      "seasonState": {
         "currentSeason": "number",
-        "allPlayersReady": "boolean",
-        "seasonInProgress": "boolean"
+        "currentRound": "number",
+        "seasonInProgress": "boolean",
+        "allPlayersReadyForMatch": "boolean",
+        "allPlayersReadyForSeasonEnd": "boolean"
       },
-      "createdAt": "timestamp"
+      "matchData": {
+        "currentMatchId": "string",
+        "matchResults": {
+          "{matchId}": {
+            "round": "number",
+            "season": "number",
+            "homeTeam": "string",
+            "awayTeam": "string",
+            "homeScore": "number",
+            "awayScore": "number",
+            "goalscorers": [
+              {
+                "playerId": "string",
+                "playerName": "string",
+                "team": "string",
+                "minute": "number"
+              }
+            ],
+            "assists": [
+              {
+                "playerId": "string",
+                "playerName": "string",
+                "team": "string"
+              }
+            ],
+            "simulatedBy": "string",
+            "simulatedAt": "timestamp"
+          }
+        }
+      },
+      "leagueTables": {
+        "{leagueId}": {
+          "season": "number",
+          "table": [
+            {
+              "clubeId": "string",
+              "jogos": "number",
+              "vitorias": "number",
+              "empates": "number",
+              "derrotas": "number",
+              "golsMarcados": "number",
+              "golsSofridos": "number",
+              "pontos": "number"
+            }
+          ]
+        }
+      }
     }
   },
   "events": {

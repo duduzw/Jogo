@@ -22,11 +22,14 @@ let db = null;
 let playerId = null;
 let friendId = null;
 let lobbyId = null;
+let roomId = null;
 let isOnlineMode = false;
+let isHost = false;
 let friendData = null;
 let achievementListener = null;
 let lobbyListener = null;
 let playersListener = null;
+let roomListener = null;
 
 // ==========================================
 // INITIALIZATION
@@ -568,48 +571,37 @@ function syncSeasonEnd() {
 // ==========================================
 
 function syncPlayerDataToFirebase() {
-    // 1. Puxa o jogador direto da window com segurança máxima
-    const localPlayer = window.jogador;
-    const currentSeasonYear = window.anoAtual || 2026; 
-    const currentDb = typeof database !== 'undefined' ? database : (typeof db !== 'undefined' ? db : null);
-
-    // 🔥 Se não achar o jogador na window ainda, apenas sai de fininho sem travar o jogo
-    if (!localPlayer || !currentDb || !playerId) {
-        return;
-    }
+    if (!isOnlineMode || !db || !playerId || !jogador) return;
 
     const profileData = {
-        nome: localPlayer.nome || "Jogador Online",
-        idade: localPlayer.idade || 18,
-        nacionalidade: localPlayer.nacionalidade || "Brasil",
-        posicao: localPlayer.posicao || "ATA",
-        geral: localPlayer.geral || 60,
-        valorMercado: localPlayer.valorMercado || 0,
-        clubeId: localPlayer.clubeId || 0,
-        foto: localPlayer.foto || ""
+        nome: jogador.nome,
+        idade: jogador.idade,
+        nacionalidade: jogador.nacionalidade,
+        posicao: jogador.posicao,
+        geral: jogador.geral,
+        valorMercado: jogador.valorMercado,
+        clubeId: jogador.clubeId,
+        foto: jogador.foto || ""
     };
 
-    const currentStats = localPlayer.estatisticasAtuais || {};
     const statsData = {
-        jogos: currentStats.jogos || 0,
-        gols: currentStats.gols || 0,
-        assistencias: currentStats.assistencias || 0,
-        notas: currentStats.notas || []
+        jogos: jogador.estatisticasAtuais.jogos,
+        gols: jogador.estatisticasAtuais.gols,
+        assistencias: jogador.estatisticasAtuais.assistencias || 0,
+        notas: jogador.estatisticasAtuais.notas || []
     };
 
-    const currentHistory = localPlayer.historicoCarreira || [];
-    const achievementsData = currentHistory.map(h => ({
-        trofeu: h.trofeus || "",
-        ano: h.ano || currentSeasonYear,
-        competicao: h.clube || ""
+    const achievementsData = jogador.historicoCarreira.map(h => ({
+        trofeu: h.trofeus,
+        ano: h.ano,
+        competicao: h.clube
     }));
 
-    // Envia com segurança usando as referências locais limpas
-    currentDb.ref(`players/${playerId}/profile`).set(profileData);
-    currentDb.ref(`players/${playerId}/stats`).set(statsData);
-    currentDb.ref(`players/${playerId}/achievements`).set(achievementsData);
-    currentDb.ref(`players/${playerId}/lastUpdated`).set(Date.now());
-    currentDb.ref(`players/${playerId}/currentSeason`).set(currentSeasonYear);
+    db.ref(`players/${playerId}/profile`).set(profileData);
+    db.ref(`players/${playerId}/stats`).set(statsData);
+    db.ref(`players/${playerId}/achievements`).set(achievementsData);
+    db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
+    db.ref(`players/${playerId}/currentSeason`).set(anoAtual);
 }
 
 // ==========================================
@@ -805,6 +797,396 @@ function removeFirebasePlayersListener() {
         playersListener = null;
         console.log("Firebase players listener removed");
     }
+}
+
+// ==========================================
+// ROOM-BASED MULTIPLAYER SYSTEM
+// ==========================================
+
+function createRoom() {
+    if (!db || !playerId) {
+        console.error("Cannot create room: db or playerId not available");
+        return null;
+    }
+
+    // Generate a unique room ID
+    const newRoomId = "room_" + generateFriendCode();
+
+    const roomData = {
+        metadata: {
+            createdAt: Date.now(),
+            hostId: playerId,
+            maxPlayers: 2,
+            status: "waiting"
+        },
+        players: {
+            [playerId]: {
+                nome: window.jogador ? window.jogador.nome : "Player",
+                clubeId: window.jogador ? window.jogador.clubeId : "",
+                currentSeason: window.anoAtual || 2026,
+                readyForMatch: false,
+                readyForSeasonEnd: false,
+                joinedAt: Date.now()
+            }
+        },
+        seasonState: {
+            currentSeason: window.anoAtual || 2026,
+            currentRound: 1,
+            seasonInProgress: false,
+            allPlayersReadyForMatch: false,
+            allPlayersReadyForSeasonEnd: false
+        },
+        matchData: {
+            currentMatchId: null,
+            matchResults: {}
+        },
+        leagueTables: {}
+    };
+
+    return db.ref(`rooms/${newRoomId}`).set(roomData)
+        .then(() => {
+            roomId = newRoomId;
+            isHost = true;
+            console.log("Room created:", roomId);
+            return roomId;
+        })
+        .catch((error) => {
+            console.error("Error creating room:", error);
+            return null;
+        });
+}
+
+function joinRoom(roomIdToJoin) {
+    if (!db || !playerId) {
+        console.error("Cannot join room: db or playerId not available");
+        return false;
+    }
+
+    return db.ref(`rooms/${roomIdToJoin}`).once("value")
+        .then((snapshot) => {
+            if (!snapshot.exists()) {
+                console.error("Room not found:", roomIdToJoin);
+                return false;
+            }
+
+            const roomData = snapshot.val();
+            const players = roomData.players || {};
+
+            // Check if room is full
+            if (Object.keys(players).length >= roomData.metadata.maxPlayers) {
+                console.error("Room is full");
+                return false;
+            }
+
+            // Check if already in room
+            if (players[playerId]) {
+                roomId = roomIdToJoin;
+                isHost = roomData.metadata.hostId === playerId;
+                setupRoomListener();
+                return true;
+            }
+
+            // Add player to room
+            const playerData = {
+                nome: window.jogador ? window.jogador.nome : "Player",
+                clubeId: window.jogador ? window.jogador.clubeId : "",
+                currentSeason: window.anoAtual || 2026,
+                readyForMatch: false,
+                readyForSeasonEnd: false,
+                joinedAt: Date.now()
+            };
+
+            return db.ref(`rooms/${roomIdToJoin}/players/${playerId}`).set(playerData)
+                .then(() => {
+                    roomId = roomIdToJoin;
+                    isHost = roomData.metadata.hostId === playerId;
+                    setupRoomListener();
+                    console.log("Joined room:", roomId);
+                    return true;
+                });
+        })
+        .catch((error) => {
+            console.error("Error joining room:", error);
+            return false;
+        });
+}
+
+function setupRoomListener() {
+    if (!roomId || !db || roomListener) return;
+
+    console.log("Setting up room listener for:", roomId);
+
+    roomListener = db.ref(`rooms/${roomId}`).on("value", (snapshot) => {
+        if (!snapshot.exists()) {
+            console.error("Room no longer exists");
+            return;
+        }
+
+        const roomData = snapshot.val();
+        handleRoomUpdate(roomData);
+    });
+}
+
+function handleRoomUpdate(roomData) {
+    const seasonState = roomData.seasonState;
+    const players = roomData.players;
+
+    // Sync local season if different from room
+    if (seasonState && seasonState.currentSeason !== window.anoAtual) {
+        console.log("Syncing season from room:", seasonState.currentSeason);
+        window.anoAtual = seasonState.currentSeason;
+    }
+
+    // Load only room members into local jogadoresIA
+    loadRoomPlayersIntoLocalState(players);
+
+    // Check if all players are ready for match
+    if (seasonState && seasonState.allPlayersReadyForMatch && isHost) {
+        // Host simulates the match
+        simulateMatchForRoom();
+    }
+
+    // Check if all players are ready for season end
+    if (seasonState && seasonState.allPlayersReadyForSeasonEnd && isHost) {
+        // Host advances the season
+        advanceSeasonForRoom();
+    }
+
+    // Update UI with room state
+    updateRoomUI(roomData);
+}
+
+function loadRoomPlayersIntoLocalState(roomPlayers) {
+    if (!window.jogadoresIA) return;
+
+    // Clear existing Firebase-loaded players (keep local AI players)
+    window.jogadoresIA = window.jogadoresIA.filter(j => !j.isFirebasePlayer && !j.isOnlinePlayer);
+
+    // Load only room members
+    Object.entries(roomPlayers).forEach(([roomPlayerId, playerData]) => {
+        // Skip current player (already in local state as 'jogador')
+        if (roomPlayerId === playerId) return;
+
+        // Convert room player data to local structure
+        const localPlayer = {
+            id: roomPlayerId,
+            nome: playerData.nome,
+            idade: window.jogador ? window.jogador.idade : 18,
+            nacionalidade: window.jogador ? window.jogador.nacionalidade : "Brasil",
+            posicao: window.jogador ? window.jogador.posicao : "Atacante",
+            geral: 70, // Default OVR for online players
+            valorMercado: "€1M",
+            clubeId: playerData.clubeId,
+            foto: "",
+            statsTemporada: {
+                jogos: 0,
+                gols: 0,
+                assistencias: 0,
+                notas: []
+            },
+            historicoCarreira: [],
+            isOnlinePlayer: true
+        };
+
+        window.jogadoresIA.push(localPlayer);
+    });
+
+    console.log("Loaded room players into local state");
+}
+
+function setReadyForMatch(ready) {
+    if (!roomId || !db || !playerId) return;
+
+    db.ref(`rooms/${roomId}/players/${playerId}/readyForMatch`).set(ready)
+        .then(() => {
+            checkAllPlayersReadyForMatch();
+        });
+}
+
+function checkAllPlayersReadyForMatch() {
+    if (!roomId || !db) return;
+
+    db.ref(`rooms/${roomId}/players`).once("value")
+        .then((snapshot) => {
+            const players = snapshot.val();
+            if (!players) return;
+
+            const playerIds = Object.keys(players);
+            const allReady = playerIds.every(id => players[id].readyForMatch === true);
+
+            db.ref(`rooms/${roomId}/seasonState/allPlayersReadyForMatch`).set(allReady);
+        });
+}
+
+function setReadyForSeasonEnd(ready) {
+    if (!roomId || !db || !playerId) return;
+
+    db.ref(`rooms/${roomId}/players/${playerId}/readyForSeasonEnd`).set(ready)
+        .then(() => {
+            checkAllPlayersReadyForSeasonEnd();
+        });
+}
+
+function checkAllPlayersReadyForSeasonEnd() {
+    if (!roomId || !db) return;
+
+    db.ref(`rooms/${roomId}/players`).once("value")
+        .then((snapshot) => {
+            const players = snapshot.val();
+            if (!players) return;
+
+            const playerIds = Object.keys(players);
+            const allReady = playerIds.every(id => players[id].readyForSeasonEnd === true);
+
+            db.ref(`rooms/${roomId}/seasonState/allPlayersReadyForSeasonEnd`).set(allReady);
+        });
+}
+
+function simulateMatchForRoom() {
+    if (!roomId || !db || !isHost) return;
+
+    console.log("Host simulating match for room...");
+
+    // Get current round and season
+    db.ref(`rooms/${roomId}/seasonState`).once("value")
+        .then((snapshot) => {
+            const seasonState = snapshot.val();
+            const currentRound = seasonState.currentRound || 1;
+            const currentSeason = seasonState.currentSeason || window.anoAtual;
+
+            // Generate match ID
+            const matchId = `match_${currentSeason}_r${currentRound}_${Date.now()}`;
+
+            // Simulate match results (this should integrate with your existing match engine)
+            const matchResult = generateMatchResult(currentSeason, currentRound);
+
+            // Save match result to Firebase
+            db.ref(`rooms/${roomId}/matchData/matchResults/${matchId}`).set(matchResult)
+                .then(() => {
+                    db.ref(`rooms/${roomId}/matchData/currentMatchId`).set(matchId);
+
+                    // Increment round
+                    db.ref(`rooms/${roomId}/seasonState/currentRound`).set(currentRound + 1);
+
+                    // Reset ready states
+                    resetPlayerReadyStates();
+
+                    console.log("Match simulated and saved:", matchId);
+                });
+        });
+}
+
+function generateMatchResult(season, round) {
+    // This should integrate with your existing match engine
+    // For now, return a placeholder structure
+    return {
+        round: round,
+        season: season,
+        homeTeam: "Team A",
+        awayTeam: "Team B",
+        homeScore: Math.floor(Math.random() * 4),
+        awayScore: Math.floor(Math.random() * 4),
+        goalscorers: [],
+        assists: [],
+        simulatedBy: playerId,
+        simulatedAt: Date.now()
+    };
+}
+
+function advanceSeasonForRoom() {
+    if (!roomId || !db || !isHost) return;
+
+    console.log("Host advancing season for room...");
+
+    db.ref(`rooms/${roomId}/seasonState`).once("value")
+        .then((snapshot) => {
+            const seasonState = snapshot.val();
+            const newSeason = (seasonState.currentSeason || window.anoAtual) + 1;
+
+            // Update season in Firebase
+            db.ref(`rooms/${roomId}/seasonState/currentSeason`).set(newSeason);
+            db.ref(`rooms/${roomId}/seasonState/currentRound`).set(1);
+            db.ref(`rooms/${roomId}/seasonState/seasonInProgress`).set(false);
+            db.ref(`rooms/${roomId}/seasonState/allPlayersReadyForSeasonEnd`).set(false);
+
+            // Update room status
+            db.ref(`rooms/${roomId}/metadata/status`).set("waiting");
+
+            // Reset ready states
+            resetPlayerReadyStates();
+
+            console.log("Season advanced to:", newSeason);
+        });
+}
+
+function resetPlayerReadyStates() {
+    if (!roomId || !db) return;
+
+    db.ref(`rooms/${roomId}/players`).once("value")
+        .then((snapshot) => {
+            const players = snapshot.val();
+            if (!players) return;
+
+            Object.keys(players).forEach(playerId => {
+                db.ref(`rooms/${roomId}/players/${playerId}/readyForMatch`).set(false);
+                db.ref(`rooms/${roomId}/players/${playerId}/readyForSeasonEnd`).set(false);
+            });
+        });
+}
+
+function updateRoomUI(roomData) {
+    // Update UI elements with room state
+    const statusElement = document.getElementById("roomStatus");
+    if (statusElement) {
+        const status = roomData.metadata.status;
+        statusElement.textContent = `Room Status: ${status}`;
+    }
+
+    const playersElement = document.getElementById("roomPlayers");
+    if (playersElement) {
+        const players = roomData.players || {};
+        playersElement.innerHTML = Object.entries(players).map(([pid, p]) => `
+            <div class="room-player">
+                <strong>${p.nome}</strong> (${p.clubeId})
+                <span class="ready-badge ${p.readyForMatch ? 'ready' : 'not-ready'}">
+                    ${p.readyForMatch ? '✓' : '○'}
+                </span>
+            </div>
+        `).join("");
+    }
+}
+
+function leaveRoom() {
+    if (!roomId || !db) return;
+
+    // Remove player from room
+    db.ref(`rooms/${roomId}/players/${playerId}`).remove()
+        .then(() => {
+            // If host is leaving and there are other players, transfer host
+            if (isHost) {
+                db.ref(`rooms/${roomId}/players`).once("value")
+                    .then((snapshot) => {
+                        const players = snapshot.val();
+                        if (players && Object.keys(players).length > 0) {
+                            const newHostId = Object.keys(players)[0];
+                            db.ref(`rooms/${roomId}/metadata/hostId`).set(newHostId);
+                        } else {
+                            // No players left, delete room
+                            db.ref(`rooms/${roomId}`).remove();
+                        }
+                    });
+            }
+
+            // Cleanup
+            if (roomListener) {
+                db.ref(`rooms/${roomId}`).off("value", roomListener);
+                roomListener = null;
+            }
+
+            roomId = null;
+            isHost = false;
+            console.log("Left room");
+        });
 }
 
 function getFriendData() {
@@ -1046,6 +1428,10 @@ function cleanupFirebaseListeners() {
         db.ref(`lobbies/${lobbyId}`).off("value", lobbyListener);
         lobbyListener = null;
     }
+    if (roomListener) {
+        db.ref(`rooms/${roomId}`).off("value", roomListener);
+        roomListener = null;
+    }
     removeFirebasePlayersListener();
 }
 
@@ -1102,5 +1488,13 @@ window.firebaseIntegration = {
     getFriendData,
     loadFirebasePlayersIntoLocalState,
     setupFirebasePlayersListener,
-    removeFirebasePlayersListener
+    removeFirebasePlayersListener,
+    // Room-based multiplayer functions
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    setReadyForMatch,
+    setReadyForSeasonEnd,
+    isHost: () => isHost,
+    getRoomId: () => roomId
 };
