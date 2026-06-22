@@ -10,7 +10,7 @@
 const firebaseConfig = {
   apiKey: "AIzaSyAIvQluyh1X5ZVrlc40O-IlkMwgeqaKY3A",
   authDomain: "jogo-61df7.firebaseapp.com",
-  databaseURL: "https://jogo-61df7-default-rtdb.firebaseio.com", // <-- IMPORTANTE: O Firebase não gera essa linha sozinho na Web, mas seu jogo precisa dela!
+  databaseURL: "https://jogo-61df7-default-rtdb.firebaseio.com/", // <-- IMPORTANTE: O Firebase não gera essa linha sozinho na Web, mas seu jogo precisa dela!
   projectId: "jogo-61df7",
   storageBucket: "jogo-61df7.firebasestorage.app",
   messagingSenderId: "795951389443",
