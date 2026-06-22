@@ -568,37 +568,48 @@ function syncSeasonEnd() {
 // ==========================================
 
 function syncPlayerDataToFirebase() {
-    if (!isOnlineMode || !db || !playerId || !jogador) return;
+    // 1. Puxa o jogador direto da window com segurança máxima
+    const localPlayer = window.jogador;
+    const currentSeasonYear = window.anoAtual || 2026; 
+    const currentDb = typeof database !== 'undefined' ? database : (typeof db !== 'undefined' ? db : null);
+
+    // 🔥 Se não achar o jogador na window ainda, apenas sai de fininho sem travar o jogo
+    if (!localPlayer || !currentDb || !playerId) {
+        return;
+    }
 
     const profileData = {
-        nome: jogador.nome,
-        idade: jogador.idade,
-        nacionalidade: jogador.nacionalidade,
-        posicao: jogador.posicao,
-        geral: jogador.geral,
-        valorMercado: jogador.valorMercado,
-        clubeId: jogador.clubeId,
-        foto: jogador.foto || ""
+        nome: localPlayer.nome || "Jogador Online",
+        idade: localPlayer.idade || 18,
+        nacionalidade: localPlayer.nacionalidade || "Brasil",
+        posicao: localPlayer.posicao || "ATA",
+        geral: localPlayer.geral || 60,
+        valorMercado: localPlayer.valorMercado || 0,
+        clubeId: localPlayer.clubeId || 0,
+        foto: localPlayer.foto || ""
     };
 
+    const currentStats = localPlayer.estatisticasAtuais || {};
     const statsData = {
-        jogos: jogador.estatisticasAtuais.jogos,
-        gols: jogador.estatisticasAtuais.gols,
-        assistencias: jogador.estatisticasAtuais.assistencias || 0,
-        notas: jogador.estatisticasAtuais.notas || []
+        jogos: currentStats.jogos || 0,
+        gols: currentStats.gols || 0,
+        assistencias: currentStats.assistencias || 0,
+        notas: currentStats.notas || []
     };
 
-    const achievementsData = jogador.historicoCarreira.map(h => ({
-        trofeu: h.trofeus,
-        ano: h.ano,
-        competicao: h.clube
+    const currentHistory = localPlayer.historicoCarreira || [];
+    const achievementsData = currentHistory.map(h => ({
+        trofeu: h.trofeus || "",
+        ano: h.ano || currentSeasonYear,
+        competicao: h.clube || ""
     }));
 
-    db.ref(`players/${playerId}/profile`).set(profileData);
-    db.ref(`players/${playerId}/stats`).set(statsData);
-    db.ref(`players/${playerId}/achievements`).set(achievementsData);
-    db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
-    db.ref(`players/${playerId}/currentSeason`).set(anoAtual);
+    // Envia com segurança usando as referências locais limpas
+    currentDb.ref(`players/${playerId}/profile`).set(profileData);
+    currentDb.ref(`players/${playerId}/stats`).set(statsData);
+    currentDb.ref(`players/${playerId}/achievements`).set(achievementsData);
+    currentDb.ref(`players/${playerId}/lastUpdated`).set(Date.now());
+    currentDb.ref(`players/${playerId}/currentSeason`).set(currentSeasonYear);
 }
 
 // ==========================================
