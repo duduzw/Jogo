@@ -562,27 +562,29 @@ function syncSeasonEnd() {
 // ==========================================
 
 function syncPlayerDataToFirebase() {
-    // Busca as variáveis direto do escopo global (window)
+    // Pegamos tudo do escopo global com segurança absoluta
     const localPlayer = window.jogador;
     const currentSeasonYear = window.anoAtual || 2026; 
-    const currentDb = typeof db !== 'undefined' ? db : database;
+    const currentDb = typeof database !== 'undefined' ? database : (typeof db !== 'undefined' ? db : null);
 
-    // Se o modo online não estiver ativo, ou faltar dados essenciais, cancela a execução com segurança
-    if (!isOnlineMode || !currentDb || !playerId || !localPlayer) return;
+    // Se não tiver jogador criado ainda ou o banco não iniciou, sai sem dar erro no console
+    if (!localPlayer || !currentDb || !playerId) {
+        console.log("Aguardando inicialização completa do jogador ou banco...");
+        return;
+    }
 
     const profileData = {
-        nome: localPlayer.nome,
-        idade: localPlayer.idade,
-        nacionalidade: localPlayer.nacionalidade,
-        posicao: localPlayer.posicao,
-        geral: localPlayer.geral,
-        valorMercado: localPlayer.valorMercado,
-        clubeId: localPlayer.clubeId,
+        nome: localPlayer.nome || "Jogador Online",
+        idade: localPlayer.idade || 18,
+        nacionalidade: localPlayer.nacionalidade || "Brasil",
+        posicao: localPlayer.posicao || "ATA",
+        geral: localPlayer.geral || 60,
+        valorMercado: localPlayer.valorMercado || 0,
+        clubeId: localPlayer.clubeId || 0,
         foto: localPlayer.foto || ""
     };
 
-    // Garante que o objeto de estatísticas não quebre caso esteja vazio no início
-    const currentStats = localPlayer.estatisticasAtuais || {};
+    const currentStats = localPlayer.estatisticasAtuais || { jogos: 0, gols: 0, assistencias: 0 };
     const statsData = {
         jogos: currentStats.jogos || 0,
         gols: currentStats.gols || 0,
@@ -590,7 +592,6 @@ function syncPlayerDataToFirebase() {
         notas: currentStats.notas || []
     };
 
-    // Mapeia o histórico de carreira com segurança
     const currentHistory = localPlayer.historicoCarreira || [];
     const achievementsData = currentHistory.map(h => ({
         trofeu: h.trofeus || "",
@@ -598,7 +599,7 @@ function syncPlayerDataToFirebase() {
         competicao: h.clube || ""
     }));
 
-    // Envia os dados para as referências corretas no Firebase
+    // Envia pro Firebase
     currentDb.ref(`players/${playerId}/profile`).set(profileData);
     currentDb.ref(`players/${playerId}/stats`).set(statsData);
     currentDb.ref(`players/${playerId}/achievements`).set(achievementsData);
