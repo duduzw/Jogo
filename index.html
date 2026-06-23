@@ -145,6 +145,73 @@
     </div>
 </div>
 
+<div id="telaModo" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:600px; text-align:center;">
+        <h1 class="glow-title">🎮 ESCOLHE O TEU MODO</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Seleciona como queres jogar</p>
+        
+        <div style="display:grid; gap:20px;">
+            <button class="btn btn-primary btn-lg" id="btnModoJogador" style="padding:20px; font-size:1.2rem;">
+                ⚽ Modo Jogador
+            </button>
+            <button class="btn btn-warning btn-lg" id="btnModoManager" style="padding:20px; font-size:1.2rem; color:#000;">
+                🧠 Modo Manager
+            </button>
+        </div>
+        
+        <button class="btn btn-danger" id="btnVoltarMenu" style="margin-top:30px;">← Voltar ao Menu</button>
+    </div>
+</div>
+
+<div id="telaConexao" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:600px; text-align:center;">
+        <h1 class="glow-title">🌐 MODO DE JOGO</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Escolhe como queres jogar</p>
+        
+        <div style="display:grid; gap:20px;">
+            <button class="btn btn-success btn-lg" id="btnJogarOffline" style="padding:20px; font-size:1.2rem;">
+                🎮 Jogar Offline
+            </button>
+            <button class="btn btn-primary btn-lg" id="btnJogarOnline" style="padding:20px; font-size:1.2rem;">
+                🌐 Jogar Online
+            </button>
+        </div>
+        
+        <button class="btn btn-danger" id="btnVoltarModo" style="margin-top:30px;">← Voltar</button>
+    </div>
+</div>
+
+<div id="telaPregameLobby" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:800px;">
+        <h1 class="glow-title" style="text-align:center;">🏆 LOBBY</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Cria uma sala ou junta-te a um amigo</p>
+        
+        <div id="lobbyRoomControls" style="display:grid; gap:15px; margin-bottom:30px;">
+            <div style="display:grid; grid-template-columns: 1fr auto; gap:10px;">
+                <input type="text" id="inputRoomCode" placeholder="Código da Sala (ex: ABC123)" style="padding:15px; border-radius:8px; border:1px solid var(--border); background:rgba(0,0,0,0.3); color:#fff; font-size:1rem;">
+                <button class="btn btn-primary" id="btnJoinRoom" style="padding:15px 30px;">Entrar</button>
+            </div>
+            <button class="btn btn-success btn-lg" id="btnCreateRoom" style="padding:15px;">Criar Nova Sala</button>
+        </div>
+        
+        <div id="lobbyRoomInfo" class="oculto" style="background:rgba(0,0,0,0.3); padding:20px; border-radius:12px; border:1px solid var(--theme-primary); margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0; color:var(--theme-primary);">SALA: <span id="lobbyRoomId">---</span></h3>
+                <button class="btn btn-danger" id="btnLeaveLobby" style="padding:8px 16px;">Sair</button>
+            </div>
+            <p style="margin:0; color:var(--text-muted); font-size:0.9rem;">Partilha este código com os teus amigos</p>
+        </div>
+        
+        <div id="lobbyPlayersContainer" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:20px;">
+            <!-- Player cards will be rendered here -->
+        </div>
+        
+        <button class="btn btn-warning btn-lg oculto" id="btnStartCareer" style="width:100%; padding:20px; font-size:1.2rem; color:#000;">
+            🚀 Iniciar Carreira
+        </button>
+    </div>
+</div>
+
 <div id="telaCriacao" class="tela full-screen flex-center oculto">
     <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
@@ -235,10 +302,8 @@
             <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
             <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
             <button class="menu-item" data-view="view-pesquisa-sel">🔎 Pesquisar Seleções</button>
-            <button class="menu-item" data-view="view-manager">🧠 Modo Manager</button>
             <button class="menu-item" data-view="view-lifestyle">🏆 Lifestyle & Treino</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
-            <button class="menu-item" data-view="view-amigos">👥 Universo Compartilhado</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
         </nav>
         

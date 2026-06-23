@@ -931,6 +931,79 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
     transform: none;
 }
 
+/* Pre-Game Lobby Styles */
+#lobbyPlayersContainer {
+    min-height: 200px;
+}
+
+.lobby-player-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.4));
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.lobby-player-card.ready {
+    border-color: var(--success);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+.lobby-player-card.not-ready {
+    border-color: var(--warning);
+    opacity: 0.8;
+}
+
+.lobby-player-avatar {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 auto 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+}
+
+.lobby-player-name {
+    font-weight: 700;
+    color: #fff;
+    font-size: 1rem;
+    margin-bottom: 4px;
+}
+
+.lobby-player-status {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.lobby-ready-toggle {
+    width: 100%;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.lobby-ready-toggle.ready {
+    background: var(--success);
+    color: #000;
+}
+
+.lobby-ready-toggle.not-ready {
+    background: var(--warning);
+    color: #000;
+}
+
+.lobby-ready-toggle:hover {
+    transform: scale(1.05);
+}
+
 /* Online Lobby Screen */
 #view-online-lobby {
     background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);
@@ -1114,7 +1187,11 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
 /* Dashboard UI */
 .dashboard-layout { display: flex; height: 100vh; width: 100vw; }
 .glass-panel { background: var(--glass-bg); backdrop-filter: blur(12px); border-right: 1px solid var(--border); }
-.sidebar { width: 280px; display: flex; flex-direction: column; padding: 25px; z-index: 10; }
+.sidebar { width: 280px; display: flex; flex-direction: column; padding: 25px; z-index: 10; max-height: 100vh; overflow-y: auto; }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.4); border-radius: 3px; }
+.sidebar::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.6); }
 .sidebar-header { text-align: center; padding-bottom: 20px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
 .sidebar-header h2 { margin: 0 0 8px 0; font-size: 1.4rem; font-weight: 900; letter-spacing: -0.5px; }
 .clube-badge { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 700; border: 1px solid var(--border); width: fit-content; margin: 0 auto; }

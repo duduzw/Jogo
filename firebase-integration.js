@@ -31,6 +31,7 @@ let lobbyListener = null;
 let playersListener = null;
 let roomListener = null;
 let heartbeatInterval = null;
+let pregameRoomListener = null;
 
 // ==========================================
 // INITIALIZATION
@@ -1620,6 +1621,188 @@ function leaveLobby() {
     console.log("Left lobby successfully");
 }
 
+// ==========================================
+// PRE-GAME LOBBY FUNCTIONS (Separate from game rooms)
+// ==========================================
+
+function createPregameRoom(roomCode, playerId, gameMode) {
+    if (!db) return;
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}`);
+    
+    const roomData = {
+        createdAt: Date.now(),
+        hostId: playerId,
+        gameMode: gameMode,
+        status: 'waiting',
+        players: {
+            [playerId]: {
+                name: 'Host',
+                ready: false,
+                joinedAt: Date.now()
+            }
+        }
+    };
+    
+    roomRef.set(roomData).then(() => {
+        console.log(`Created pre-game room: ${roomCode}`);
+        setupPregameRoomListener(roomCode, playerId);
+    }).catch(error => {
+        console.error("Error creating pre-game room:", error);
+    });
+}
+
+function joinPregameRoom(roomCode, playerId, gameMode) {
+    if (!db) return;
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}`);
+    
+    roomRef.once('value').then(snapshot => {
+        if (!snapshot.exists()) {
+            mostrarToast("Erro", "Sala não encontrada", "danger");
+            return;
+        }
+        
+        const roomData = snapshot.val();
+        
+        if (roomData.gameMode !== gameMode) {
+            mostrarToast("Erro", "Modo de jogo incompatível", "danger");
+            return;
+        }
+        
+        if (roomData.status !== 'waiting') {
+            mostrarToast("Erro", "Sala já iniciou", "danger");
+            return;
+        }
+        
+        // Add player to room
+        roomRef.child(`players/${playerId}`).set({
+            name: 'Player',
+            ready: false,
+            joinedAt: Date.now()
+        }).then(() => {
+            console.log(`Joined pre-game room: ${roomCode}`);
+            setupPregameRoomListener(roomCode, playerId);
+        }).catch(error => {
+            console.error("Error joining pre-game room:", error);
+        });
+    }).catch(error => {
+        console.error("Error checking room:", error);
+    });
+}
+
+function leavePregameLobby(roomCode, playerId) {
+    if (!db || !roomCode || !playerId) return;
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}`);
+    
+    // Remove player from room
+    roomRef.child(`players/${playerId}`).remove().then(() => {
+        console.log(`Left pre-game room: ${roomCode}`);
+        
+        // If host left and room is empty, delete the room
+        roomRef.once('value').then(snapshot => {
+            if (snapshot.exists()) {
+                const roomData = snapshot.val();
+                if (roomData.hostId === playerId) {
+                    // Host left - delete room if no other players
+                    const playerCount = Object.keys(roomData.players || {}).length;
+                    if (playerCount === 0) {
+                        roomRef.remove();
+                    }
+                }
+            }
+        });
+        
+        // Remove listener
+        if (pregameRoomListener) {
+            pregameRoomListener.off();
+            pregameRoomListener = null;
+        }
+    }).catch(error => {
+        console.error("Error leaving pre-game room:", error);
+    });
+}
+
+function toggleLobbyReady(roomCode, playerId) {
+    if (!db || !roomCode || !playerId) return;
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}/players/${playerId}/ready`);
+    
+    roomRef.once('value').then(snapshot => {
+        const currentReady = snapshot.val() || false;
+        roomRef.set(!currentReady).then(() => {
+            console.log(`Toggled ready status for ${playerId}`);
+        });
+    }).catch(error => {
+        console.error("Error toggling ready status:", error);
+    });
+}
+
+function startCareerFromLobby(roomCode) {
+    if (!db || !roomCode) return;
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}`);
+    
+    roomRef.update({
+        status: 'starting'
+    }).then(() => {
+        console.log(`Starting career from room: ${roomCode}`);
+        
+        // Redirect all players to character creation
+        mudarTela("telaCriacao");
+        
+        // Clean up pre-game room after a delay
+        setTimeout(() => {
+            roomRef.remove();
+        }, 5000);
+    }).catch(error => {
+        console.error("Error starting career:", error);
+    });
+}
+
+function setupPregameRoomListener(roomCode, playerId) {
+    if (!db) return;
+    
+    // Remove existing listener
+    if (pregameRoomListener) {
+        pregameRoomListener.off();
+    }
+    
+    const roomRef = db.ref(`pregameRooms/${roomCode}`);
+    pregameRoomListener = roomRef;
+    
+    roomRef.on('value', snapshot => {
+        if (!snapshot.exists()) {
+            console.log("Room no longer exists");
+            leavePregameLobby(roomCode, playerId);
+            mudarTela("telaConexao");
+            return;
+        }
+        
+        const roomData = snapshot.val();
+        
+        // Check if host started the game
+        if (roomData.status === 'starting') {
+            mudarTela("telaCriacao");
+            return;
+        }
+        
+        // Render players
+        if (window.renderLobbyPlayers) {
+            window.renderLobbyPlayers(roomData.players);
+        }
+        
+        // Check if all players are ready
+        const players = roomData.players || {};
+        const allReady = Object.values(players).every(p => p.ready === true);
+        
+        if (window.updateLobbyStartButton) {
+            window.updateLobbyStartButton(allReady);
+        }
+    });
+}
+
 // Export functions for use in main.js
 window.firebaseIntegration = {
     initializeOnlineMode,
@@ -1646,6 +1829,12 @@ window.firebaseIntegration = {
     leaveRoom,
     setReadyForMatch,
     setReadyForSeasonEnd,
+    // Pre-game lobby functions
+    createPregameRoom,
+    joinPregameRoom,
+    leavePregameLobby,
+    toggleLobbyReady,
+    startCareerFromLobby,
     isHost: () => isHost,
     getRoomId: () => roomId
 };
