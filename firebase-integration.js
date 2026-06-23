@@ -30,6 +30,7 @@ let achievementListener = null;
 let lobbyListener = null;
 let playersListener = null;
 let roomListener = null;
+let heartbeatInterval = null;
 
 // ==========================================
 // INITIALIZATION
@@ -854,10 +855,12 @@ function createRoom() {
             [playerId]: {
                 nome: window.jogador ? window.jogador.nome : "Player",
                 clubeId: window.jogador ? window.jogador.clubeId : "",
+                joinedAt: Date.now(),
+                lastActive: Date.now(),
+                status: "connected",
                 currentSeason: window.anoAtual || 2026,
                 readyForMatch: false,
-                readyForSeasonEnd: false,
-                joinedAt: Date.now()
+                readyForSeasonEnd: false
             }
         },
         seasonState: {
@@ -924,7 +927,9 @@ function joinRoom(roomIdToJoin) {
                 currentSeason: window.anoAtual || 2026,
                 readyForMatch: false,
                 readyForSeasonEnd: false,
-                joinedAt: Date.now()
+                joinedAt: Date.now(),
+                lastActive: Date.now(),
+                status: "connected"
             };
 
             return db.ref(`rooms/${roomIdToJoin}/players/${playerId}`).set(playerData)
@@ -956,11 +961,68 @@ function setupRoomListener() {
         const roomData = snapshot.val();
         handleRoomUpdate(roomData);
     });
+
+    // Start heartbeat to keep connection alive
+    startHeartbeat();
+}
+
+// HEARTBEAT: Keep player connection alive
+function startHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+
+    heartbeatInterval = setInterval(() => {
+        if (roomId && playerId && db) {
+            db.ref(`rooms/${roomId}/players/${playerId}/lastActive`).set(Date.now())
+                .catch((error) => {
+                    console.error("Heartbeat error:", error);
+                });
+        }
+    }, 60 * 1000); // Update every 60 seconds
+}
+
+function stopHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
+
+// CLEANUP: Remove disconnected/obsolete players from room
+function cleanupDisconnectedPlayers(roomPlayers) {
+    if (!roomPlayers || !roomId || !db) return;
+
+    const now = Date.now();
+    const DISCONNECT_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+    Object.entries(roomPlayers).forEach(([playerId, playerData]) => {
+        // Check if player has been inactive for too long
+        const lastActive = playerData.lastActive || playerData.joinedAt || 0;
+        const isInactive = (now - lastActive) > DISCONNECT_TIMEOUT;
+
+        // Also check if player has explicitly disconnected
+        const isDisconnected = playerData.status === "disconnected";
+
+        if (isInactive || isDisconnected) {
+            console.log(`Cleaning up inactive/disconnected player: ${playerId}`);
+            db.ref(`rooms/${roomId}/players/${playerId}`).remove()
+                .then(() => {
+                    console.log(`Removed inactive player ${playerId} from room`);
+                })
+                .catch((error) => {
+                    console.error(`Error removing inactive player ${playerId}:`, error);
+                });
+        }
+    });
 }
 
 function handleRoomUpdate(roomData) {
     const seasonState = roomData.seasonState;
     const players = roomData.players;
+
+    // CLEANUP: Remove disconnected/obsolete players from room
+    cleanupDisconnectedPlayers(players);
 
     // Sync local season if different from room
     if (seasonState && seasonState.currentSeason !== window.anoAtual) {
@@ -1034,6 +1096,40 @@ function setReadyForMatch(ready) {
         });
 }
 
+// INTELLIGENT ASYNC: Determine if players need to synchronize based on their fixtures
+function doPlayersNeedSync(players) {
+    const playerIds = Object.keys(players);
+    if (playerIds.length < 2) return false; // No sync needed for single player
+
+    // Get current round from room season state
+    const currentRound = window.rodadaAtual || 1;
+    const currentSeason = window.anoAtual || 2026;
+
+    // Check if all players are on the same league round
+    // If they are in different leagues or different rounds, they don't need to sync
+    const playerClubs = playerIds.map(id => players[id].clubeId);
+    const allSameLeague = playerClubs.every(clubId => clubId === playerClubs[0]);
+
+    if (!allSameLeague) {
+        // Players in different leagues - only sync for shared tournaments
+        // Check if they have shared international fixtures this round
+        return haveSharedInternationalFixture(players, currentRound, currentSeason);
+    }
+
+    // Players in same league - check if they're on the same round
+    // For now, assume same league means they need to sync
+    // This could be enhanced to check actual fixture schedules
+    return true;
+}
+
+// Check if players have shared international fixtures (World Cup, Euros, etc.)
+function haveSharedInternationalFixture(players, currentRound, currentSeason) {
+    // This would check if players' national teams have fixtures in the same tournament
+    // For now, return false to allow async progression for international fixtures
+    // This can be enhanced later with actual fixture data
+    return false;
+}
+
 function checkAllPlayersReadyForMatch() {
     if (!roomId || !db) return;
 
@@ -1042,6 +1138,17 @@ function checkAllPlayersReadyForMatch() {
             const players = snapshot.val();
             if (!players) return;
 
+            // INTELLIGENT ASYNC: Check if players need to sync for current round
+            const needsSync = doPlayersNeedSync(players);
+            
+            if (!needsSync) {
+                // Players have different fixtures, allow independent progression
+                console.log("Players have different fixtures, allowing async progression");
+                db.ref(`rooms/${roomId}/seasonState/allPlayersReadyForMatch`).set(true);
+                return;
+            }
+
+            // Players have shared fixtures, require all to be ready
             const playerIds = Object.keys(players);
             const allReady = playerIds.every(id => players[id].readyForMatch === true);
 
@@ -1467,6 +1574,17 @@ function cleanupFirebaseListeners() {
 }
 
 function leaveLobby() {
+    // Mark player as disconnected before leaving
+    if (roomId && playerId && db) {
+        db.ref(`rooms/${roomId}/players/${playerId}/status`).set("disconnected")
+            .then(() => {
+                console.log("Player marked as disconnected");
+            })
+            .catch((error) => {
+                console.error("Error marking player as disconnected:", error);
+            });
+    }
+
     // Remove player from lobby
     if (lobbyId && playerId && db) {
         db.ref(`lobbies/${lobbyId}/players/${playerId}`).remove()
@@ -1481,12 +1599,14 @@ function leaveLobby() {
     // Clear session from localStorage
     clearSessionFromStorage();
 
-    // Cleanup listeners
+    // Cleanup listeners and heartbeat
     cleanupFirebaseListeners();
+    stopHeartbeat();
 
     // Reset state
     lobbyId = null;
     friendId = null;
+    roomId = null;
     isOnlineMode = false;
     friendData = null;
 

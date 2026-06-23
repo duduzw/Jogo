@@ -942,21 +942,49 @@ function processarRebaixamentoNations(estado, key) {
     delete estado.rebaixamento;
 }
 
+// Helper function to determine if a tournament should advance in the current global round
+function shouldTournamentAdvanceThisRound(compId, estado, maxRod) {
+    // Check if player has an active fixture in this tournament for the current round
+    const hasPlayerFixture = agendaTemporada.some(a =>
+        a.compId === compId &&
+        a.isSelecao &&
+        (a.adversarioId === jogador?.selecaoId || a.mandanteId === jogador?.selecaoId)
+    );
+
+    // If player has a fixture, always advance
+    if (hasPlayerFixture) return true;
+
+    // If player doesn't have a fixture, only advance with strict conditions
+    // to prevent round skipping in international tournaments
+    const isInternationalTournament = compId.includes("copa_mundo") || 
+                                      compId.includes("euro") || 
+                                      compId.includes("copa_america") ||
+                                      compId.includes("afcup") ||
+                                      compId.includes("nations") ||
+                                      compId.includes("libertadores") ||
+                                      compId.includes("champions");
+
+    if (isInternationalTournament) {
+        // For international tournaments, only advance every 4th global round
+        // This ensures they don't skip multiple rounds at once
+        return rodadaAtual % 4 === 0;
+    }
+
+    // For domestic cups, advance with lower probability
+    return Math.random() < 0.25;
+}
+
 function simularTorneiosInternacionais() {
     for (const [key, estado] of Object.entries(selecoesEstado.torneios || {})) {
         if (["Campeão Definido", "Classificação Definida", "Vagas Definidas"].includes(estado.fase)) continue;
         const fmt = FORMATOS_INT[estado.compConfigId] || {};
         const maxRod = estado.maxRodadas || fmt.jogosGrupo || 3;
 
-        // FIX: Only simulate if player has an active fixture in this tournament for the current round
-        const hasPlayerFixture = agendaTemporada.some(a =>
-            a.compId === key &&
-            a.isSelecao &&
-            (a.adversarioId === jogador?.selecaoId || a.mandanteId === jogador?.selecaoId)
-        );
-
-        // If player doesn't have a fixture, only simulate with lower probability to prevent round skipping
-        if (!hasPlayerFixture && Math.random() > 0.3) continue;
+        // CRITICAL FIX: Only advance ONE round per global round click
+        // Check if this tournament should advance in the current global round
+        const shouldAdvanceThisRound = shouldTournamentAdvanceThisRound(key, estado, maxRod);
+        
+        if (!shouldAdvanceThisRound) continue;
 
         if (estado.tipo === "grupos" && estado.grupos && estado.rodadaAtual <= maxRod) {
             simularRodadaGruposInt(estado);
@@ -3644,8 +3672,17 @@ function simularRodadaMundial() {
                 (a.adversarioId === jogador?.clubeId || a.mandanteId === jogador?.clubeId)
             );
 
-            // Only simulate if player has fixture or with lower probability
-            if (hasPlayerFixture || Math.random() < 0.25 || rodadaAtual % 4 === 0 || !compAtual) {
+            // CRITICAL FIX: Only simulate if player has fixture or with strict conditions
+            // Use the same logic as international tournaments to prevent round skipping
+            const isContinentalCup = compId.includes("libertadores") || 
+                                    compId.includes("champions") ||
+                                    compId.includes("uefa_el") ||
+                                    compId.includes("conmebol_sul");
+
+            const shouldAdvance = hasPlayerFixture || 
+                                 (isContinentalCup ? rodadaAtual % 4 === 0 : Math.random() < 0.25);
+
+            if (shouldAdvance) {
                 estado.grupos.forEach(grp => {
                     let tSim = grp.equipas.filter(e => e.id !== jogador.clubeId); tSim.sort(() => Math.random() - 0.5);
                     for(let i=0; i<tSim.length-1; i+=2) {
@@ -4631,6 +4668,7 @@ function atualizarConteudoAbaAtiva() {
     else if (abaAtivaId === "view-comp-int") { if (typeof renderizarCompeticoesInternacionais === 'function') renderizarCompeticoesInternacionais(); }
     else if (abaAtivaId === "view-pesquisa-sel") { if (typeof renderizarPesquisaSelecoes === 'function') renderizarPesquisaSelecoes(); }
     else if (abaAtivaId === "view-manager") { if (typeof renderizarManager === 'function') renderizarManager(); }
+    else if (abaAtivaId === "view-lifestyle") { if (typeof renderLifestyleSystem === 'function') renderLifestyleSystem(); }
     else if (abaAtivaId === "view-noticias") { if (typeof renderizarNoticias === 'function') renderizarNoticias(); }
 }
 
@@ -5028,6 +5066,42 @@ document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     jogador.clubeAlvoId = null;
     jogador.melhorAtuacao = { gols: 0, assistencias: 0, nota: 0, adversario: "", rodada: 0 };
     
+    // Initialize Lifestyle System
+    jogador.lifestyle = {
+        trainingPoints: 10,
+        weeklyXP: 0,
+        salary: 50000,
+        fanBase: 1000,
+        upgrades: {
+            training: {
+                freeKicks: 0,
+                penalties: 0,
+                stamina: 0,
+                heading: 0,
+                dribbling: 0,
+                passing: 0,
+                shooting: 0,
+                defending: 0
+            },
+            lifestyle: {
+                personalTrainer: false,
+                nutritionist: false,
+                sportsPsychologist: false,
+                luxuryApartment: false,
+                sportsCar: false,
+                privateJet: false,
+                brandEndorsements: 0,
+                charityFoundation: false
+            }
+        },
+        multipliers: {
+            xpMultiplier: 1.0,
+            fanBaseMultiplier: 1.0,
+            energyRecoveryMultiplier: 1.0,
+            salaryMultiplier: 1.0
+        }
+    };
+    
     selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} };
     preencherLigasVazias(); inicializarTabelas(); inicializarOrcamentosEContratos(); inicializarCopasNacionaisEContinentais(); gerarAgenda(); preencherDropdowns(); atualizarOVRClubes(); 
     mudarTela("telaIntroducao");
@@ -5038,6 +5112,299 @@ document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
             ${propostasIniciais.map(c => `<button class="btn btn-primary btn-block" onclick="assinarPrimeiroClube('${c.id}')" style="display:flex; align-items:center; justify-content:center; gap:10px;"><img src="${obterUrlImagem(c,'clube')}" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;">${c.nome} • OVR ${c.reputacao}</button>`).join("")}
         </div>`;
 });
+
+// Lifestyle System Functions
+window.upgradeTrainingSkill = function(skill, cost) {
+    if (!jogador.lifestyle) return;
+    
+    if (jogador.lifestyle.trainingPoints >= cost) {
+        jogador.lifestyle.trainingPoints -= cost;
+        jogador.lifestyle.upgrades.training[skill]++;
+        
+        applyTrainingSkillBoost(skill);
+        
+        window.salvarJogo();
+        renderLifestyleSystem();
+        mostrarToast("Treino", `${skill.toUpperCase()} melhorado com sucesso!`, "success");
+    } else {
+        mostrarToast("Erro", "Pontos de treino insuficientes", "danger");
+    }
+};
+
+window.purchaseLifestyleUpgrade = function(upgrade, cost) {
+    if (!jogador.lifestyle) return;
+    
+    if (jogador.lifestyle.salary >= cost) {
+        if (jogador.lifestyle.upgrades.lifestyle[upgrade]) {
+            mostrarToast("Erro", "Este upgrade já foi adquirido", "warning");
+            return;
+        }
+        
+        jogador.lifestyle.salary -= cost;
+        jogador.lifestyle.upgrades.lifestyle[upgrade] = true;
+        
+        applyLifestyleMultiplier(upgrade);
+        
+        window.salvarJogo();
+        renderLifestyleSystem();
+        mostrarToast("Lifestyle", `${upgrade.toUpperCase()} adquirido com sucesso!`, "success");
+    } else {
+        mostrarToast("Erro", "Salário insuficiente", "danger");
+    }
+};
+
+function applyTrainingSkillBoost(skill) {
+    const boostAmount = 1;
+    
+    switch(skill) {
+        case 'freeKicks':
+            jogador.finalizacao = (jogador.finalizacao || 60) + boostAmount;
+            break;
+        case 'penalties':
+            jogador.finalizacao = (jogador.finalizacao || 60) + boostAmount;
+            break;
+        case 'stamina':
+            jogador.resistencia = (jogador.resistencia || 60) + boostAmount;
+            break;
+        case 'heading':
+            jogador.cabeceamento = (jogador.cabeceamento || 60) + boostAmount;
+            break;
+        case 'dribbling':
+            jogador.drible = (jogador.drible || 60) + boostAmount;
+            break;
+        case 'passing':
+            jogador.passe = (jogador.passe || 60) + boostAmount;
+            break;
+        case 'shooting':
+            jogador.finalizacao = (jogador.finalizacao || 60) + boostAmount;
+            break;
+        case 'defending':
+            jogador.defesa = (jogador.defesa || 60) + boostAmount;
+            break;
+    }
+    
+    recalcularGeral();
+}
+
+function applyLifestyleMultiplier(upgrade) {
+    switch(upgrade) {
+        case 'personalTrainer':
+            jogador.lifestyle.multipliers.xpMultiplier += 0.1;
+            jogador.lifestyle.multipliers.energyRecoveryMultiplier += 0.15;
+            break;
+        case 'nutritionist':
+            jogador.lifestyle.multipliers.energyRecoveryMultiplier += 0.1;
+            jogador.lifestyle.multipliers.xpMultiplier += 0.05;
+            break;
+        case 'sportsPsychologist':
+            jogador.lifestyle.multipliers.xpMultiplier += 0.15;
+            break;
+        case 'luxuryApartment':
+            jogador.lifestyle.multipliers.fanBaseMultiplier += 0.1;
+            break;
+        case 'sportsCar':
+            jogador.lifestyle.multipliers.fanBaseMultiplier += 0.15;
+            break;
+        case 'privateJet':
+            jogador.lifestyle.multipliers.energyRecoveryMultiplier += 0.2;
+            jogador.lifestyle.multipliers.salaryMultiplier += 0.1;
+            break;
+        case 'brandEndorsements':
+            jogador.lifestyle.multipliers.salaryMultiplier += 0.2;
+            jogador.lifestyle.multipliers.fanBaseMultiplier += 0.1;
+            break;
+        case 'charityFoundation':
+            jogador.lifestyle.multipliers.fanBaseMultiplier += 0.25;
+            break;
+    }
+}
+
+window.renderLifestyleSystem = function() {
+    if (!jogador.lifestyle) return;
+    
+    const container = document.getElementById("lifestyle-container");
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="lifestyle-hero">
+            <h2>🏆 Lifestyle & Upgrades</h2>
+            <p>Invest no teu desenvolvimento e estilo de vida para maximizar o teu potencial</p>
+        </div>
+        
+        <div class="lifestyle-stats-grid">
+            <div class="lifestyle-stat-card">
+                <strong>${jogador.lifestyle.trainingPoints}</strong>
+                <span>Pontos de Treino</span>
+            </div>
+            <div class="lifestyle-stat-card">
+                <strong>${jogador.lifestyle.weeklyXP}</strong>
+                <span>XP Semanal</span>
+            </div>
+            <div class="lifestyle-stat-card">
+                <strong>€${(jogador.lifestyle.salary / 1000).toFixed(0)}K</strong>
+                <span>Salário Semanal</span>
+            </div>
+            <div class="lifestyle-stat-card">
+                <strong>${jogador.lifestyle.fanBase.toLocaleString()}</strong>
+                <span>Fãs</span>
+            </div>
+        </div>
+        
+        <div class="lifestyle-section">
+            <h3>🎯 Árvore de Treino</h3>
+            <div class="training-tree-grid">
+                ${renderTrainingNodes()}
+            </div>
+        </div>
+        
+        <div class="lifestyle-section">
+            <h3>💎 Upgrades de Lifestyle</h3>
+            <div class="lifestyle-upgrades-grid">
+                ${renderLifestyleUpgrades()}
+            </div>
+        </div>
+        
+        <div class="lifestyle-section">
+            <h3>📊 Multiplicadores Ativos</h3>
+            <div class="lifestyle-stats-grid">
+                <div class="lifestyle-stat-card">
+                    <strong>x${jogador.lifestyle.multipliers.xpMultiplier.toFixed(2)}</strong>
+                    <span>XP Multiplier</span>
+                </div>
+                <div class="lifestyle-stat-card">
+                    <strong>x${jogador.lifestyle.multipliers.fanBaseMultiplier.toFixed(2)}</strong>
+                    <span>Fan Base Multiplier</span>
+                </div>
+                <div class="lifestyle-stat-card">
+                    <strong>x${jogador.lifestyle.multipliers.energyRecoveryMultiplier.toFixed(2)}</strong>
+                    <span>Energy Recovery</span>
+                </div>
+                <div class="lifestyle-stat-card">
+                    <strong>x${jogador.lifestyle.multipliers.salaryMultiplier.toFixed(2)}</strong>
+                    <span>Salary Multiplier</span>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+function renderTrainingNodes() {
+    const skills = [
+        { id: 'freeKicks', name: 'Faltas', icon: '⚽', cost: 3 },
+        { id: 'penalties', name: 'Penáltis', icon: '🎯', cost: 3 },
+        { id: 'stamina', name: 'Resistência', icon: '⚡', cost: 4 },
+        { id: 'heading', name: 'Cabeceamento', icon: '🏆', cost: 3 },
+        { id: 'dribbling', name: 'Drible', icon: '🎨', cost: 4 },
+        { id: 'passing', name: 'Passe', icon: '📡', cost: 3 },
+        { id: 'shooting', name: 'Finalização', icon: '🔥', cost: 4 },
+        { id: 'defending', name: 'Defesa', icon: '🛡️', cost: 3 }
+    ];
+    
+    return skills.map(skill => {
+        const level = jogador.lifestyle.upgrades.training[skill.id];
+        const canAfford = jogador.lifestyle.trainingPoints >= skill.cost;
+        
+        return `
+            <div class="training-node ${!canAfford ? 'locked' : ''}" onclick="upgradeTrainingSkill('${skill.id}', ${skill.cost})">
+                <div class="training-node-header">
+                    <span class="training-node-icon">${skill.icon}</span>
+                    <div class="training-node-info">
+                        <h4>${skill.name}</h4>
+                        <p>Nível ${level}/10</p>
+                    </div>
+                </div>
+                <div class="training-node-level">
+                    <div class="training-node-level-bar">
+                        <div class="training-node-level-fill" style="width: ${(level / 10) * 100}%"></div>
+                    </div>
+                    <span>${level}/10</span>
+                </div>
+                <div class="training-node-cost">
+                    <span>Custo</span>
+                    <strong>${skill.cost} PT</strong>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderLifestyleUpgrades() {
+    const upgrades = [
+        { id: 'personalTrainer', name: 'Treinador Pessoal', icon: '🏋️', cost: 50000, benefits: ['+10% XP', '+15% Recuperação de Energia'] },
+        { id: 'nutritionist', name: 'Nutricionista', icon: '🥗', cost: 30000, benefits: ['+10% Recuperação de Energia', '+5% XP'] },
+        { id: 'sportsPsychologist', name: 'Psicólogo Desportivo', icon: '🧠', cost: 40000, benefits: ['+15% XP'] },
+        { id: 'luxuryApartment', name: 'Apartamento de Luxo', icon: '🏠', cost: 200000, benefits: ['+10% Base de Fãs'] },
+        { id: 'sportsCar', name: 'Carro Desportivo', icon: '🏎️', cost: 150000, benefits: ['+15% Base de Fãs'] },
+        { id: 'privateJet', name: 'Jato Privado', icon: '✈️', cost: 500000, benefits: ['+20% Recuperação de Energia', '+10% Salário'] },
+        { id: 'brandEndorsements', name: 'Endossos de Marca', icon: '📢', cost: 100000, benefits: ['+20% Salário', '+10% Base de Fãs'] },
+        { id: 'charityFoundation', name: 'Fundação de Caridade', icon: '❤️', cost: 300000, benefits: ['+25% Base de Fãs'] }
+    ];
+    
+    return upgrades.map(upgrade => {
+        const purchased = jogador.lifestyle.upgrades.lifestyle[upgrade.id];
+        const canAfford = jogador.lifestyle.salary >= upgrade.cost;
+        
+        return `
+            <div class="lifestyle-upgrade-card ${purchased ? 'purchased' : ''}">
+                <div class="lifestyle-upgrade-header">
+                    <span class="lifestyle-upgrade-icon">${upgrade.icon}</span>
+                    <div class="lifestyle-upgrade-info">
+                        <h4>${upgrade.name}</h4>
+                        <p>${purchased ? 'Adquirido' : 'Disponível'}</p>
+                    </div>
+                </div>
+                <ul class="lifestyle-upgrade-benefits">
+                    ${upgrade.benefits.map(b => `<li>${b}</li>`).join('')}
+                </ul>
+                <div class="lifestyle-upgrade-cost">
+                    <span>Custo</span>
+                    <strong>€${(upgrade.cost / 1000).toFixed(0)}K</strong>
+                </div>
+                ${!purchased ? `<button class="btn-upgrade" ${!canAfford ? 'disabled' : ''} onclick="purchaseLifestyleUpgrade('${upgrade.id}', ${upgrade.cost})">
+                    Comprar
+                </button>` : '<button class="btn-upgrade" disabled>Adquirido</button>'}
+            </div>
+        `;
+    }).join('');
+}
+
+window.awardWeeklyTrainingPoints = function() {
+    if (!jogador.lifestyle) return;
+    
+    const basePoints = 5;
+    const multiplier = jogador.lifestyle.multipliers.xpMultiplier;
+    const awardedPoints = Math.floor(basePoints * multiplier);
+    
+    jogador.lifestyle.trainingPoints += awardedPoints;
+    jogador.lifestyle.weeklyXP += awardedPoints * 10;
+    
+    const fanBaseGrowth = Math.floor(50 * jogador.lifestyle.multipliers.fanBaseMultiplier);
+    jogador.lifestyle.fanBase += fanBaseGrowth;
+    
+    const baseSalary = 50000;
+    jogador.lifestyle.salary = Math.floor(baseSalary * jogador.lifestyle.multipliers.salaryMultiplier);
+};
+
+window.applyEnergyRecovery = function(baseRecovery) {
+    if (!jogador.lifestyle) return baseRecovery;
+    
+    return Math.floor(baseRecovery * jogador.lifestyle.multipliers.energyRecoveryMultiplier);
+};
+
+function recalcularGeral() {
+    const stats = [
+        jogador.finalizacao || 60,
+        jogador.passe || 60,
+        jogador.drible || 60,
+        jogador.defesa || 60,
+        jogador.resistencia || 60,
+        jogador.cabeceamento || 60,
+        jogador.velocidade || 60,
+        jogador.forca || 60
+    ];
+    
+    jogador.geral = Math.floor(stats.reduce((a, b) => a + b, 0) / stats.length);
+}
 
 window.assinarPrimeiroClube = function(clubeId) {
     jogador.clubeId = clubeId;

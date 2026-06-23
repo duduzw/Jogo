@@ -39,6 +39,40 @@
           "tipo": "club|international"
         }
       ],
+      "lifestyle": {
+        "trainingPoints": "number",
+        "weeklyXP": "number",
+        "salary": "number",
+        "fanBase": "number",
+        "upgrades": {
+          "training": {
+            "freeKicks": "number",
+            "penalties": "number",
+            "stamina": "number",
+            "heading": "number",
+            "dribbling": "number",
+            "passing": "number",
+            "shooting": "number",
+            "defending": "number"
+          },
+          "lifestyle": {
+            "personalTrainer": "boolean",
+            "nutritionist": "boolean",
+            "sportsPsychologist": "boolean",
+            "luxuryApartment": "boolean",
+            "sportsCar": "boolean",
+            "privateJet": "boolean",
+            "brandEndorsements": "number",
+            "charityFoundation": "boolean"
+          }
+        },
+        "multipliers": {
+          "xpMultiplier": "number",
+          "fanBaseMultiplier": "number",
+          "energyRecoveryMultiplier": "number",
+          "salaryMultiplier": "number"
+        }
+      },
       "lastUpdated": "timestamp",
       "currentSeason": "number"
     }
