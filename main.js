@@ -5,6 +5,23 @@ import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTime
 // Make jogadoresIA available globally for Firebase integration
 window.jogadoresIA = jogadoresIA;
 
+// Protect global scopes via window object
+window.jogador = jogador;
+window.anoAtual = anoAtual;
+window.currentRoomId = currentRoomId;
+window.rodadaAtual = rodadaAtual;
+window.agendaTemporada = agendaTemporada;
+window.selecoesEstado = selecoesEstado;
+window.copasEstado = copasEstado;
+window.tabelasLigas = tabelasLigas;
+window.clubes = clubes;
+window.competicoes = competicoes;
+window.feedNoticias = feedNoticias;
+window.gameMode = gameMode;
+window.connectionMode = connectionMode;
+window.isHost = isHost;
+window.lobbyPlayerId = lobbyPlayerId;
+
 // ==========================================
 // 🌐 ROOM-BASED MULTIPLAYER SYNC
 // ==========================================
@@ -954,8 +971,12 @@ function shouldTournamentAdvanceThisRound(compId, estado, maxRod) {
     // If player has a fixture, always advance
     if (hasPlayerFixture) return true;
 
-    // If player doesn't have a fixture, only advance with strict conditions
-    // to prevent round skipping in international tournaments
+    // CRITICAL FIX: Ensure international tournaments advance exactly ONE round per global round
+    // Track last advanced round to prevent skipping
+    if (!estado.lastAdvancedRound) {
+        estado.lastAdvancedRound = 0;
+    }
+
     const isInternationalTournament = compId.includes("copa_mundo") || 
                                       compId.includes("euro") || 
                                       compId.includes("copa_america") ||
@@ -965,9 +986,13 @@ function shouldTournamentAdvanceThisRound(compId, estado, maxRod) {
                                       compId.includes("champions");
 
     if (isInternationalTournament) {
-        // For international tournaments, only advance every 4th global round
-        // This ensures they don't skip multiple rounds at once
-        return rodadaAtual % 4 === 0;
+        // Only advance if we haven't advanced in the current global round yet
+        // This ensures exactly one match day per global round click
+        if (estado.lastAdvancedRound < rodadaAtual) {
+            estado.lastAdvancedRound = rodadaAtual;
+            return true;
+        }
+        return false;
     }
 
     // For domestic cups, advance with lower probability
@@ -4689,6 +4714,15 @@ document.addEventListener("change", function(event) {
 // ⚙️ INÍCIO, PARTIDAS E BOTÕES MESTRES
 // ==========================================
 document.getElementById("btnJogar")?.addEventListener("click", () => {
+    // Check if we're on the main menu (telaModoSelecao) or in-game hub
+    const telaModoSelecao = document.getElementById("telaModoSelecao");
+    if (!telaModoSelecao.classList.contains("oculto")) {
+        // Main menu - redirect to mode selection
+        mudarTela("telaModo");
+        return;
+    }
+    
+    // In-game hub - proceed with match simulation
     inicializarEstadoCarreiraJogador();
     let comp = agendaTemporada[rodadaAtual - 1];
     let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
@@ -5050,7 +5084,7 @@ document.getElementById("btnModoManager")?.addEventListener("click", () => {
 
 document.getElementById("btnVoltarMenu")?.addEventListener("click", () => {
     window.gameMode = null;
-    mudarTela("telaCriacao");
+    mudarTela("telaModoSelecao");
 });
 
 document.getElementById("btnJogarOffline")?.addEventListener("click", () => {
@@ -5080,6 +5114,9 @@ window.createPregameRoom = function() {
     window.isHost = true;
     window.lobbyPlayerId = generatePlayerId();
     
+    // Clear container to prevent ghost rows
+    document.getElementById("lobbyPlayersContainer").innerHTML = "";
+    
     // Create room in Firebase without pushing to global players
     window.firebaseIntegration.createPregameRoom(roomCode, window.lobbyPlayerId, window.gameMode);
     
@@ -5087,6 +5124,7 @@ window.createPregameRoom = function() {
     document.getElementById("lobbyRoomInfo").classList.remove("oculto");
     document.getElementById("lobbyRoomId").textContent = roomCode;
     document.getElementById("btnStartCareer").classList.remove("oculto");
+    document.getElementById("btnStartCareer").disabled = true;
     
     mostrarToast("Sala Criada", `Código: ${roomCode}`, "success");
 };
@@ -5107,6 +5145,9 @@ window.joinPregameRoom = function() {
     window.currentRoomId = roomCode;
     window.isHost = false;
     window.lobbyPlayerId = generatePlayerId();
+    
+    // Clear container to prevent ghost rows
+    document.getElementById("lobbyPlayersContainer").innerHTML = "";
     
     window.firebaseIntegration.joinPregameRoom(roomCode, window.lobbyPlayerId, window.gameMode);
     

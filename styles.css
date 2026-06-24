@@ -647,6 +647,179 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
     background: linear-gradient(90deg, rgba(212, 175, 55, 0.5), transparent);
 }
 
+/* Modern Premium Dashboard for International Competitions */
+.international-dashboard {
+    background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);
+    min-height: 100vh;
+    padding: 40px;
+}
+
+.international-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.international-dashboard-title h2 {
+    margin: 0 0 8px 0;
+    font-size: 2.5rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--world-cup-gold), #fff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.international-dashboard-title p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+.international-filter-tabs {
+    display: flex;
+    gap: 12px;
+}
+
+.international-filter-tab {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    padding: 12px 24px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s;
+}
+
+.international-filter-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(212, 175, 55, 0.3);
+    color: #fff;
+}
+
+.international-filter-tab.active {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(30, 64, 175, 0.15));
+    border-color: var(--world-cup-gold);
+    color: var(--world-cup-gold);
+    box-shadow: 0 4px 16px rgba(212, 175, 55, 0.2);
+}
+
+.international-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    gap: 28px;
+}
+
+.international-group-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.5));
+    border: 1px solid rgba(212, 175, 55, 0.2);
+    border-radius: 24px;
+    padding: 28px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.international-group-card:hover {
+    border-color: rgba(212, 175, 55, 0.5);
+    transform: translateY(-6px);
+    box-shadow: 0 20px 60px rgba(212, 175, 55, 0.2);
+}
+
+.international-group-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.international-group-card-header h3 {
+    margin: 0;
+    color: var(--world-cup-gold);
+    font-size: 1.4rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.international-group-badge {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(30, 64, 175, 0.15));
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--world-cup-gold);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.international-team-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    transition: all 0.3s;
+}
+
+.international-team-row:hover {
+    background: rgba(0, 0, 0, 0.5);
+    transform: translateX(4px);
+}
+
+.international-team-row.player-team {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.15), rgba(30, 64, 175, 0.1));
+    border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.international-team-flag {
+    width: 32px;
+    height: 24px;
+    object-fit: cover;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.international-team-name {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #fff;
+}
+
+.international-team-stat {
+    text-align: center;
+    font-weight: 900;
+    font-size: 1.1rem;
+    color: var(--world-cup-gold);
+    min-width: 40px;
+}
+
+.international-team-stat-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+
+@keyframes shimmer {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+}
+
 /* Player Lifestyle & Training System */
 .lifestyle-page {
     background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);
@@ -1187,7 +1360,7 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
 /* Dashboard UI */
 .dashboard-layout { display: flex; height: 100vh; width: 100vw; }
 .glass-panel { background: var(--glass-bg); backdrop-filter: blur(12px); border-right: 1px solid var(--border); }
-.sidebar { width: 280px; display: flex; flex-direction: column; padding: 25px; z-index: 10; max-height: 100vh; overflow-y: auto; }
+.sidebar { width: 280px; display: flex; flex-direction: column; padding: 25px; z-index: 10; height: 100vh; max-height: 100vh; overflow-y: auto; overflow-x: hidden; }
 .sidebar::-webkit-scrollbar { width: 6px; }
 .sidebar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 .sidebar::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.4); border-radius: 3px; }

@@ -115,19 +115,11 @@
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">Escolhe o teu modo de jogo</p>
         
-        <div style="display:flex; flex-direction:column; gap:15px;">
-            <button class="btn btn-primary btn-block pulse" id="btnModoOffline" style="font-size:1.1rem; padding:20px;">
-                <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
-                <div>Modo Offline</div>
-                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Joga localmente com save no navegador</div>
-            </button>
-            
-            <button class="btn btn-success btn-block pulse" id="btnModoOnline" style="font-size:1.1rem; padding:20px;">
-                <div style="font-size:2rem; margin-bottom:10px;">🌐</div>
-                <div>Modo Online</div>
-                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Joga com amigo em Universo Compartilhado</div>
-            </button>
-        </div>
+        <button class="btn btn-primary btn-block pulse" id="btnJogar" style="font-size:1.1rem; padding:20px;">
+            <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
+            <div>JOGAR</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Iniciar nova carreira</div>
+        </button>
     </div>
 </div>
 
@@ -182,7 +174,7 @@
 </div>
 
 <div id="telaPregameLobby" class="tela full-screen flex-center oculto">
-    <div class="card-criacao slide-in" style="width:100%; max-width:800px;">
+    <div class="card-criacao slide-in" style="width:100%; max-width:900px;">
         <h1 class="glow-title" style="text-align:center;">🏆 LOBBY</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Cria uma sala ou junta-te a um amigo</p>
         
@@ -202,12 +194,12 @@
             <p style="margin:0; color:var(--text-muted); font-size:0.9rem;">Partilha este código com os teus amigos</p>
         </div>
         
-        <div id="lobbyPlayersContainer" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; margin-bottom:20px;">
+        <div id="lobbyPlayersContainer" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:15px; margin-bottom:20px; min-height:200px;">
             <!-- Player cards will be rendered here -->
         </div>
         
-        <button class="btn btn-warning btn-lg oculto" id="btnStartCareer" style="width:100%; padding:20px; font-size:1.2rem; color:#000;">
-            🚀 Iniciar Carreira
+        <button class="btn btn-warning btn-lg oculto" id="btnStartCareer" style="width:100%; padding:20px; font-size:1.2rem; color:#000;" disabled>
+            🚀 Iniciar Carreira (Aguardando todos prontos)
         </button>
     </div>
 </div>
