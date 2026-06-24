@@ -6,63 +6,40 @@ import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTime
 window.jogadoresIA = jogadoresIA;
 
 // ==========================================
-// 🛡️ PROTEÇÃO E INICIALIZAÇÃO DE ESCOPOS GLOBAIS (window)
+// 🛡️ DECLARAÇÃO INICIAL DE VARIÁVEIS GLOBAIS
 // ==========================================
+// Criamos as variáveis locais no escopo do arquivo para evitar o ReferenceError
+let jogador = undefined;
+let anoAtual = 2026;
+let currentRoomId = null;
+let rodadaAtual = 1;
+let agendaTemporada = null;
+let selecoesEstado = null;
+let copasEstado = null;
+let gameMode = 'jogador';
+let connectionMode = 'offline';
+let isHost = false;
+let lobbyPlayerId = null;
 
-// Usamos Getters e Setters para que o Firebase consiga ler e escrever 
-// nas tuas variáveis locais do main.js de forma dinâmica e sem dar ReferenceError!
-Object.defineProperties(window, {
-    jogador: {
-        get() { return typeof jogador !== 'undefined' ? jogador : undefined; },
-        set(val) { if (typeof jogador !== 'undefined') jogador = val; }
-    },
-    anoAtual: {
-        get() { return typeof anoAtual !== 'undefined' ? anoAtual : 2026; },
-        set(val) { if (typeof anoAtual !== 'undefined') anoAtual = val; }
-    },
-    currentRoomId: {
-        get() { return typeof currentRoomId !== 'undefined' ? currentRoomId : null; },
-        set(val) { if (typeof currentRoomId !== 'undefined') currentRoomId = val; }
-    },
-    rodadaAtual: {
-        get() { return typeof rodadaAtual !== 'undefined' ? rodadaAtual : 1; },
-        set(val) { if (typeof rodadaAtual !== 'undefined') rodadaAtual = val; }
-    },
-    agendaTemporada: {
-        get() { return typeof agendaTemporada !== 'undefined' ? agendaTemporada : null; },
-        set(val) { if (typeof agendaTemporada !== 'undefined') agendaTemporada = val; }
-    },
-    selecoesEstado: {
-        get() { return typeof selecoesEstado !== 'undefined' ? selecoesEstado : null; },
-        set(val) { if (typeof selecoesEstado !== 'undefined') selecoesEstado = val; }
-    },
-    copasEstado: {
-        get() { return typeof copasEstado !== 'undefined' ? copasEstado : null; },
-        set(val) { if (typeof copasEstado !== 'undefined') copasEstado = val; }
-    },
-    gameMode: {
-        get() { return typeof gameMode !== 'undefined' ? gameMode : 'jogador'; },
-        set(val) { if (typeof gameMode !== 'undefined') gameMode = val; }
-    },
-    connectionMode: {
-        get() { return typeof connectionMode !== 'undefined' ? connectionMode : 'offline'; },
-        set(val) { if (typeof connectionMode !== 'undefined') connectionMode = val; }
-    },
-    isHost: {
-        get() { return typeof isHost !== 'undefined' ? isHost : false; },
-        set(val) { if (typeof isHost !== 'undefined') isHost = val; }
-    },
-    lobbyPlayerId: {
-        get() { return typeof lobbyPlayerId !== 'undefined' ? lobbyPlayerId : null; },
-        set(val) { if (typeof lobbyPlayerId !== 'undefined') lobbyPlayerId = val; }
-    }
-});
+// Expomos com segurança no objeto window sem criar loops infinitos (Call Stack Error)
+window.jogador = jogador;
+window.anoAtual = anoAtual;
+window.currentRoomId = currentRoomId;
+window.rodadaAtual = rodadaAtual;
+window.agendaTemporada = agendaTemporada;
+window.selecoesEstado = selecoesEstado;
+window.copasEstado = copasEstado;
+window.gameMode = gameMode;
+window.connectionMode = connectionMode;
+window.isHost = isHost;
+window.lobbyPlayerId = lobbyPlayerId;
 
-// Objetos importados do database.js podem ser atribuídos diretamente pois já existem:
+// Objetos importados do database.js atribuídos diretamente
 window.tabelasLigas = tabelasLigas;
 window.clubes = clubes;
 window.competicoes = competicoes;
 window.feedNoticias = feedNoticias;
+
 // ==========================================
 // 🌐 ROOM-BASED MULTIPLAYER SYNC
 // ==========================================
@@ -90,8 +67,6 @@ window.handleRoomUpdate = function(roomData) {
         const results = matchData.matchResults;
         Object.keys(results).forEach(matchId => {
             const result = results[matchId];
-            // Apply match results to local state
-            // This would integrate with your existing match result handling
             console.log("Syncing match result:", matchId, result);
         });
     }
