@@ -1,4 +1,4 @@
-﻿﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
+import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
 import { MatchEngine } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
@@ -6,35 +6,22 @@ import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTime
 window.jogadoresIA = jogadoresIA;
 
 // ==========================================
-// 🛡️ DECLARAÇÃO INICIAL DE VARIÁVEIS GLOBAIS
+// 🛡️ INICIALIZAÇÃO DIRETA NO ESCOPO GLOBAL (window)
 // ==========================================
-// Criamos as variáveis locais no escopo do arquivo para evitar o ReferenceError
-let jogador = undefined;
-let anoAtual = 2026;
-let currentRoomId = null;
-let rodadaAtual = 1;
-let agendaTemporada = null;
-let selecoesEstado = null;
-let copasEstado = null;
-let gameMode = 'jogador';
-let connectionMode = 'offline';
-let isHost = false;
-let lobbyPlayerId = null;
+// Definindo direto no window, o JavaScript não gera erro de inicialização (Temporal Dead Zone)
+window.jogador = undefined;
+window.anoAtual = 2026;
+window.currentRoomId = null;
+window.rodadaAtual = 1;
+window.agendaTemporada = null;
+window.selecoesEstado = null;
+window.copasEstado = null;
+window.gameMode = 'jogador';
+window.connectionMode = 'offline';
+window.isHost = false;
+window.lobbyPlayerId = null;
 
-// Expomos com segurança no objeto window sem criar loops infinitos (Call Stack Error)
-window.jogador = jogador;
-window.anoAtual = anoAtual;
-window.currentRoomId = currentRoomId;
-window.rodadaAtual = rodadaAtual;
-window.agendaTemporada = agendaTemporada;
-window.selecoesEstado = selecoesEstado;
-window.copasEstado = copasEstado;
-window.gameMode = gameMode;
-window.connectionMode = connectionMode;
-window.isHost = isHost;
-window.lobbyPlayerId = lobbyPlayerId;
-
-// Objetos importados do database.js atribuídos diretamente
+// Objetos importados do database.js
 window.tabelasLigas = tabelasLigas;
 window.clubes = clubes;
 window.competicoes = competicoes;
