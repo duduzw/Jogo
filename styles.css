@@ -820,6 +820,554 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
     100% { background-position: 200% center; }
 }
 
+/* ==========================================
+   🧠 MANAGER DASHBOARD STYLES
+   ========================================== */
+
+.manager-dashboard {
+    background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);
+    min-height: 100vh;
+    padding: 40px;
+}
+
+.manager-dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.manager-dashboard-title h2 {
+    margin: 0 0 8px 0;
+    font-size: 2.5rem;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--world-cup-gold), #fff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.manager-dashboard-title p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 1rem;
+}
+
+.manager-stats {
+    display: flex;
+    gap: 20px;
+}
+
+.manager-stat-box {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(212, 175, 55, 0.3);
+    padding: 20px 32px;
+    border-radius: 16px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+}
+
+.manager-stat-box:hover {
+    border-color: var(--world-cup-gold);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(212, 175, 55, 0.2);
+}
+
+.manager-stat-box strong {
+    display: block;
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--world-cup-gold);
+    line-height: 1;
+}
+
+.manager-stat-box span {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-top: 8px;
+    display: block;
+}
+
+.manager-tabs {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.manager-tab {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    padding: 14px 28px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s;
+}
+
+.manager-tab:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(212, 175, 55, 0.3);
+    color: #fff;
+}
+
+.manager-tab.active {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(30, 64, 175, 0.15));
+    border-color: var(--world-cup-gold);
+    color: var(--world-cup-gold);
+    box-shadow: 0 4px 16px rgba(212, 175, 55, 0.2);
+}
+
+.manager-content {
+    min-height: 600px;
+}
+
+.manager-view {
+    display: none;
+}
+
+.manager-view.active {
+    display: block;
+}
+
+/* ==========================================
+   ⚽ TACTICAL SCREEN STYLES
+   ========================================== */
+
+.tactics-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 32px;
+    height: calc(100vh - 300px);
+}
+
+.tactics-sidebar {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 24px;
+    overflow-y: auto;
+}
+
+.tactics-sidebar h3 {
+    margin: 0 0 20px 0;
+    color: var(--world-cup-gold);
+    font-size: 1.1rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.squad-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.squad-player-item {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: grab;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.squad-player-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(212, 175, 55, 0.3);
+    transform: translateX(4px);
+}
+
+.squad-player-item:active {
+    cursor: grabbing;
+}
+
+.squad-player-avatar {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(30, 64, 175, 0.2));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.squad-player-info {
+    flex: 1;
+}
+
+.squad-player-name {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.95rem;
+    display: block;
+}
+
+.squad-player-pos {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.squad-player-ovr {
+    font-weight: 900;
+    color: var(--world-cup-gold);
+    font-size: 1.1rem;
+}
+
+.tactics-main {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.tactics-controls {
+    display: flex;
+    gap: 20px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 20px;
+}
+
+.tactics-control-group {
+    flex: 1;
+}
+
+.tactics-control-group label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.tactics-control-group select {
+    width: 100%;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.tactics-control-group select:hover {
+    border-color: rgba(212, 175, 55, 0.3);
+}
+
+.tactics-control-group select:focus {
+    outline: none;
+    border-color: var(--world-cup-gold);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+}
+
+/* ==========================================
+   🏟️ TACTICAL PITCH STYLES
+   ========================================== */
+
+.tactical-pitch {
+    background: linear-gradient(180deg, #2d5a27 0%, #1e4d1a 50%, #2d5a27 100%);
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-radius: 16px;
+    padding: 20px;
+    min-height: 500px;
+    position: relative;
+    box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.tactical-pitch::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%);
+}
+
+.tactical-pitch::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100px;
+    height: 100px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.pitch-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 8px;
+    height: 100%;
+    position: relative;
+    z-index: 1;
+}
+
+.pitch-position {
+    background: rgba(0, 0, 0, 0.2);
+    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 80px;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.pitch-position:hover {
+    background: rgba(0, 0, 0, 0.4);
+    border-color: rgba(212, 175, 55, 0.4);
+}
+
+.pitch-position.drag-over {
+    background: rgba(0, 255, 136, 0.2);
+    border-color: rgba(0, 255, 136, 0.6);
+    border-style: solid;
+}
+
+.pitch-position-label {
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.5);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.pitch-player-token {
+    width: 50px;
+    height: 50px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.4), rgba(30, 64, 175, 0.3));
+    border: 2px solid var(--world-cup-gold);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    cursor: grab;
+    transition: all 0.3s;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    position: relative;
+}
+
+.pitch-player-token:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(212, 175, 55, 0.3);
+}
+
+.pitch-player-token:active {
+    cursor: grabbing;
+}
+
+.pitch-player-ovr {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    background: var(--world-cup-gold);
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.tactics-instructions {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.tactics-instructions h3 {
+    margin: 0 0 20px 0;
+    color: var(--world-cup-gold);
+    font-size: 1.1rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.instructions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.instruction-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.instruction-item label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.instruction-item select {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.instruction-item select:hover {
+    border-color: rgba(212, 175, 55, 0.3);
+}
+
+.instruction-item select:focus {
+    outline: none;
+    border-color: var(--world-cup-gold);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+}
+
+/* ==========================================
+   💼 TRANSFER MARKET STYLES
+   ========================================== */
+
+.transfer-market {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 24px;
+}
+
+.transfer-search {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.transfer-search input {
+    flex: 1;
+    padding: 14px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 1rem;
+}
+
+.transfer-search input:focus {
+    outline: none;
+    border-color: var(--world-cup-gold);
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+}
+
+.transfer-search button {
+    padding: 14px 28px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(30, 64, 175, 0.15));
+    border: 1px solid var(--world-cup-gold);
+    border-radius: 8px;
+    color: var(--world-cup-gold);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.transfer-search button:hover {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(30, 64, 175, 0.2));
+    transform: translateY(-2px);
+}
+
+#transfer-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 16px;
+}
+
+.transfer-player-card {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.3s;
+}
+
+.transfer-player-card:hover {
+    border-color: rgba(212, 175, 55, 0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ==========================================
+   💰 FINANCE OVERVIEW STYLES
+   ========================================== */
+
+.finance-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 24px;
+}
+
+.finance-card {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 24px;
+    text-align: center;
+    transition: all 0.3s;
+}
+
+.finance-card:hover {
+    border-color: rgba(212, 175, 55, 0.3);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.finance-card h4 {
+    margin: 0 0 12px 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 700;
+}
+
+.finance-card strong {
+    font-size: 2rem;
+    font-weight: 900;
+    color: var(--world-cup-gold);
+}
+
 /* Player Lifestyle & Training System */
 .lifestyle-page {
     background: linear-gradient(180deg, #0a0a0f 0%, #111118 100%);

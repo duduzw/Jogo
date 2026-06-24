@@ -386,7 +386,131 @@
             <div id="view-selecoes" class="view-section oculto"></div>
             <div id="view-comp-int" class="view-section oculto"></div>
             <div id="view-pesquisa-sel" class="view-section oculto"></div>
-            <div id="view-manager" class="view-section oculto"></div>
+            <div id="view-manager" class="view-section oculto">
+                <div class="manager-dashboard">
+                    <div class="manager-dashboard-header">
+                        <div class="manager-dashboard-title">
+                            <h2>🧠 Painel do Treinador</h2>
+                            <p id="manager-club-name">Selecione um clube para começar</p>
+                        </div>
+                        <div class="manager-stats">
+                            <div class="manager-stat-box">
+                                <strong id="manager-budget">€0</strong>
+                                <span>Orçamento</span>
+                            </div>
+                            <div class="manager-stat-box">
+                                <strong id="manager-confidence">100%</strong>
+                                <span>Confiança</span>
+                            </div>
+                            <div class="manager-stat-box">
+                                <strong id="manager-squad-size">0</strong>
+                                <span>Elenco</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="manager-tabs">
+                        <button class="manager-tab active" data-view="view-manager-tactics">⚽ Táticas</button>
+                        <button class="manager-tab" data-view="view-manager-squad">👥 Elenco</button>
+                        <button class="manager-tab" data-view="view-manager-transfers">💼 Transferências</button>
+                        <button class="manager-tab" data-view="view-manager-finance">💰 Finanças</button>
+                    </div>
+                    <div class="manager-content">
+                        <div id="view-manager-tactics" class="manager-view active">
+                            <div class="tactics-layout">
+                                <div class="tactics-sidebar">
+                                    <h3>Elenco Disponível</h3>
+                                    <div id="squad-list" class="squad-list"></div>
+                                </div>
+                                <div class="tactics-main">
+                                    <div class="tactics-controls">
+                                        <div class="tactics-control-group">
+                                            <label>Formação:</label>
+                                            <select id="formation-select">
+                                                <option value="4-4-2">4-4-2 Clássico</option>
+                                                <option value="4-3-3">4-3-3 Ofensivo</option>
+                                                <option value="3-5-2">3-5-2 Meio Campo</option>
+                                                <option value="5-3-2">5-3-2 Defensivo</option>
+                                                <option value="4-2-3-1">4-2-3-1 Moderno</option>
+                                            </select>
+                                        </div>
+                                        <div class="tactics-control-group">
+                                            <label>Mentalidade:</label>
+                                            <select id="mentality-select">
+                                                <option value="Defensiva">Defensiva</option>
+                                                <option value="Equilibrada" selected>Equilibrada</option>
+                                                <option value="Atacante">Atacante</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="tactical-pitch" id="tactical-pitch">
+                                        <!-- Pitch grid will be rendered here -->
+                                    </div>
+                                    <div class="tactics-instructions">
+                                        <h3>Instruções Táticas</h3>
+                                        <div class="instructions-grid">
+                                            <div class="instruction-item">
+                                                <label>Estilo de Jogo:</label>
+                                                <select id="playstyle-select">
+                                                    <option value="Posse">Posse de Bola</option>
+                                                    <option value="Contra">Contra-Ataque</option>
+                                                    <option value="Pressão">Pressão Alta</option>
+                                                </select>
+                                            </div>
+                                            <div class="instruction-item">
+                                                <label>Pressão:</label>
+                                                <select id="pressure-select">
+                                                    <option value="baixa">Baixa</option>
+                                                    <option value="média" selected>Média</option>
+                                                    <option value="alta">Alta</option>
+                                                </select>
+                                            </div>
+                                            <div class="instruction-item">
+                                                <label>Largura:</label>
+                                                <select id="width-select">
+                                                    <option value="estreita">Estreita</option>
+                                                    <option value="normal" selected>Normal</option>
+                                                    <option value="larga">Larga</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="view-manager-squad" class="manager-view">
+                            <h3>Elenco Completo</h3>
+                            <div id="full-squad-table"></div>
+                        </div>
+                        <div id="view-manager-transfers" class="manager-view">
+                            <h3>Mercado de Transferências</h3>
+                            <div class="transfer-market">
+                                <div class="transfer-search">
+                                    <input type="text" id="transfer-search-input" placeholder="Buscar jogadores...">
+                                    <button id="transfer-search-btn">Buscar</button>
+                                </div>
+                                <div id="transfer-results"></div>
+                            </div>
+                        </div>
+                        <div id="view-manager-finance" class="manager-view">
+                            <h3>Gestão Financeira</h3>
+                            <div class="finance-overview">
+                                <div class="finance-card">
+                                    <h4>Orçamento de Transferências</h4>
+                                    <strong id="finance-transfer-budget">€0</strong>
+                                </div>
+                                <div class="finance-card">
+                                    <h4>Orçamento de Salários</h4>
+                                    <strong id="finance-wage-budget">€0</strong>
+                                </div>
+                                <div class="finance-card">
+                                    <h4>Folha Salarial Atual</h4>
+                                    <strong id="finance-current-wages">€0</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div id="view-lifestyle" class="view-section oculto lifestyle-page">
                 <div id="lifestyle-container"></div>
             </div>

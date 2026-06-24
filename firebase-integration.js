@@ -833,7 +833,269 @@ function removeFirebasePlayersListener() {
 }
 
 // ==========================================
-// ROOM-BASED MULTIPLAYER SYSTEM
+// PRE-GAME LOBBY SYSTEM (Before Character Creation)
+// ==========================================
+
+function createPregameRoom(roomCode, lobbyPlayerId, gameMode) {
+    if (!db || !roomCode || !lobbyPlayerId) {
+        console.error("Cannot create pregame room: missing parameters");
+        return null;
+    }
+
+    const roomData = {
+        metadata: {
+            createdAt: Date.now(),
+            hostId: lobbyPlayerId,
+            maxPlayers: 2,
+            status: "waiting",
+            gameMode: gameMode || "player"
+        },
+        players: {
+            [lobbyPlayerId]: {
+                sessionId: lobbyPlayerId,
+                displayName: `${gameMode === "manager" ? "Treinador" : "Jogador"} #1 (Host)`,
+                gameMode: gameMode || "player",
+                joinedAt: Date.now(),
+                lastActive: Date.now(),
+                status: "connected",
+                readyState: false
+            }
+        }
+    };
+
+    return db.ref(`pregameRooms/${roomCode}`).set(roomData)
+        .then(() => {
+            console.log("Pre-game room created:", roomCode);
+            setupPregameRoomListener(roomCode);
+            return roomCode;
+        })
+        .catch((error) => {
+            console.error("Error creating pregame room:", error);
+            return null;
+        });
+}
+
+function joinPregameRoom(roomCode, lobbyPlayerId, gameMode) {
+    if (!db || !roomCode || !lobbyPlayerId) {
+        console.error("Cannot join pregame room: missing parameters");
+        return false;
+    }
+
+    return db.ref(`pregameRooms/${roomCode}`).once("value")
+        .then((snapshot) => {
+            if (!snapshot.exists()) {
+                console.error("Pre-game room not found:", roomCode);
+                return false;
+            }
+
+            const roomData = snapshot.val();
+            const players = roomData.players || {};
+
+            // Check if room is full
+            if (Object.keys(players).length >= roomData.metadata.maxPlayers) {
+                console.error("Pre-game room is full");
+                return false;
+            }
+
+            // Check if already in room
+            if (players[lobbyPlayerId]) {
+                setupPregameRoomListener(roomCode);
+                return true;
+            }
+
+            // Determine player number
+            const playerNumber = Object.keys(players).length + 1;
+            const displayName = `${gameMode === "manager" ? "Treinador" : "Jogador"} #${playerNumber}`;
+
+            // Add player to room
+            const playerData = {
+                sessionId: lobbyPlayerId,
+                displayName: displayName,
+                gameMode: gameMode || "player",
+                joinedAt: Date.now(),
+                lastActive: Date.now(),
+                status: "connected",
+                readyState: false
+            };
+
+            return db.ref(`pregameRooms/${roomCode}/players/${lobbyPlayerId}`).set(playerData)
+                .then(() => {
+                    setupPregameRoomListener(roomCode);
+                    console.log("Joined pre-game room:", roomCode);
+                    return true;
+                });
+        })
+        .catch((error) => {
+            console.error("Error joining pregame room:", error);
+            return false;
+        });
+}
+
+function setupPregameRoomListener(roomCode) {
+    if (!roomCode || !db) return;
+
+    // Remove existing listener if any
+    if (pregameRoomListener) {
+        db.ref(`pregameRooms/${roomCode}`).off("value", pregameRoomListener);
+    }
+
+    console.log("Setting up pregame room listener for:", roomCode);
+
+    pregameRoomListener = db.ref(`pregameRooms/${roomCode}`).on("value", (snapshot) => {
+        if (!snapshot.exists()) {
+            console.error("Pre-game room no longer exists");
+            return;
+        }
+
+        const roomData = snapshot.val();
+        renderPregameLobby(roomData);
+    });
+}
+
+function renderPregameLobby(roomData) {
+    const container = document.getElementById("lobbyPlayersContainer");
+    if (!container) return;
+
+    // CRITICAL: Clear container to prevent ghost rows
+    container.innerHTML = "";
+
+    if (!roomData.players) return;
+
+    const players = roomData.players;
+    const playerIds = Object.keys(players);
+    const isHost = window.isHost;
+    const myPlayerId = window.lobbyPlayerId;
+
+    // Render each player card with ready toggle
+    playerIds.forEach((pid, index) => {
+        const player = players[pid];
+        const isMe = pid === myPlayerId;
+        const isReady = player.readyState || false;
+
+        const card = document.createElement("div");
+        card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
+        card.style.cssText = `
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid ${isReady ? "rgba(0, 255, 136, 0.4)" : "rgba(255, 255, 255, 0.1)"};
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.3s;
+        `;
+
+        card.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 48px; height: 48px; background: linear-gradient(135deg, rgba(212, 175, 55, 0.3), rgba(30, 64, 175, 0.2)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem;">
+                    ${player.gameMode === "manager" ? "🧠" : "⚽"}
+                </div>
+                <div>
+                    <strong style="color: #fff; font-size: 1rem; display: block;">${player.displayName}</strong>
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">${isMe ? "(Você)" : ""}</span>
+                </div>
+            </div>
+            ${isMe ? `
+                <button class="btn-ready-toggle" data-player-id="${pid}" style="
+                    padding: 12px 20px;
+                    border-radius: 10px;
+                    border: none;
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    transition: all 0.3s;
+                    background: ${isReady ? "rgba(255, 193, 7, 0.2)" : "rgba(0, 255, 136, 0.2)"};
+                    color: ${isReady ? "#ffc107" : "#00ff88"};
+                    border: 1px solid ${isReady ? "rgba(255, 193, 7, 0.4)" : "rgba(0, 255, 136, 0.4)"};
+                ">
+                    ${isReady ? "⏸️ CANCELAR PRONTO" : "✅ DEFINIR PRONTO"}
+                </button>
+            ` : `
+                <span class="lobby-status-badge" style="
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    font-size: 0.8rem;
+                    font-weight: 700;
+                    text-transform: uppercase;
+                    background: ${isReady ? "rgba(0, 255, 136, 0.2)" : "rgba(255, 255, 255, 0.1)"};
+                    color: ${isReady ? "#00ff88" : "var(--text-muted)"};
+                    border: 1px solid ${isReady ? "rgba(0, 255, 136, 0.4)" : "rgba(255, 255, 255, 0.2)"};
+                ">
+                    ${isReady ? "PRONTO" : "AGUARDANDO"}
+                </span>
+            `}
+        `;
+
+        container.appendChild(card);
+    });
+
+    // Add event listeners for ready toggles
+    container.querySelectorAll(".btn-ready-toggle").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const pid = btn.dataset.playerId;
+            togglePregameReady(pid);
+        });
+    });
+
+    // Check if all players are ready and update start button
+    const allReady = playerIds.every(id => players[id].readyState === true);
+    const startBtn = document.getElementById("btnStartCareer");
+    
+    if (startBtn && isHost) {
+        startBtn.disabled = !allReady;
+        startBtn.textContent = allReady ? "🚀 INICIAR CARREIRA" : "🚀 INICIAR CARREIRA (Aguardando todos prontos)";
+    }
+}
+
+function togglePregameReady(playerId) {
+    if (!window.currentRoomId || !db) return;
+
+    db.ref(`pregameRooms/${window.currentRoomId}/players/${playerId}/readyState`).once("value")
+        .then((snapshot) => {
+            const currentStatus = snapshot.val() || false;
+            const newStatus = !currentStatus;
+            
+            return db.ref(`pregameRooms/${window.currentRoomId}/players/${playerId}/readyState`).set(newStatus);
+        })
+        .catch((error) => {
+            console.error("Error toggling ready state:", error);
+        });
+}
+
+function leavePregameLobby(roomCode, lobbyPlayerId) {
+    if (!roomCode || !db) return;
+
+    // Remove player from room
+    db.ref(`pregameRooms/${roomCode}/players/${lobbyPlayerId}`).remove()
+        .then(() => {
+            // Remove listener
+            if (pregameRoomListener) {
+                db.ref(`pregameRooms/${roomCode}`).off("value", pregameRoomListener);
+                pregameRoomListener = null;
+            }
+            console.log("Left pre-game room:", roomCode);
+        })
+        .catch((error) => {
+            console.error("Error leaving pregame room:", error);
+        });
+}
+
+function startCareerFromLobby(roomCode) {
+    if (!roomCode || !db || !window.isHost) return;
+
+    // Update room status to starting
+    db.ref(`pregameRooms/${roomCode}/metadata/status`).set("starting")
+        .then(() => {
+            // Redirect all players to character creation
+            window.mudarTela("telaCriacao");
+        })
+        .catch((error) => {
+            console.error("Error starting career from lobby:", error);
+        });
+}
+
+// ==========================================
+// ROOM-BASED MULTIPLAYER SYSTEM (In-Game)
 // ==========================================
 
 function createRoom() {
