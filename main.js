@@ -1252,29 +1252,46 @@ function inicializarTodosTorneiosTemporada() {
 
 function processarFimGruposInternacional(key, estado, fmt) {
     arquivarFaseInt(key);
+    
+    // 1️⃣ CASO: NATIONS LEAGUE (GRUPO E MATA-MATA/REBAIXAMENTO)
     if (fmt.formato === "nations_grupos") {
         const classificados = [], rebaixados = [];
+        
         estado.grupos.forEach(grp => {
             grp.equipas.sort((a, b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs));
+            
+            // Primeiros colocados vão para o mata-mata
             classificados.push(criarTimeTorneio(SELECOES.find(s => s.id === grp.equipas[0].id)), criarTimeTorneio(SELECOES.find(s => s.id === grp.equipas[1].id)));
-           estado.rebaixamento = { confrontos: [{ timeA: reb[0], timeB: reb[1], golsA: null, golsB: null, vencedorId: null }, { timeA: reb[2], timeB: reb[3] || reb[0], golsA: null, golsB: null, vencedorId: null }].filter(c => c.timeA && c.timeB) };
+            
+            // Últimos colocados vão para a lista de rebaixamento
+            if (grp.equipas[3]) rebaixados.push(grp.equipas[3].id);
         });
+        
         const confrontos = [];
         const flat = classificados.filter(Boolean);
         flat.sort(() => Math.random() - 0.5);
+        
         for (let i = 0; i < flat.length; i += 2) {
             if (flat[i + 1]) confrontos.push({ timeA: flat[i], timeB: flat[i + 1], golsA: null, golsB: null, vencedorId: null, penaltis: false });
         }
+        
         estado.tipo = "mata-mata";
         estado.fase = "Quartas de Final (Nations A)";
         estado.confrontos = confrontos;
         delete estado.grupos;
+        
+        // CORREÇÃO DO REB: Movido para cima do uso!
         const reb = rebaixados.filter(Boolean);
         if (reb.length >= 2) {
             estado.rebaixamento = { confrontos: [{ timeA: reb[0], timeB: reb[1], golsA: null, golsB: null, vencedorId: null }, { timeA: reb[2], timeB: reb[3] || reb[0], golsA: null, golsB: null, vencedorId: null }].filter(c => c.timeB) };
         }
+
+        // AGENDAMENTO NO CALENDÁRIO GLOBAL
+        agendarMataMataNoCalendario(key, confrontos);
         return;
     }
+    
+    // 2️⃣ CASO: ELIMINATÓRIAS PURAS (APENAS GRUPOS PARA DEFINIR VAGAS)
     if (fmt.eliminatoria && fmt.formato === "grupos") {
         const classificados = [];
         estado.grupos.forEach(grp => {
@@ -1294,6 +1311,8 @@ function processarFimGruposInternacional(key, estado, fmt) {
         delete estado.grupos;
         return;
     }
+    
+    // 3️⃣ CASO: TORNEIOS CONTINENTAIS / MUNDIAL (GRUPOS + MATA-MATA)
     if (fmt.formato === "grupos_mata" || (fmt.formato === "grupos" && fmt.avancam >= 2 && !fmt.eliminatoria)) {
         const classificados = [];
         estado.grupos.forEach(grp => {
@@ -1303,23 +1322,32 @@ function processarFimGruposInternacional(key, estado, fmt) {
                 if (sel) classificados.push(criarTimeTorneio(sel));
             }
         });
+        
         const confrontos = [];
         const flat = classificados.filter(Boolean);
-        flat.sort(() => Math.random() - 0.5);
+        flat.sort(() => Math.random() - 0.5); // Sorteio das chaves
+        
         for (let i = 0; i < flat.length; i += 2) {
             if (flat[i + 1]) confrontos.push({ timeA: flat[i], timeB: flat[i + 1], golsA: null, golsB: null, vencedorId: null, penaltis: false });
         }
+        
         estado.tipo = "mata-mata";
         estado.fase = flat.length >= 16 ? "Oitavas de Final" : flat.length >= 8 ? "Oitavas de Final" : "Quartos de Final";
         estado.confrontos = confrontos;
         delete estado.grupos;
+        
+        // AGENDAMENTO NO CALENDÁRIO GLOBAL (Faz o jogo contra o Palmeiras ou outras ligas rodar!)
+        agendarMataMataNoCalendario(key, confrontos);
         return;
     }
+    
+    // 4️⃣ CASO: CLASSIFICAÇÃO DEFINIDA POR PONTOS CORRIDOS
     estado.fase = "Classificação Definida";
     estado.classificados = estado.grupos.map(grp => {
         grp.equipas.sort((a, b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs));
         return grp.equipas[0]?.id;
     }).filter(Boolean);
+    
     if (isEliminatoria(estado.compConfigId)) {
         const dest = anoTorneioDestino(estado.compConfigId, estado.ano);
         const destId = FORMATOS_INT[estado.compConfigId]?.destino || "copa_mundo";
@@ -1331,6 +1359,26 @@ function processarFimGruposInternacional(key, estado, fmt) {
             selecoesEstado.vagasTorneio[chaveVaga] = [...existentes];
         }
     }
+}
+
+// 🛡️ FUNÇÃO AUXILIAR PARA INJETAR OS CONFRONTOS NA AGENDA PRINCIPAL DO JOGO
+function agendarMataMataNoCalendario(competicaoId, confrontos) {
+    if (!window.agendaTemporada) window.agendaTemporada = [];
+
+    confrontos.forEach((inf, index) => {
+        window.agendaTemporada.push({
+            id: `mata_${competicaoId}_${window.anoAtual}_${index}`,
+            competicaoId: competicaoId,
+            timeHome: inf.timeA,
+            timeAway: inf.timeB,
+            placarHome: null,
+            placarAway: null,
+            rodada: window.rodadaAtual + 1, // Agenda para a rodada seguinte imediata
+            status: "agendado"
+        });
+    });
+    
+    console.log(`Mata-mata de ${competicaoId} injetado com sucesso na agenda da temporada!`);
 }
 
 function arquivarFaseInt(key) {
