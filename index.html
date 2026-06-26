@@ -1,4 +1,4 @@
-﻿﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -12,6 +12,9 @@
 
 <div id="toastContainer" class="toast-container"></div>
 
+<!-- ==========================================
+     MODALS DO SISTEMA
+     ========================================== -->
 <div id="modalBolaOuro" class="modal oculto">
     <div class="modal-content golden-ball-modal slide-in">
         <div style="padding: 40px;">
@@ -76,6 +79,7 @@
     </div>
 </div>
 
+<!-- 🛠️ CORREÇÃO: Fechamento correto das tags internas do perfil de jogador -->
 <div id="modalPerfilJogador" class="modal oculto">
     <div class="modal-content slide-in">
         <div class="modal-header" style="background: linear-gradient(90deg, var(--theme-primary), transparent);">
@@ -98,7 +102,10 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
 
+<!-- 🛠️ CORREÇÃO: Desalinhado de dentro do Perfil e isolado como elemento independente -->
 <div id="view-online-lobby" class="view oculto">
     <div class="lobby-hero">
         <h1>🌐 Online Lobby</h1>
@@ -107,15 +114,17 @@
     <div id="lobby-players-container" class="lobby-players-grid"></div>
     <button id="btn-advance-to-team" class="lobby-advance-btn" disabled>Avançar para Seleção de Clube ➔</button>
 </div>
-    </div>
-</div>
 
+<!-- ==========================================
+     TELAS DE FLUXO DE INICIALIZAÇÃO
+     ========================================== -->
 <div id="telaModoSelecao" class="tela full-screen flex-center">
     <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">Escolhe o teu modo de jogo</p>
         
-        <button class="btn btn-primary btn-block pulse" id="btnJogar" style="font-size:1.1rem; padding:20px;">
+        <!-- 🛠️ CORREÇÃO: Alterado ID para 'btnJogarMenu' para evitar duplicidade -->
+        <button class="btn btn-primary btn-block pulse" id="btnJogarMenu" style="font-size:1.1rem; padding:20px;">
             <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
             <div>JOGAR</div>
             <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Iniciar nova carreira</div>
@@ -260,6 +269,9 @@
     </div>
 </div>
 
+<!-- ==========================================
+     LAYOUT PRINCIPAL DO DASHBOARD (HUB)
+     ========================================== -->
 <div id="view-hub" class="tela oculto dashboard-layout">
     <aside class="sidebar glass-panel">
         <div class="sidebar-header">
@@ -313,12 +325,14 @@
         </header>
 
         <div class="view-container">
+            <!-- SEÇÃO HOME / HUB DO JOGADOR -->
             <div id="view-home" class="view-section">
                 <div class="dashboard-card theme-border" style="padding:30px; margin-bottom:20px;">
                     <h2 style="margin:0 0 15px 0; font-weight:800; letter-spacing: 1px;">📅 PRÓXIMO COMPROMISSO</h2>
                     <div id="uiProximoComp" class="next-match-box">Sincronizando competições...</div>
                     <div style="display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:15px;">
-                        <button class="btn btn-success btn-lg glow-btn" id="btnJogar">Entrar em Relvado ➔</button>
+                        <!-- 🛠️ CORREÇÃO: Alterado ID para 'btnEntrarRelvado' eliminando duplicidade técnica -->
+                        <button class="btn btn-success btn-lg glow-btn" id="btnEntrarRelvado">Entrar em Relvado ➔</button>
                         <button class="btn btn-warning btn-lg" id="btnDescansar" style="color:#000;">🛌 Descansar</button>
                         <button class="btn btn-primary btn-lg" id="btnTreinar">Treinar</button>
                     </div>
@@ -348,12 +362,13 @@
                             <span class="stat-label">Calendário da Temporada</span>
                             <h3>Próximos compromissos</h3>
                         </div>
-                        <span id="uiCalendarioResumo" class="meta-pill">Sincronizando</span>
+                        <span id="uiCalendarioResSummary" class="meta-pill">Sincronizando</span>
                     </div>
                     <div id="uiCalendarioTemporada" class="season-timeline"></div>
                 </div>
             </div>
 
+            <!-- SEÇÃO DE CLASSIFICAÇÕES -->
             <div id="view-classificacao" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
                     <h3 style="margin:0 0 15px 0;">📊 Tabelas de Campeonatos</h3>
@@ -365,16 +380,18 @@
                 </div>
             </div>
 
+            <!-- SEÇÃO DE CHAVEAMENTOS -->
             <div id="view-chaveamentos" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
                     <h3 style="margin:0 0 15px 0;">🏆 Chaveamentos Continentais</h3>
                     <select id="selectFiltroCopa" class="modern-select"></select>
                     <div id="containerChaveamento" class="bracket-container">
-                        <div style="width:100%; text-align:center; padding:40px; color:var(--text-muted);">Selecione uma competição continental para visualizar a árvore do torneio.</div>
+                        <div style="width:100%; text-align:center; padding:40px; color:var(--text-muted);">Selecione uma competition continental para visualizar a árvore do torneio.</div>
                     </div>
                 </div>
             </div>
 
+            <!-- SEÇÃO DE NEGOCIAÇÕES -->
             <div id="view-mercado" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px; border-top:4px solid var(--success);">
                     <h2 style="margin-top:0;">💼 Ofertas de Transferência</h2>
@@ -382,10 +399,13 @@
                     <div id="containerPropostasMercado"></div>
                 </div>
             </div>
+            
             <div id="view-transferencias" class="view-section oculto"></div>
             <div id="view-selecoes" class="view-section oculto"></div>
             <div id="view-comp-int" class="view-section oculto"></div>
             <div id="view-pesquisa-sel" class="view-section oculto"></div>
+            
+            <!-- SEÇÃO MODO MANAGER / TREINADOR -->
             <div id="view-manager" class="view-section oculto">
                 <div class="manager-dashboard">
                     <div class="manager-dashboard-header">
@@ -511,28 +531,28 @@
                     </div>
                 </div>
             </div>
+            
             <div id="view-lifestyle" class="view-section oculto lifestyle-page">
                 <div id="lifestyle-container"></div>
             </div>
 
             <div id="view-noticias" class="view-section oculto"></div>
 
+            <!-- SEÇÃO UNIVERSO COMPARTILHADO / AMIGOS -->
             <div id="view-amigos" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
                     <h3 style="margin:0 0 15px 0;">👥 Universo Compartilhado</h3>
                     
-                    <!-- Connection Status -->
                     <div id="sharedUniverseStatus" class="status-banner" style="padding:15px; border-radius:8px; background:rgba(239,68,68,0.1); border:1px solid var(--danger); margin-bottom:20px;">
                         <span class="status-indicator disconnected" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--danger); margin-right:10px;"></span>
                         <span>Universo compartilhado desativado</span>
                     </div>
                     
-                    <!-- Leave Lobby Button (shown when connected) -->
-                    <button class="btn btn-danger btn-block oculto" id="btnLeaveLobby" style="margin-bottom:20px; padding:15px;">
+                    <!-- 🛠️ CORREÇÃO: ID modificado para 'btnLeaveLobbyHub' prevenindo quebra de escopo global -->
+                    <button class="btn btn-danger btn-block oculto" id="btnLeaveLobbyHub" style="margin-bottom:20px; padding:15px;">
                         🚪 Sair do Lobby
                     </button>
                     
-                    <!-- Friend Code Display -->
                     <div id="friendCodeSection" class="oculto" style="margin-bottom:20px;">
                         <p style="margin-bottom:10px;"><strong>Seu código de amigo:</strong></p>
                         <div class="friend-code-display" style="display:flex; gap:10px; align-items:center;">
@@ -541,7 +561,6 @@
                         </div>
                     </div>
                     
-                    <!-- Connect with Friend -->
                     <div id="connectSection" class="oculto" style="margin-bottom:20px;">
                         <p style="margin-bottom:10px;"><strong>Conectar com amigo:</strong></p>
                         <div style="display:flex; gap:10px;">
@@ -550,7 +569,6 @@
                         </div>
                     </div>
                     
-                    <!-- Lobby / Ready Check -->
                     <div id="lobbySection" class="oculto" style="margin-bottom:20px;">
                         <h4 style="margin:0 0 15px 0;">🎮 Lobby da Temporada</h4>
                         <div id="lobbyPlayers" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;"></div>
@@ -562,7 +580,6 @@
                         </button>
                     </div>
                     
-                    <!-- Connected Friends List -->
                     <div id="friendsList" class="oculto">
                         <h4 style="margin:0 0 15px 0;">Amigos Conectados</h4>
                         <div id="friendsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -570,6 +587,7 @@
                 </div>
             </div>
 
+            <!-- SEÇÃO HALL DA FAMA -->
             <div id="view-historico" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
                     <h3 style="margin:0 0 15px 0;">📜 O Teu Legado</h3>
