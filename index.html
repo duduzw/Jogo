@@ -1,10 +1,12 @@
-<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pro Player Simulator Elite</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body id="gameBody">
 
@@ -96,10 +98,113 @@
                 </div>
             </div>
         </div>
+
+<div id="view-online-lobby" class="view oculto">
+    <div class="lobby-hero">
+        <h1>🌐 Online Lobby</h1>
+        <p>Aguardando todos os jogadores estarem prontos para iniciar a carreira compartilhada</p>
+    </div>
+    <div id="lobby-players-container" class="lobby-players-grid"></div>
+    <button id="btn-advance-to-team" class="lobby-advance-btn" disabled>Avançar para Seleção de Clube ➔</button>
+</div>
     </div>
 </div>
 
-<div id="telaCriacao" class="tela full-screen flex-center">
+<div id="telaModoSelecao" class="tela full-screen flex-center">
+    <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
+        <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">Escolhe o teu modo de jogo</p>
+        
+        <button class="btn btn-primary btn-block pulse" id="btnJogar" style="font-size:1.1rem; padding:20px;">
+            <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
+            <div>JOGAR</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Iniciar nova carreira</div>
+        </button>
+    </div>
+</div>
+
+<div id="telaReconexao" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:500px; text-align:center;">
+        <div style="font-size:4rem; margin-bottom:20px; animation: spin 2s linear infinite;">🔄</div>
+        <h2 style="color:var(--theme-primary); font-weight:800; margin:0 0 15px 0;">Reconectando ao Universo Compartilhado</h2>
+        <p style="color:var(--text-muted); font-size:1rem; margin-bottom:25px;">Restaurando sessão anterior...</p>
+        <div id="reconexaoStatus" style="padding:15px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); margin-bottom:20px;">
+            <span style="color:var(--text-muted);">Inicializando conexão...</span>
+        </div>
+        <button class="btn btn-danger btn-block" id="btnCancelarReconexao" style="padding:15px;">
+            Cancelar e voltar ao menu
+        </button>
+    </div>
+</div>
+
+<div id="telaModo" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:600px; text-align:center;">
+        <h1 class="glow-title">🎮 ESCOLHE O TEU MODO</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Seleciona como queres jogar</p>
+        
+        <div style="display:grid; gap:20px;">
+            <button class="btn btn-primary btn-lg" id="btnModoJogador" style="padding:20px; font-size:1.2rem;">
+                ⚽ Modo Jogador
+            </button>
+            <button class="btn btn-warning btn-lg" id="btnModoManager" style="padding:20px; font-size:1.2rem; color:#000;">
+                🧠 Modo Manager
+            </button>
+        </div>
+        
+        <button class="btn btn-danger" id="btnVoltarMenu" style="margin-top:30px;">← Voltar ao Menu</button>
+    </div>
+</div>
+
+<div id="telaConexao" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:600px; text-align:center;">
+        <h1 class="glow-title">🌐 MODO DE JOGO</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Escolhe como queres jogar</p>
+        
+        <div style="display:grid; gap:20px;">
+            <button class="btn btn-success btn-lg" id="btnJogarOffline" style="padding:20px; font-size:1.2rem;">
+                🎮 Jogar Offline
+            </button>
+            <button class="btn btn-primary btn-lg" id="btnJogarOnline" style="padding:20px; font-size:1.2rem;">
+                🌐 Jogar Online
+            </button>
+        </div>
+        
+        <button class="btn btn-danger" id="btnVoltarModo" style="margin-top:30px;">← Voltar</button>
+    </div>
+</div>
+
+<div id="telaPregameLobby" class="tela full-screen flex-center oculto">
+    <div class="card-criacao slide-in" style="width:100%; max-width:900px;">
+        <h1 class="glow-title" style="text-align:center;">🏆 LOBBY</h1>
+        <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Cria uma sala ou junta-te a um amigo</p>
+        
+        <div id="lobbyRoomControls" style="display:grid; gap:15px; margin-bottom:30px;">
+            <div style="display:grid; grid-template-columns: 1fr auto; gap:10px;">
+                <input type="text" id="inputRoomCode" placeholder="Código da Sala (ex: ABC123)" style="padding:15px; border-radius:8px; border:1px solid var(--border); background:rgba(0,0,0,0.3); color:#fff; font-size:1rem;">
+                <button class="btn btn-primary" id="btnJoinRoom" style="padding:15px 30px;">Entrar</button>
+            </div>
+            <button class="btn btn-success btn-lg" id="btnCreateRoom" style="padding:15px;">Criar Nova Sala</button>
+        </div>
+        
+        <div id="lobbyRoomInfo" class="oculto" style="background:rgba(0,0,0,0.3); padding:20px; border-radius:12px; border:1px solid var(--theme-primary); margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h3 style="margin:0; color:var(--theme-primary);">SALA: <span id="lobbyRoomId">---</span></h3>
+                <button class="btn btn-danger" id="btnLeaveLobby" style="padding:8px 16px;">Sair</button>
+            </div>
+            <p style="margin:0; color:var(--text-muted); font-size:0.9rem;">Partilha este código com os teus amigos</p>
+        </div>
+        
+        <div id="lobbyPlayersContainer" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap:15px; margin-bottom:20px; min-height:200px;">
+            <!-- Player cards will be rendered here -->
+        </div>
+        
+        <button class="btn btn-warning btn-lg oculto" id="btnStartCareer" style="width:100%; padding:20px; font-size:1.2rem; color:#000;" disabled>
+            🚀 Iniciar Carreira (Aguardando todos prontos)
+        </button>
+    </div>
+</div>
+
+<div id="telaCriacao" class="tela full-screen flex-center oculto">
     <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
         <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:25px;">Gere a tua carreira e entra para o hall da fama internacional.</p>
@@ -189,7 +294,7 @@
             <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
             <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
             <button class="menu-item" data-view="view-pesquisa-sel">🔎 Pesquisar Seleções</button>
-            <button class="menu-item" data-view="view-manager">🧠 Modo Manager</button>
+            <button class="menu-item" data-view="view-lifestyle">🏆 Lifestyle & Treino</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
         </nav>
@@ -281,10 +386,189 @@
             <div id="view-selecoes" class="view-section oculto"></div>
             <div id="view-comp-int" class="view-section oculto"></div>
             <div id="view-pesquisa-sel" class="view-section oculto"></div>
-            <div id="view-manager" class="view-section oculto"></div>
+            <div id="view-manager" class="view-section oculto">
+                <div class="manager-dashboard">
+                    <div class="manager-dashboard-header">
+                        <div class="manager-dashboard-title">
+                            <h2>🧠 Painel do Treinador</h2>
+                            <p id="manager-club-name">Selecione um clube para começar</p>
+                        </div>
+                        <div class="manager-stats">
+                            <div class="manager-stat-box">
+                                <strong id="manager-budget">€0</strong>
+                                <span>Orçamento</span>
+                            </div>
+                            <div class="manager-stat-box">
+                                <strong id="manager-confidence">100%</strong>
+                                <span>Confiança</span>
+                            </div>
+                            <div class="manager-stat-box">
+                                <strong id="manager-squad-size">0</strong>
+                                <span>Elenco</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="manager-tabs">
+                        <button class="manager-tab active" data-view="view-manager-tactics">⚽ Táticas</button>
+                        <button class="manager-tab" data-view="view-manager-squad">👥 Elenco</button>
+                        <button class="manager-tab" data-view="view-manager-transfers">💼 Transferências</button>
+                        <button class="manager-tab" data-view="view-manager-finance">💰 Finanças</button>
+                    </div>
+                    <div class="manager-content">
+                        <div id="view-manager-tactics" class="manager-view active">
+                            <div class="tactics-layout">
+                                <div class="tactics-sidebar">
+                                    <h3>Elenco Disponível</h3>
+                                    <div id="squad-list" class="squad-list"></div>
+                                </div>
+                                <div class="tactics-main">
+                                    <div class="tactics-controls">
+                                        <div class="tactics-control-group">
+                                            <label>Formação:</label>
+                                            <select id="formation-select">
+                                                <option value="4-4-2">4-4-2 Clássico</option>
+                                                <option value="4-3-3">4-3-3 Ofensivo</option>
+                                                <option value="3-5-2">3-5-2 Meio Campo</option>
+                                                <option value="5-3-2">5-3-2 Defensivo</option>
+                                                <option value="4-2-3-1">4-2-3-1 Moderno</option>
+                                            </select>
+                                        </div>
+                                        <div class="tactics-control-group">
+                                            <label>Mentalidade:</label>
+                                            <select id="mentality-select">
+                                                <option value="Defensiva">Defensiva</option>
+                                                <option value="Equilibrada" selected>Equilibrada</option>
+                                                <option value="Atacante">Atacante</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="tactical-pitch" id="tactical-pitch">
+                                        <!-- Pitch grid will be rendered here -->
+                                    </div>
+                                    <div class="tactics-instructions">
+                                        <h3>Instruções Táticas</h3>
+                                        <div class="instructions-grid">
+                                            <div class="instruction-item">
+                                                <label>Estilo de Jogo:</label>
+                                                <select id="playstyle-select">
+                                                    <option value="Posse">Posse de Bola</option>
+                                                    <option value="Contra">Contra-Ataque</option>
+                                                    <option value="Pressão">Pressão Alta</option>
+                                                </select>
+                                            </div>
+                                            <div class="instruction-item">
+                                                <label>Pressão:</label>
+                                                <select id="pressure-select">
+                                                    <option value="baixa">Baixa</option>
+                                                    <option value="média" selected>Média</option>
+                                                    <option value="alta">Alta</option>
+                                                </select>
+                                            </div>
+                                            <div class="instruction-item">
+                                                <label>Largura:</label>
+                                                <select id="width-select">
+                                                    <option value="estreita">Estreita</option>
+                                                    <option value="normal" selected>Normal</option>
+                                                    <option value="larga">Larga</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="view-manager-squad" class="manager-view">
+                            <h3>Elenco Completo</h3>
+                            <div id="full-squad-table"></div>
+                        </div>
+                        <div id="view-manager-transfers" class="manager-view">
+                            <h3>Mercado de Transferências</h3>
+                            <div class="transfer-market">
+                                <div class="transfer-search">
+                                    <input type="text" id="transfer-search-input" placeholder="Buscar jogadores...">
+                                    <button id="transfer-search-btn">Buscar</button>
+                                </div>
+                                <div id="transfer-results"></div>
+                            </div>
+                        </div>
+                        <div id="view-manager-finance" class="manager-view">
+                            <h3>Gestão Financeira</h3>
+                            <div class="finance-overview">
+                                <div class="finance-card">
+                                    <h4>Orçamento de Transferências</h4>
+                                    <strong id="finance-transfer-budget">€0</strong>
+                                </div>
+                                <div class="finance-card">
+                                    <h4>Orçamento de Salários</h4>
+                                    <strong id="finance-wage-budget">€0</strong>
+                                </div>
+                                <div class="finance-card">
+                                    <h4>Folha Salarial Atual</h4>
+                                    <strong id="finance-current-wages">€0</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="view-lifestyle" class="view-section oculto lifestyle-page">
+                <div id="lifestyle-container"></div>
+            </div>
 
             <div id="view-noticias" class="view-section oculto"></div>
 
+            <div id="view-amigos" class="view-section oculto">
+                <div class="dashboard-card" style="padding:25px;">
+                    <h3 style="margin:0 0 15px 0;">👥 Universo Compartilhado</h3>
+                    
+                    <!-- Connection Status -->
+                    <div id="sharedUniverseStatus" class="status-banner" style="padding:15px; border-radius:8px; background:rgba(239,68,68,0.1); border:1px solid var(--danger); margin-bottom:20px;">
+                        <span class="status-indicator disconnected" style="display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--danger); margin-right:10px;"></span>
+                        <span>Universo compartilhado desativado</span>
+                    </div>
+                    
+                    <!-- Leave Lobby Button (shown when connected) -->
+                    <button class="btn btn-danger btn-block oculto" id="btnLeaveLobby" style="margin-bottom:20px; padding:15px;">
+                        🚪 Sair do Lobby
+                    </button>
+                    
+                    <!-- Friend Code Display -->
+                    <div id="friendCodeSection" class="oculto" style="margin-bottom:20px;">
+                        <p style="margin-bottom:10px;"><strong>Seu código de amigo:</strong></p>
+                        <div class="friend-code-display" style="display:flex; gap:10px; align-items:center;">
+                            <span id="myFriendCode" style="font-size:2rem; font-weight:800; letter-spacing:5px; color:var(--theme-primary);">---</span>
+                            <button class="btn btn-sm" id="btnCopyCode">📋 Copiar</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Connect with Friend -->
+                    <div id="connectSection" class="oculto" style="margin-bottom:20px;">
+                        <p style="margin-bottom:10px;"><strong>Conectar com amigo:</strong></p>
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" id="inputFriendCode" placeholder="Digite o código do amigo" maxlength="6" style="flex:1; padding:10px; border:1px solid var(--border); border-radius:6px; background:rgba(0,0,0,0.3); color:#fff;">
+                            <button class="btn btn-success" id="btnConnectFriend">Conectar</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Lobby / Ready Check -->
+                    <div id="lobbySection" class="oculto" style="margin-bottom:20px;">
+                        <h4 style="margin:0 0 15px 0;">🎮 Lobby da Temporada</h4>
+                        <div id="lobbyPlayers" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;"></div>
+                        <div id="lobbyStatus" style="padding:15px; border-radius:8px; background:rgba(0,0,0,0.3); border:1px solid var(--border); text-align:center;">
+                            <span id="lobbyStatusText">Aguardando jogadores...</span>
+                        </div>
+                        <button class="btn btn-primary btn-block" id="btnToggleReady" style="margin-top:15px; padding:15px;">
+                            ✅ Pronto para Iniciar
+                        </button>
+                    </div>
+                    
+                    <!-- Connected Friends List -->
+                    <div id="friendsList" class="oculto">
+                        <h4 style="margin:0 0 15px 0;">Amigos Conectados</h4>
+                        <div id="friendsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+                    </div>
+                </div>
+            </div>
 
             <div id="view-historico" class="view-section oculto">
                 <div class="dashboard-card" style="padding:25px;">
@@ -299,6 +583,7 @@
     </main>
 </div>
 
+<script src="firebase-integration.js"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>
