@@ -30,28 +30,16 @@ if (typeof window.lobbyPlayerId === 'undefined') window.lobbyPlayerId = null;
 // ==========================================
 
 window.managerState = {
+    ativo: false,
     clubeId: null,
-    clubeNome: null,
-    orçamentoTransferências: 0,
-    orçamentoSalários: 0,
-    confiançaDiretoria: 100,
-    objetivosTemporada: {
-        posiçãoLiga: null,
-        títuloLiga: false,
-        títuloCopa: false,
-        títuloInternacional: false
-    },
+    nomeClube: "",
+    orcamentoTransferencias: 15500000, // €15.5M default
+    orcamentoSalarios: 450000,
+    confiancaDiretoria: 85,
+    formacao: "4-3-3",
+    mentalidade: "Equilibrada",
     elenco: [],
-    táticas: {
-        formação: "4-4-2",
-        mentalidade: "Equilibrada",
-        estiloJogo: "Posse"
-    },
-    transferências: {
-        jogadoresInteresse: [],
-        ofertasPendentes: [],
-        históricoTransferências: []
-    }
+    titulares: {} // Map: { 'GK': {playerObj}, 'CB1': {playerObj} }
 };
 
 // Initialize Manager Mode with club selection
