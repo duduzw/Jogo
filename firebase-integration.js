@@ -477,27 +477,49 @@ function listenForLobbyUpdates() {
 
 function updateLobbyUI(lobbyData) {
     const container = document.getElementById("lobbyPlayers");
+    if (!container) return;
+    
+    // 🚨 REGRA DE OURO: Limpa o container imediatamente para matar o bug dos nomes duplicados
     container.innerHTML = "";
 
     if (lobbyData.players) {
+        const totalPlayers = Object.keys(lobbyData.players).length;
+        let indexCount = 1;
+
         Object.entries(lobbyData.players).forEach(([pid, player]) => {
-            const isReady = player.ready;
+            const isReady = player.ready === true;
+            const isMe = (pid === playerId);
+            const isHost = (indexCount === 1);
+
+            // Se o nome for indefinido/vazio (antes da criação do personagem), usa o Placeholder
+            const displayName = player.nome ? player.nome : `Treinador/Jogador #${indexCount} ${isHost ? '(Host)' : ''}`;
+
             const card = document.createElement("div");
             card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
+            card.style = "background: rgba(15,23,42,0.8); border: 1px solid var(--border); padding: 12px; border-radius: 8px; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;";
             
             card.innerHTML = `
                 <div style="flex:1;">
-                    <strong>${player.nome}</strong>
-                    <div style="font-size:0.85rem; color:var(--text-muted);">
-                        ${player.clubeId} • Temporada ${player.currentSeason}
+                    <strong style="color:#fff; font-size:1.05rem;">${displayName}</strong>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">
+                        ID: ${pid.slice(-4)} • Temporada ${player.currentSeason || 2026}
                     </div>
                 </div>
-                <span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}">
-                    ${isReady ? "PRONTO" : "AGUARDANDO"}
-                </span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}" style="padding: 4px 8px; border-radius: 4px; font-weight:bold; font-size:0.75rem; background: ${isReady ? '#10B981' : '#F59E0B'}; color: #000;">
+                        ${isReady ? "PRONTO" : "AGUARDANDO"}
+                    </span>
+                    ${isMe ? `
+                        <button class="btn btn-sm ${isReady ? 'btn-danger' : 'btn-success'} btn-ready-toggle" 
+                                onclick="window.firebaseIntegration.toggleReadyStatus()">
+                            ${isReady ? 'CANCELAR' : 'DEFINIR PRONTO'}
+                        </button>
+                    ` : ''}
+                </div>
             `;
             
             container.appendChild(card);
+            indexCount++;
         });
     }
 }
