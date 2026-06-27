@@ -452,17 +452,24 @@ function checkAllPlayersReady() {
 
             const playerIds = Object.keys(players);
             const allReady = playerIds.every(id => players[id].ready === true);
+            const startBtn = document.getElementById('btnStartCareer'); // Botão de Iniciar Carreira do seu HTML
 
-            if (allReady && playerIds.length >= 2) {
+            if (allReady && playerIds.length >= 1) {
                 db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(true);
-                document.getElementById("lobbyStatusText").textContent = "Todos prontos! Temporada pode começar.";
+                document.getElementById("lobbyStatusText").textContent = "Todos prontos! A sessão está liberada.";
                 document.getElementById("lobbyStatus").style.borderColor = "var(--success)";
+                
+                // Destrava o botão de Iniciar Carreira na tela
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('oculto');
+                }
             } else {
                 db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(false);
+                if (startBtn) startBtn.disabled = true;
             }
         });
 }
-
 function listenForLobbyUpdates() {
     if (!lobbyId || !db) return;
 
