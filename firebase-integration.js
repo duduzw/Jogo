@@ -2110,22 +2110,8 @@ window.firebaseIntegration = {
     autoReconnectToSession,
     cancelReconnection,
     isOnlineMode: () => isOnlineMode,
-    getFriendData,
-    loadFirebasePlayersIntoLocalState,
-    setupFirebasePlayersListener,
-    removeFirebasePlayersListener,
-    // Room-based multiplayer functions
-    createRoom,
-    joinRoom,
-    leaveRoom,
-    setReadyForMatch,
-    setReadyForSeasonEnd,
-    // Pre-game lobby functions
-    createPregameRoom,
-    joinPregameRoom,
-    leavePregameLobby,
-    toggleLobbyReady,
-    startCareerFromLobby,
-    isHost: () => isHost,
-    getRoomId: () => roomId
+    getFriendData
 };
+
+// Atalho global no objeto window para os botões do HTML acessarem direto
+window.toggleReadyStatus = toggleReadyStatus;
