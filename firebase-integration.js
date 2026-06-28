@@ -416,11 +416,12 @@ function joinExistingLobby() {
 function addPlayerToLobby(playerIdToAdd) {
     if (!lobbyId || !db) return;
 
+    // Type safety checks to prevent Firebase crashes when character not created
     const playerData = {
-        nome: jogador.nome,
+        nome: (typeof window.jogador !== 'undefined' && window.jogador.nome) ? window.jogador.nome : null,
         ready: false,
-        currentSeason: anoAtual,
-        clubeId: jogador.clubeId
+        currentSeason: (typeof window.anoAtual !== 'undefined') ? window.anoAtual : 2026,
+        clubeId: (typeof window.jogador !== 'undefined' && window.jogador.clubeId) ? window.jogador.clubeId : null
     };
 
     db.ref(`lobbies/${lobbyId}/players/${playerIdToAdd}`).set(playerData);
@@ -442,6 +443,9 @@ function toggleReadyStatus() {
         });
 }
 
+// Expose to window for use in main.js
+window.toggleReadyStatus = toggleReadyStatus;
+
 function checkAllPlayersReady() {
     if (!lobbyId || !db) return;
 
@@ -452,24 +456,30 @@ function checkAllPlayersReady() {
 
             const playerIds = Object.keys(players);
             const allReady = playerIds.every(id => players[id].ready === true);
-            const startBtn = document.getElementById('btnStartCareer'); // Botão de Iniciar Carreira do seu HTML
 
-            if (allReady && playerIds.length >= 1) {
+            if (allReady && playerIds.length >= 2) {
                 db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(true);
-                document.getElementById("lobbyStatusText").textContent = "Todos prontos! A sessão está liberada.";
+                document.getElementById("lobbyStatusText").textContent = "Todos prontos! Temporada pode começar.";
                 document.getElementById("lobbyStatus").style.borderColor = "var(--success)";
                 
-                // Destrava o botão de Iniciar Carreira na tela
+                // Enable start button if it exists
+                const startBtn = document.getElementById("btnStartCareer");
                 if (startBtn) {
+                    startBtn.classList.remove("oculto");
                     startBtn.disabled = false;
-                    startBtn.classList.remove('oculto');
                 }
             } else {
                 db.ref(`lobbies/${lobbyId}/seasonSync/allPlayersReady`).set(false);
-                if (startBtn) startBtn.disabled = true;
+                
+                // Disable start button if it exists
+                const startBtn = document.getElementById("btnStartCareer");
+                if (startBtn) {
+                    startBtn.disabled = true;
+                }
             }
         });
 }
+
 function listenForLobbyUpdates() {
     if (!lobbyId || !db) return;
 
@@ -486,47 +496,37 @@ function updateLobbyUI(lobbyData) {
     const container = document.getElementById("lobbyPlayers");
     if (!container) return;
     
-    // 🚨 REGRA DE OURO: Limpa o container imediatamente para matar o bug dos nomes duplicados
+    // CRITICAL: Clear container immediately to prevent duplicate player bug
     container.innerHTML = "";
 
     if (lobbyData.players) {
-        const totalPlayers = Object.keys(lobbyData.players).length;
-        let indexCount = 1;
-
         Object.entries(lobbyData.players).forEach(([pid, player]) => {
-            const isReady = player.ready === true;
-            const isMe = (pid === playerId);
-            const isHost = (indexCount === 1);
-
-            // Se o nome for indefinido/vazio (antes da criação do personagem), usa o Placeholder
-            const displayName = player.nome ? player.nome : `Treinador/Jogador #${indexCount} ${isHost ? '(Host)' : ''}`;
-
+            const isReady = player.ready || false;
+            const isMe = pid === playerId;
+            
+            // Use placeholder name if player.nome doesn't exist (character not created yet)
+            const playerName = player.nome || `Manager/Player #${pid.substring(0, 4)} (Aguardando Criação)`;
+            const clubName = player.clubeId || "---";
+            const season = player.currentSeason || "---";
+            
             const card = document.createElement("div");
             card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
-            card.style = "background: rgba(15,23,42,0.8); border: 1px solid var(--border); padding: 12px; border-radius: 8px; margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;";
             
             card.innerHTML = `
                 <div style="flex:1;">
-                    <strong style="color:#fff; font-size:1.05rem;">${displayName}</strong>
-                    <div style="font-size:0.8rem; color:var(--text-muted);">
-                        ID: ${pid.slice(-4)} • Temporada ${player.currentSeason || 2026}
+                    <strong>${playerName}</strong>
+                    <div style="font-size:0.85rem; color:var(--text-muted);">
+                        ${clubName} • Temporada ${season}
                     </div>
                 </div>
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}" style="padding: 4px 8px; border-radius: 4px; font-weight:bold; font-size:0.75rem; background: ${isReady ? '#10B981' : '#F59E0B'}; color: #000;">
-                        ${isReady ? "PRONTO" : "AGUARDANDO"}
-                    </span>
-                    ${isMe ? `
-                        <button class="btn btn-sm ${isReady ? 'btn-danger' : 'btn-success'} btn-ready-toggle" 
-                                onclick="window.firebaseIntegration.toggleReadyStatus()">
-                            ${isReady ? 'CANCELAR' : 'DEFINIR PRONTO'}
-                        </button>
-                    ` : ''}
-                </div>
+                ${isMe ? `<button class="lobby-ready-toggle ${isReady ? "ready" : "not-ready"}" onclick="window.toggleReadyStatus()">
+                    ${isReady ? "✓ PRONTO" : "AGUARDANDO"}
+                </button>` : `<span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}">
+                    ${isReady ? "PRONTO" : "AGUARDANDO"}
+                </span>`}
             `;
             
             container.appendChild(card);
-            indexCount++;
         });
     }
 }
@@ -2110,8 +2110,22 @@ window.firebaseIntegration = {
     autoReconnectToSession,
     cancelReconnection,
     isOnlineMode: () => isOnlineMode,
-    getFriendData
+    getFriendData,
+    loadFirebasePlayersIntoLocalState,
+    setupFirebasePlayersListener,
+    removeFirebasePlayersListener,
+    // Room-based multiplayer functions
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    setReadyForMatch,
+    setReadyForSeasonEnd,
+    // Pre-game lobby functions
+    createPregameRoom,
+    joinPregameRoom,
+    leavePregameLobby,
+    toggleLobbyReady,
+    startCareerFromLobby,
+    isHost: () => isHost,
+    getRoomId: () => roomId
 };
-
-// Atalho global no objeto window para os botões do HTML acessarem direto
-window.toggleReadyStatus = toggleReadyStatus;

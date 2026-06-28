@@ -1,4 +1,4 @@
-﻿﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
+﻿﻿﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
 import { MatchEngine } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
@@ -32,14 +32,27 @@ if (typeof window.lobbyPlayerId === 'undefined') window.lobbyPlayerId = null;
 window.managerState = {
     ativo: false,
     clubeId: null,
-    nomeClube: "",
-    orcamentoTransferencias: 15500000, // €15.5M default
-    orcamentoSalarios: 450000,
-    confiancaDiretoria: 85,
-    formacao: "4-3-3",
-    mentalidade: "Equilibrada",
+    clubeNome: null,
+    orçamentoTransferências: 0,
+    orçamentoSalários: 0,
+    confiançaDiretoria: 100,
+    objetivosTemporada: {
+        posiçãoLiga: null,
+        títuloLiga: false,
+        títuloCopa: false,
+        títuloInternacional: false
+    },
     elenco: [],
-    titulares: {} // Map: { 'GK': {playerObj}, 'CB1': {playerObj} }
+    táticas: {
+        formação: "4-4-2",
+        mentalidade: "Equilibrada",
+        estiloJogo: "Posse"
+    },
+    transferências: {
+        jogadoresInteresse: [],
+        ofertasPendentes: [],
+        históricoTransferências: []
+    }
 };
 
 // Initialize Manager Mode with club selection
@@ -50,7 +63,8 @@ window.inicializarModoManager = function(clubeId) {
         return;
     }
 
-    // Initialize manager state
+    // ACTIVATE MANAGER MODE - COMPLETELY ISOLATE FROM PLAYER MODE
+    window.managerState.ativo = true;
     window.managerState.clubeId = clubeId;
     window.managerState.clubeNome = clube.nome;
     window.managerState.orçamentoTransferências = clube.orçamento || 50000000;
@@ -60,8 +74,21 @@ window.inicializarModoManager = function(clubeId) {
     // Extract squad from club
     window.managerState.elenco = window.jogadoresIA.filter(j => j.clubeId === clubeId);
 
+    // DISABLE PLAYER MODE TRIGGERS AND INTERFACES
+    // Clear player career state to prevent conflicts
+    window.jogador = undefined;
+    
+    // Hide player-specific UI elements
+    const playerElements = document.querySelectorAll('[data-view="view-home"], [data-view="view-classificacao"], [data-view="view-chaveamentos"]');
+    playerElements.forEach(el => {
+        if (el.classList.contains('menu-item')) {
+            // Keep navigation but mark as player-only if needed
+        }
+    });
+
     console.log("Modo Manager inicializado para:", clube.nome);
     console.log("Elenco:", window.managerState.elenco.length, "jogadores");
+    console.log("Player Mode desativado - Manager Mode ativo");
 };
 
 // Get available formations
@@ -4097,12 +4124,20 @@ function gerarAgenda() {
     const jogosLiga = adversariosLiga.filter(a => a.id !== "folga_temp").length * 2;
     const slotsLiga = distribuirSlots(jogosLiga || 1, perfilPais.ligaInicio, perfilPais.ligaFim);
     let jogoLigaIdx = 0;
+    
+    // Inject bye weeks (folga) at strategic points in the season
+    const byeWeekSlots = [Math.floor(jogosLiga * 0.25), Math.floor(jogosLiga * 0.5), Math.floor(jogosLiga * 0.75)];
+    
     for(let r = 0; r < adversariosLiga.length * 2; r++) {
         let adv = adversariosLiga[r % adversariosLiga.length];
-        if(adv.id !== "folga_temp") {
+        
+        // Check if this round should be a bye week
+        if (byeWeekSlots.includes(jogoLigaIdx)) {
+            adicionarEventoCalendario({ tipo: "Folga (Recuperação)", compId: "folga", adversarioId: null, isMataMata: false, fase: "Folga", isFolga: true }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, "Folga", "europeu");
+        } else if(adv.id !== "folga_temp") {
             adicionarEventoCalendario({ tipo: `${nomeLiga} (J${jogoLigaIdx + 1})`, compId: meuClube.ligaId, adversarioId: adv.id, isMataMata: false, fase: "Liga" }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, nomeLiga, perfilPais.modelo);
-            jogoLigaIdx++;
         }
+        jogoLigaIdx++;
     }
     
     competicoes.filter(c => c.tipo.includes("copa") && obterPaisCompeticaoId(c.id) === pais && c.tipo !== "supercopa").forEach((copa, idx) => {
@@ -4911,22 +4946,32 @@ function atualizarHub() {
 
     if (uiProx) {
         if (!agendaEsgotada) {
-            const minhaSelecao = comp.isSelecao ? SELECOES.find(s => s.id === (comp.mandanteId || jogador.selecaoId)) : null;
-            let adv = comp.isSelecao ? SELECOES.find(s => s.id === comp.adversarioId) : clubes.find(c => c.id === comp.adversarioId);
-            const meuNomeCard = comp.isSelecao ? (minhaSelecao?.nome || "Selecao") : (meuClube ? meuClube.nome : "Teu clube");
-            const meuLogoCard = comp.isSelecao ? (minhaSelecao?.logo || "") : (meuClube ? obterUrlImagem(meuClube, 'clube') : "");
-            const advLogoCard = comp.isSelecao ? (adv?.logo || "") : (adv ? obterUrlImagem(adv, 'clube') : "");
-            const compLogoCard = comp.isSelecao ? (COMPETICOES_SELECOES.find(c => c.id === comp.compConfigId)?.logo || advLogoCard) : obterUrlImagem(comp.compId, 'competicao');
-            const dataCompromisso = comp.dataCalendario || formatarDataCalendario(comp);
-            uiProx.innerHTML = `
-                <div class="next-match-meta"><span><img src="${compLogoCard}" class="comp-logo" onerror="this.style.display='none'"> 🏆 ${comp.tipo}</span><strong>${dataCompromisso}</strong></div>
-                <div style="font-size:1.4rem; display:flex; justify-content:space-between; align-items:center;">
-                    <div style="display:flex; align-items:center;"><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;margin-right:10px;"><img src="${meuLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div><span style="color:var(--theme-primary); font-weight:800; font-size:1.6rem;">${meuNomeCard}</span></div> 
-                    <span style="color:var(--text-muted); font-size:1rem; margin:0 15px;">VS</span> 
-                    <div style="display:flex; align-items:center;"><span style="font-weight:600; font-size:1.6rem; margin-right:10px;">${adv?.nome || 'Rival'}</span><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;"><img src="${advLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div></div>
-                </div>`;
-            const textoAcao = jogador.lesaoRodadas > 0 ? "Fora por Lesão ➔" : (jogador.titularidade >= 68 ? "Entrar em Relvado ➔" : "Entrar do Banco ➔");
-            setText("btnJogar", textoAcao); aplicarTemaCompeticao(comp.compConfigId || comp.compId); document.getElementById("btnJogar").disabled = false;
+            // Check if this is a bye week (folga)
+            if (comp.isFolga) {
+                uiProx.innerHTML = `
+                    <div class="next-match-meta"><span>🏆 ${comp.tipo}</span><strong>${formatarDataCalendario(comp)}</strong></div>
+                    <div style="font-size:1.4rem; font-weight:700; color:var(--success);">🛌 Semana de Recuperação</div>
+                    <div style="font-size:0.9rem; color:var(--text-muted);">Aproveita para recuperar energia e treinar</div>
+                `;
+                setText("btnJogar", "Passar Semana (Descanso) ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogar").disabled = false;
+            } else {
+                const minhaSelecao = comp.isSelecao ? SELECOES.find(s => s.id === (comp.mandanteId || jogador.selecaoId)) : null;
+                let adv = comp.isSelecao ? SELECOES.find(s => s.id === comp.adversarioId) : clubes.find(c => c.id === comp.adversarioId);
+                const meuNomeCard = comp.isSelecao ? (minhaSelecao?.nome || "Selecao") : (meuClube ? meuClube.nome : "Teu clube");
+                const meuLogoCard = comp.isSelecao ? (minhaSelecao?.logo || "") : (meuClube ? obterUrlImagem(meuClube, 'clube') : "");
+                const advLogoCard = comp.isSelecao ? (adv?.logo || "") : (adv ? obterUrlImagem(adv, 'clube') : "");
+                const compLogoCard = comp.isSelecao ? (COMPETICOES_SELECOES.find(c => c.id === comp.compConfigId)?.logo || advLogoCard) : obterUrlImagem(comp.compId, 'competicao');
+                const dataCompromisso = comp.dataCalendario || formatarDataCalendario(comp);
+                uiProx.innerHTML = `
+                    <div class="next-match-meta"><span><img src="${compLogoCard}" class="comp-logo" onerror="this.style.display='none'"> 🏆 ${comp.tipo}</span><strong>${dataCompromisso}</strong></div>
+                    <div style="font-size:1.4rem; display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; align-items:center;"><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;margin-right:10px;"><img src="${meuLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div><span style="color:var(--theme-primary); font-weight:800; font-size:1.6rem;">${meuNomeCard}</span></div> 
+                        <span style="color:var(--text-muted); font-size:1rem; margin:0 15px;">VS</span> 
+                        <div style="display:flex; align-items:center;"><span style="font-weight:600; font-size:1.6rem; margin-right:10px;">${adv?.nome || 'Rival'}</span><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;"><img src="${advLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div></div>
+                    </div>`;
+                const textoAcao = jogador.lesaoRodadas > 0 ? "Fora por Lesão ➔" : (jogador.titularidade >= 68 ? "Entrar em Relvado ➔" : "Entrar do Banco ➔");
+                setText("btnJogar", textoAcao); aplicarTemaCompeticao(comp.compConfigId || comp.compId); document.getElementById("btnJogar").disabled = false;
+            }
         } else if (!failsafeAtivado) { 
             uiProx.innerHTML = `<div style="font-size:1.2rem; font-weight:700; color:var(--warning);">⏳ Sem jogos marcados. Finais e decisões globais a decorrer...</div>`;
             setText("btnJogar", "Avançar Semana Global ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogar").disabled = false;
@@ -5198,106 +5243,173 @@ document.addEventListener("change", function(event) {
 // ==========================================
 // ⚙️ INÍCIO, PARTIDAS E BOTÕES MESTRES
 // ==========================================
+
+// Wipe Save and Return to Main Menu
+document.getElementById("btnReset")?.addEventListener("click", () => {
+    if (confirm("Tem a certeza que queres apagar todo o progresso e voltar ao menu principal?")) {
+        // Clear localStorage
+        localStorage.clear();
+        
+        // Leave Firebase lobby if online
+        if (window.firebaseIntegration && window.firebaseIntegration.leaveLobby) {
+            window.firebaseIntegration.leaveLobby();
+        }
+        
+        // Reload page to return to initial screen
+        location.reload();
+    }
+});
+
+// Disable National Team Call-up Animation Toggle
+window.configPularAnimacaoConvocacao = localStorage.getItem('skipCallupAnimation') === 'true';
+
+document.getElementById("chkDisableCallupAnim")?.addEventListener("change", (e) => {
+    window.configPularAnimacaoConvocacao = e.target.checked;
+    localStorage.setItem('skipCallupAnimation', e.target.checked);
+});
 document.getElementById("btnJogar")?.addEventListener("click", () => {
-    // Check if we're on the main menu (telaModoSelecao) or in-game hub
-    const telaModoSelecao = document.getElementById("telaModoSelecao");
-    if (!telaModoSelecao.classList.contains("oculto")) {
-        // Main menu - redirect to mode selection
-        mudarTela("telaModo");
-        return;
-    }
-    
-    // In-game hub - proceed with match simulation
-    inicializarEstadoCarreiraJogador();
-    let comp = agendaTemporada[rodadaAtual - 1];
-    let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
-
-    // Check if in online room mode and handle ready state
-    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
-        if (textoBtn.includes("gala")) {
-            processarFimTemporada();
+    try {
+        // Check if we're on the main menu (telaModoSelecao) or in-game hub
+        const telaModoSelecao = document.getElementById("telaModoSelecao");
+        if (!telaModoSelecao.classList.contains("oculto")) {
+            // Main menu - redirect to mode selection
+            mudarTela("telaModo");
             return;
         }
+        
+        // In-game hub - proceed with match simulation
+        inicializarEstadoCarreiraJogador();
+        let comp = agendaTemporada[rodadaAtual - 1];
+        let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
 
-        if (!textoBtn.includes("avançar semana") && comp) {
-            // Set ready for match and wait for room sync
-            window.firebaseIntegration.setReadyForMatch(true);
-            mostrarToast("Sala Online", "Aguardando amigo para simular partida...", "info");
-            document.getElementById("btnJogar").disabled = true;
-            document.getElementById("btnJogar").innerText = "Aguardando...";
-            return;
-        }
-    }
+        // Check if in online room mode and handle ready state
+        if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+            if (textoBtn.includes("gala")) {
+                processarFimTemporada();
+                return;
+            }
 
-    if (textoBtn.includes("avançar semana")) {
-        simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
-        mostrarToast("Simulação", "Semana global avançada com sucesso.", "info");
-        return;
-    } else if (textoBtn.includes("gala")) {
-        processarFimTemporada();
-        return;
-    }
-    if(!comp) return;
-
-    if(jogador.lesaoRodadas > 0) {
-        mostrarToast("Departamento Médico", `Estás lesionado por ${jogador.lesaoRodadas} semana(s). A equipa jogou sem ti.`, "warning");
-        simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
-        return;
-    }
-
-    const isSel = !!comp.isSelecao;
-    const mandanteId = isSel ? (comp.mandanteId || jogador.selecaoId) : jogador.clubeId;
-    const visitanteId = comp.adversarioId;
-    const advPre = isSel ? SELECOES.find(s => s.id === visitanteId) : clubes.find(c => c.id === visitanteId);
-    if(Math.random() < 0.28) abrirEntrevista("pre", { adversario: advPre?.nome || "o adversário" });
-
-    let mP = document.getElementById("modalPartida"); if(mP) mP.classList.remove("oculto");
-    let engine = new MatchEngine(jogador, mandanteId, visitanteId);
-    if(isSel) {
-        engine.isSelecao = true;
-        const selM = SELECOES.find(s => s.id === mandanteId);
-        const selV = SELECOES.find(s => s.id === visitanteId);
-        if(selM) { engine.nomeMandante = selM.nome; engine.forcaMandante = calcularForcaSelecao(selM.id); }
-        if(selV) { engine.nomeVisitante = selV.nome; engine.forcaVisitante = calcularForcaSelecao(selV.id); }
-    }
-    let casaObj = isSel ? SELECOES.find(s => s.id === mandanteId) : (clubes.find(c => c.id === engine.clubeMandanteId) || engine.nomeMandante);
-    let visitaObj = isSel ? SELECOES.find(s => s.id === visitanteId) : (clubes.find(c => c.id === engine.clubeVisitanteId) || engine.nomeVisitante);
-
-    let imgC = document.getElementById("imgTimeCasa"); if(imgC) imgC.src = isSel ? (casaObj?.logo || "") : obterUrlImagem(casaObj, 'clube');
-    let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
-    setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
-    setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
-    setText("uiConsolePartida", "<div style='color:#00ff88; text-align:center;'>⚽ O árbitro apita para o início do jogo!</div>");
-
-    engine.simularPartidaAoVivo((min, gc, gv, log) => {
-        setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
-        if(log) {
-            let c = document.getElementById("uiConsolePartida");
-            if(c){
-                const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
-                const golTime = !meuGol && (log.includes("GOLO") || log.includes("GOL"));
-                c.innerHTML += `<div class="${meuGol ? "gol-meu" : (golTime ? "gol-time" : "")}">${meuGol ? "⭐ " : ""}${log}</div>`;
-                c.scrollTop = c.scrollHeight;
+            if (!textoBtn.includes("avançar semana") && comp) {
+                // Set ready for match and wait for room sync
+                window.firebaseIntegration.setReadyForMatch(true);
+                mostrarToast("Sala Online", "Aguardando amigo para simular partida...", "info");
+                document.getElementById("btnJogar").disabled = true;
+                document.getElementById("btnJogar").innerText = "Aguardando...";
+                return;
             }
         }
-    }, (gc, gv) => {
-        const vindoDoBanco = jogador.titularidade < 68;
-        jogador.energia = Math.max(0, jogador.energia - (vindoDoBanco ? 15 : 25));
-        const meuTimeId = isSel ? jogador.selecaoId : jogador.clubeId;
-        const souMandante = engine.clubeMandanteId === meuTimeId;
-        let pGolo = ({ "Atacante":0.65, "Ponta":0.48, "Meia Ofensivo":0.34, "Meio-Campista":0.22, "Volante":0.10, "Lateral":0.08, "Zagueiro":0.05, "Goleiro":0.01 })[jogador.posicao] ?? 0.25;
-        let pAssist = ({ "Atacante":0.25, "Ponta":0.42, "Meia Ofensivo":0.58, "Meio-Campista":0.50, "Volante":0.26, "Lateral":0.32, "Zagueiro":0.08, "Goleiro":0.02 })[jogador.posicao] ?? 0.25;
-        if(jogador.geral >= 84 && ["Atacante","Ponta","Meia Ofensivo"].includes(jogador.posicao)) pGolo += 0.10;
-        if(jogador.geral >= 84 && ["Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao)) pAssist += 0.10;
 
-        let golosAAtribuir = souMandante ? gc : gv;
-        if(vindoDoBanco) golosAAtribuir = Math.max(0, Math.floor(golosAAtribuir * 0.55));
-        let golsJogadorPartida = 0; let assistsJogadorPartida = 0;
+        if (textoBtn.includes("avançar semana")) {
+            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            mostrarToast("Simulação", "Semana global avançada com sucesso.", "info");
+            return;
+        } else if (textoBtn.includes("gala")) {
+            processarFimTemporada();
+            return;
+        } else if (textoBtn.includes("descanso") && comp.isFolga) {
+            // Handle bye week - give bonus energy recovery
+            jogador.energia = Math.min(100, jogador.energia + 30);
+            if(jogador.lesaoRodadas > 0) jogador.lesaoRodadas = Math.max(0, jogador.lesaoRodadas - 1);
+            jogador.moral = Math.min(100, jogador.moral + 5);
+            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            mostrarToast("Recuperação", "Recuperaste energia e moral durante a semana de folga!", "success");
+            return;
+        }
+        if(!comp) return;
 
-        // Track stats separately for club vs international
-        if(!isSel) {
-            jogador.estatisticasAtuais.jogos++;
-            if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
+        // VALIDATION: Check player state before match
+        if (typeof jogador === 'undefined' || !jogador) {
+            mostrarToast("Erro", "Dados do jogador não encontrados. Recarrega o jogo.", "danger");
+            return;
+        }
+
+        if(jogador.lesaoRodadas > 0) {
+            mostrarToast("Departamento Médico", `Estás lesionado por ${jogador.lesaoRodadas} semana(s). A equipa jogou sem ti.`, "warning");
+            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            return;
+        }
+
+        // VALIDATION: Check energy/fitness
+        if (typeof jogador.energia === 'undefined' || jogador.energia === null || jogador.energia < 0) {
+            jogador.energia = 100;
+            console.warn("Energy was invalid, reset to 100");
+        }
+
+        const isSel = !!comp.isSelecao;
+        const mandanteId = isSel ? (comp.mandanteId || jogador.selecaoId) : jogador.clubeId;
+        const visitanteId = comp.adversarioId;
+        
+        // VALIDATION: Check opponent exists
+        if (!visitanteId) {
+            mostrarToast("Erro", "Adversário não encontrado. Contacta o suporte.", "danger");
+            return;
+        }
+
+        const advPre = isSel ? SELECOES.find(s => s.id === visitanteId) : clubes.find(c => c.id === visitanteId);
+        if (!advPre) {
+            mostrarToast("Erro", "Dados do adversário não encontrados.", "danger");
+            return;
+        }
+
+        // VALIDATION: Check Manager Mode starting XI
+        if (window.managerState && window.managerState.ativo) {
+            // Ensure valid starting XI is set
+            if (!window.managerState.táticas || !window.managerState.táticas.formação) {
+                mostrarToast("Erro", "Formação não definida. Configura as tuas táticas.", "warning");
+                return;
+            }
+        }
+
+        if(Math.random() < 0.28) abrirEntrevista("pre", { adversario: advPre?.nome || "o adversário" });
+
+        let mP = document.getElementById("modalPartida"); if(mP) mP.classList.remove("oculto");
+        let engine = new MatchEngine(jogador, mandanteId, visitanteId);
+        if(isSel) {
+            engine.isSelecao = true;
+            const selM = SELECOES.find(s => s.id === mandanteId);
+            const selV = SELECOES.find(s => s.id === visitanteId);
+            if(selM) { engine.nomeMandante = selM.nome; engine.forcaMandante = calcularForcaSelecao(selM.id); }
+            if(selV) { engine.nomeVisitante = selV.nome; engine.forcaVisitante = calcularForcaSelecao(selV.id); }
+        }
+        let casaObj = isSel ? SELECOES.find(s => s.id === mandanteId) : (clubes.find(c => c.id === engine.clubeMandanteId) || engine.nomeMandante);
+        let visitaObj = isSel ? SELECOES.find(s => s.id === visitanteId) : (clubes.find(c => c.id === engine.clubeVisitanteId) || engine.nomeVisitante);
+
+        let imgC = document.getElementById("imgTimeCasa"); if(imgC) imgC.src = isSel ? (casaObj?.logo || "") : obterUrlImagem(casaObj, 'clube');
+        let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
+        setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
+        setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
+        setText("uiConsolePartida", "<div style='color:#00ff88; text-align:center;'>⚽ O árbitro apita para o início do jogo!</div>");
+
+        engine.simularPartidaAoVivo((min, gc, gv, log) => {
+            setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
+            if(log) {
+                let c = document.getElementById("uiConsolePartida");
+                if(c){
+                    const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
+                    const golTime = !meuGol && (log.includes("GOLO") || log.includes("GOL"));
+                    c.innerHTML += `<div class="${meuGol ? "gol-meu" : (golTime ? "gol-time" : "")}">${meuGol ? "⭐ " : ""}${log}</div>`;
+                    c.scrollTop = c.scrollHeight;
+                }
+            }
+        }, (gc, gv) => {
+            try {
+                const vindoDoBanco = jogador.titularidade < 68;
+                jogador.energia = Math.max(0, jogador.energia - (vindoDoBanco ? 15 : 25));
+                const meuTimeId = isSel ? jogador.selecaoId : jogador.clubeId;
+                const souMandante = engine.clubeMandanteId === meuTimeId;
+                let pGolo = ({ "Atacante":0.65, "Ponta":0.48, "Meia Ofensivo":0.34, "Meio-Campista":0.22, "Volante":0.10, "Lateral":0.08, "Zagueiro":0.05, "Goleiro":0.01 })[jogador.posicao] ?? 0.25;
+                let pAssist = ({ "Atacante":0.25, "Ponta":0.42, "Meia Ofensivo":0.58, "Meio-Campista":0.50, "Volante":0.26, "Lateral":0.32, "Zagueiro":0.08, "Goleiro":0.02 })[jogador.posicao] ?? 0.25;
+                if(jogador.geral >= 84 && ["Atacante","Ponta","Meia Ofensivo"].includes(jogador.posicao)) pGolo += 0.10;
+                if(jogador.geral >= 84 && ["Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao)) pAssist += 0.10;
+
+                let golosAAtribuir = souMandante ? gc : gv;
+                if(vindoDoBanco) golosAAtribuir = Math.max(0, Math.floor(golosAAtribuir * 0.55));
+                let golsJogadorPartida = 0; let assistsJogadorPartida = 0;
+
+                // Track stats separately for club vs international
+                if(!isSel) {
+                    jogador.estatisticasAtuais.jogos++;
+                    if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
             if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
             registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
         } else {
@@ -5320,21 +5432,29 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         if(msgBtn) {
             msgBtn.classList.remove("oculto");
             msgBtn.onclick = () => {
-                msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
-                resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
-                let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
-                if(!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
-                jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
-                if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
-                simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+                try {
+                    msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
+                    resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
+                    let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
+                    if(!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
+                    jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
+                    if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
+                    simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
 
-                // Reset ready state after match
-                if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
-                    window.firebaseIntegration.setReadyForMatch(false);
+                    // Reset ready state after match
+                    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+                        window.firebaseIntegration.setReadyForMatch(false);
+                    }
+                } catch (error) {
+                    console.error("Error processing match result:", error);
+                    mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
                 }
             };
         }
-    });
+    } catch (error) {
+        console.error("Error entering the pitch:", error);
+        mostrarToast("Erro", "Erro ao iniciar partida. Tenta novamente.", "danger");
+    }
 });
 
 document.getElementById("btnDescansar")?.addEventListener("click", () => {
