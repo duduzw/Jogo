@@ -5452,6 +5452,11 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
             };
         }
     } catch (error) {
+        console.error("Error in match result callback:", error);
+        mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
+    }
+    });
+    } catch (error) {
         console.error("Error entering the pitch:", error);
         mostrarToast("Erro", "Erro ao iniciar partida. Tenta novamente.", "danger");
     }
