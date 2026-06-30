@@ -5302,8 +5302,9 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
     try {
         // Check if we're on the main menu (telaModoSelecao) or in-game hub
         const telaModoSelecao = document.getElementById("telaModoSelecao");
-        if (!telaModoSelecao.classList.contains("oculto")) {
-            // Main menu - redirect to mode selection
+        
+        // 🛡️ Correção de segurança para evitar quebra caso o elemento não exista na DOM
+        if (telaModoSelecao && !telaModoSelecao.classList.contains("oculto")) {
             mudarTela("telaModo");
             return;
         }
@@ -5313,6 +5314,12 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         let comp = agendaTemporada[rodadaAtual - 1];
         let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
 
+        // 🛡️ Movemos a proteção do "comp" para cá para evitar erros de leitura abaixo
+        if (!comp && !textoBtn.includes("gala") && !textoBtn.includes("avançar semana")) {
+            console.warn("Nenhum compromisso agendado encontrado para esta rodada.");
+            return;
+        }
+
         // Check if in online room mode and handle ready state
         if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
             if (textoBtn.includes("gala")) {
@@ -5321,7 +5328,6 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
             }
 
             if (!textoBtn.includes("avançar semana") && comp) {
-                // Set ready for match and wait for room sync
                 window.firebaseIntegration.setReadyForMatch(true);
                 mostrarToast("Sala Online", "Aguardando amigo para simular partida...", "info");
                 document.getElementById("btnJogar").disabled = true;
@@ -5331,22 +5337,29 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         }
 
         if (textoBtn.includes("avançar semana")) {
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            simularRodadaMundial(); 
+            rodadaAtual++; 
+            window.salvarJogo(); 
+            atualizarHub();
             mostrarToast("Simulação", "Semana global avançada com sucesso.", "info");
             return;
         } else if (textoBtn.includes("gala")) {
             processarFimTemporada();
             return;
-        } else if (textoBtn.includes("descanso") && comp.isFolga) {
+        } else if (textoBtn.includes("descanso") && comp?.isFolga) { // 🛡️ Uso seguro do operador ?.
             // Handle bye week - give bonus energy recovery
             jogador.energia = Math.min(100, jogador.energia + 30);
-            if(jogador.lesaoRodadas > 0) jogador.lesaoRodadas = Math.max(0, jogador.lesaoRodadas - 1);
+            if (jogador.lesaoRodadas > 0) jogador.lesaoRodadas = Math.max(0, jogador.lesaoRodadas - 1);
             jogador.moral = Math.min(100, jogador.moral + 5);
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            
+            simularRodadaMundial(); 
+            rodadaAtual++; 
+            window.salvarJogo(); 
+            atualizarHub();
+            
             mostrarToast("Recuperação", "Recuperaste energia e moral durante a semana de folga!", "success");
             return;
         }
-        if(!comp) return;
 
         // VALIDATION: Check player state before match
         if (typeof jogador === 'undefined' || !jogador) {
@@ -5354,9 +5367,12 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
             return;
         }
 
-        if(jogador.lesaoRodadas > 0) {
+        if (jogador.lesaoRodadas > 0) {
             mostrarToast("Departamento Médico", `Estás lesionado por ${jogador.lesaoRodadas} semana(s). A equipa jogou sem ti.`, "warning");
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            simularRodadaMundial(); 
+            rodadaAtual++; 
+            window.salvarJogo(); 
+            atualizarHub();
             return;
         }
 
@@ -5384,38 +5400,41 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
 
         // VALIDATION: Check Manager Mode starting XI
         if (window.managerState && window.managerState.ativo) {
-            // Ensure valid starting XI is set
             if (!window.managerState.táticas || !window.managerState.táticas.formação) {
                 mostrarToast("Erro", "Formação não definida. Configura as tuas táticas.", "warning");
                 return;
             }
         }
 
-        if(Math.random() < 0.28) abrirEntrevista("pre", { adversario: advPre?.nome || "o adversário" });
+        if (Math.random() < 0.28) abrirEntrevista("pre", { adversario: advPre?.nome || "o adversário" });
 
-        let mP = document.getElementById("modalPartida"); if(mP) mP.classList.remove("oculto");
+        let mP = document.getElementById("modalPartida"); 
+        if (mP) mP.classList.remove("oculto");
+        
         let engine = new MatchEngine(jogador, mandanteId, visitanteId);
-        if(isSel) {
+        if (isSel) {
             engine.isSelecao = true;
             const selM = SELECOES.find(s => s.id === mandanteId);
             const selV = SELECOES.find(s => s.id === visitanteId);
-            if(selM) { engine.nomeMandante = selM.nome; engine.forcaMandante = calcularForcaSelecao(selM.id); }
-            if(selV) { engine.nomeVisitante = selV.nome; engine.forcaVisitante = calcularForcaSelecao(selV.id); }
+            if (selM) { engine.nomeMandante = selM.nome; engine.forcaMandante = calcularForcaSelecao(selM.id); }
+            if (selV) { engine.nomeVisitante = selV.nome; engine.forcaVisitante = calcularForcaSelecao(selV.id); }
         }
         let casaObj = isSel ? SELECOES.find(s => s.id === mandanteId) : (clubes.find(c => c.id === engine.clubeMandanteId) || engine.nomeMandante);
         let visitaObj = isSel ? SELECOES.find(s => s.id === visitanteId) : (clubes.find(c => c.id === engine.clubeVisitanteId) || engine.nomeVisitante);
 
-        let imgC = document.getElementById("imgTimeCasa"); if(imgC) imgC.src = isSel ? (casaObj?.logo || "") : obterUrlImagem(casaObj, 'clube');
-        let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
+        let imgC = document.getElementById("imgTimeCasa"); if (imgC) imgC.src = isSel ? (casaObj?.logo || "") : obterUrlImagem(casaObj, 'clube');
+        let imgV = document.getElementById("imgTimeVisita"); if (imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
         setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
         setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
         setText("uiConsolePartida", "<div style='color:#00ff88; text-align:center;'>⚽ O árbitro apita para o início do jogo!</div>");
 
         engine.simularPartidaAoVivo((min, gc, gv, log) => {
-            setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
-            if(log) {
+            setText("uiMinutoJogo", `${min}'`); 
+            setText("placarMarcadorCasa", gc); 
+            setText("placarMarcadorVisita", gv);
+            if (log) {
                 let c = document.getElementById("uiConsolePartida");
-                if(c){
+                if (c) {
                     const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
                     const golTime = !meuGol && (log.includes("GOLO") || log.includes("GOL"));
                     c.innerHTML += `<div class="${meuGol ? "gol-meu" : (golTime ? "gol-time" : "")}">${meuGol ? "⭐ " : ""}${log}</div>`;
@@ -5430,57 +5449,83 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
                 const souMandante = engine.clubeMandanteId === meuTimeId;
                 let pGolo = ({ "Atacante":0.65, "Ponta":0.48, "Meia Ofensivo":0.34, "Meio-Campista":0.22, "Volante":0.10, "Lateral":0.08, "Zagueiro":0.05, "Goleiro":0.01 })[jogador.posicao] ?? 0.25;
                 let pAssist = ({ "Atacante":0.25, "Ponta":0.42, "Meia Ofensivo":0.58, "Meio-Campista":0.50, "Volante":0.26, "Lateral":0.32, "Zagueiro":0.08, "Goleiro":0.02 })[jogador.posicao] ?? 0.25;
-                if(jogador.geral >= 84 && ["Atacante","Ponta","Meia Ofensivo"].includes(jogador.posicao)) pGolo += 0.10;
-                if(jogador.geral >= 84 && ["Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao)) pAssist += 0.10;
+                if (jogador.geral >= 84 && ["Atacante","Ponta","Meia Ofensivo"].includes(jogador.posicao)) pGolo += 0.10;
+                if (jogador.geral >= 84 && ["Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao)) pAssist += 0.10;
 
                 let golosAAtribuir = souMandante ? gc : gv;
-                if(vindoDoBanco) golosAAtribuir = Math.max(0, Math.floor(golosAAtribuir * 0.55));
+                if (vindoDoBanco) golosAAtribuir = Math.max(0, Math.floor(golosAAtribuir * 0.55));
                 let golsJogadorPartida = 0; let assistsJogadorPartida = 0;
 
                 // Track stats separately for club vs international
-                if(!isSel) {
+                if (!isSel) {
                     jogador.estatisticasAtuais.jogos++;
-                    if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
-            if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
-            registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
-        } else {
-            // International stats tracking
-            if(!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
-            jogador.statsSelecao.jogos++;
-            if(golosAAtribuir > 0) {
-                for(let i=0; i<golosAAtribuir; i++) {
-                    if(Math.random() < pGolo) { jogador.statsSelecao.gols++; golsJogadorPartida++; }
-                    else if(Math.random() < pAssist) { jogador.statsSelecao.assistencias++; assistsJogadorPartida++; }
-                }
-            }
-        }
-
-        registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
-        if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
-        else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
-
-        let msgBtn = document.getElementById("btnFecharModalPartida");
-        if(msgBtn) {
-            msgBtn.classList.remove("oculto");
-            msgBtn.onclick = () => {
-                try {
-                    msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
-                    resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
-                    let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
-                    if(!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
-                    jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
-                    if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
-                    simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
-
-                    // Reset ready state after match
-                    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
-                        window.firebaseIntegration.setReadyForMatch(false);
+                    if (!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
+                    if (golosAAtribuir > 0) { 
+                        for (let i=0; i<golosAAtribuir; i++) { 
+                            if (Math.random() < pGolo) { 
+                                jogador.estatisticasAtuais.gols++; 
+                                golsJogadorPartida++; 
+                            } else if (Math.random() < pAssist) { 
+                                jogador.estatisticasAtuais.assistencias++; 
+                                assistsJogadorPartida++; 
+                            } 
+                        } 
                     }
-                } catch (error) {
-                    console.error("Error processing match result:", error);
-                    mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
+                    registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
+                } else {
+                    // International stats tracking
+                    if (!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
+                    jogador.statsSelecao.jogos++;
+                    if (golosAAtribuir > 0) {
+                        for (let i=0; i<golosAAtribuir; i++) {
+                            if (Math.random() < pGolo) { 
+                                jogador.statsSelecao.gols++; 
+                                golsJogadorPartida++; 
+                            } else if (Math.random() < pAssist) { 
+                                jogador.statsSelecao.assistencias++; 
+                                assistsJogadorPartida++; 
+                            }
+                        }
+                    }
                 }
-            };
+
+                registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
+                if (golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
+                else if (assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
+
+                let msgBtn = document.getElementById("btnFecharModalPartida");
+                if (msgBtn) {
+                    msgBtn.classList.remove("oculto");
+                    msgBtn.onclick = () => {
+                        try {
+                            msgBtn.classList.add("oculto"); 
+                            if (mP) mP.classList.add("oculto");
+                            
+                            resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
+                            let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
+                            if (!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
+                            jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
+                            
+                            if (Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
+                            
+                            simularRodadaMundial(); 
+                            rodadaAtual++; 
+                            window.salvarJogo(); 
+                            atualizarHub();
+
+                            // Reset ready state after match
+                            if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+                                window.firebaseIntegration.setReadyForMatch(false);
+                            }
+                        } catch (error) {
+                            console.error("Error processing match result:", error);
+                            mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
+                        }
+                    };
+                }
+            } catch (err) {
+                console.error("Error inside match resolution callback:", err);
+            }
         });
     } catch (error) {
         console.error("Error entering the pitch:", error);
