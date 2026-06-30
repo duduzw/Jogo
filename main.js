@@ -2654,9 +2654,19 @@ function cardConvocadoAnimado(p, delay) {
     </div>`;
 }
 
+let convocacaoAnimationTimeouts = [];
+let convocacaoAnimationIntervals = [];
+
 function mostrarAnimacaoConvocacao(convocacao) {
     const antigo = document.getElementById("modalConvocacaoSelecao");
     if(antigo) antigo.remove();
+    
+    // Clear any existing animation timers
+    convocacaoAnimationTimeouts.forEach(t => clearTimeout(t));
+    convocacaoAnimationIntervals.forEach(i => clearInterval(i));
+    convocacaoAnimationTimeouts = [];
+    convocacaoAnimationIntervals = [];
+    
     const labels = { goleiros:"Goleiros", laterais:"Laterais", defensores:"Defensores", meio:"Meio-campistas", ataque:"Ataque" };
     let delay = 0;
     const euConvocado = convocacao.convocado;
@@ -2680,7 +2690,10 @@ function mostrarAnimacaoConvocacao(convocacao) {
                     <img src="${convocacao.selecao.logo}" alt="${convocacao.selecao.nome}" onerror="this.style.display='none'">
                     <div><span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">Convocação oficial</span><h2 style="margin:4px 0 0;">${convocacao.selecao.nome}</h2><p style="margin:4px 0 0; color:#aaa;">${convocacao.competicao?.nome || "Data FIFA"} • ${anoAtual}</p></div>
                 </div>
-                <button class="close-btn" onclick="document.getElementById('modalConvocacaoSelecao')?.remove()">×</button>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button class="btn-skip-anim" onclick="window.pularAnimacaoConvocacao()" style="padding:8px 16px; border-radius:8px; border:1px solid var(--warning); background:rgba(250,204,21,0.15); color:var(--warning); font-weight:700; cursor:pointer; font-size:0.85rem; text-transform:uppercase;">⏭️ Pular Animação</button>
+                    <button class="close-btn" onclick="document.getElementById('modalConvocacaoSelecao')?.remove()">×</button>
+                </div>
             </div>
             ${banner}
             ${["goleiros","laterais","defensores","meio","ataque"].map(bloco).join("")}
@@ -2688,6 +2701,24 @@ function mostrarAnimacaoConvocacao(convocacao) {
         </div>`;
     document.body.appendChild(modal);
 }
+
+window.pularAnimacaoConvocacao = function() {
+    // Clear all animation timers
+    convocacaoAnimationTimeouts.forEach(t => clearTimeout(t));
+    convocacaoAnimationIntervals.forEach(i => clearInterval(i));
+    convocacaoAnimationTimeouts = [];
+    convocacaoAnimationIntervals = [];
+    
+    // Immediately show all animated elements
+    const modal = document.getElementById("modalConvocacaoSelecao");
+    if(modal) {
+        const animElements = modal.querySelectorAll('.convocado-anim');
+        animElements.forEach(el => {
+            el.style.opacity = '1';
+            el.style.transform = 'translateY(0) scale(1)';
+        });
+    }
+};
 
 function processarJanelaSelecoes(forcar = false) {
     if(!jogador) return;
@@ -5450,12 +5481,7 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
                     mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
                 }
             };
-        }
-    } catch (error) {
-        console.error("Error in match result callback:", error);
-        mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
-    }
-    });
+        });
     } catch (error) {
         console.error("Error entering the pitch:", error);
         mostrarToast("Erro", "Erro ao iniciar partida. Tenta novamente.", "danger");

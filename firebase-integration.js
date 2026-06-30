@@ -494,40 +494,87 @@ function listenForLobbyUpdates() {
 
 function updateLobbyUI(lobbyData) {
     const container = document.getElementById("lobbyPlayers");
-    if (!container) return;
+    if (!container) {
+        console.warn("lobbyPlayers container not found");
+        return;
+    }
     
     // CRITICAL: Clear container immediately to prevent duplicate player bug
     container.innerHTML = "";
 
-    if (lobbyData.players) {
-        Object.entries(lobbyData.players).forEach(([pid, player]) => {
-            const isReady = player.ready || false;
-            const isMe = pid === playerId;
-            
-            // Use placeholder name if player.nome doesn't exist (character not created yet)
-            const playerName = player.nome || `Manager/Player #${pid.substring(0, 4)} (Aguardando Criação)`;
-            const clubName = player.clubeId || "---";
-            const season = player.currentSeason || "---";
-            
-            const card = document.createElement("div");
-            card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
-            
-            card.innerHTML = `
-                <div style="flex:1;">
-                    <strong>${playerName}</strong>
-                    <div style="font-size:0.85rem; color:var(--text-muted);">
-                        ${clubName} • Temporada ${season}
-                    </div>
+    if (!lobbyData.players) {
+        container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px;">Aguardando jogadores...</div>';
+        return;
+    }
+
+    Object.entries(lobbyData.players).forEach(([pid, player]) => {
+        const isReady = player.ready || false;
+        const isMe = pid === playerId;
+        
+        // Use placeholder name if player.nome doesn't exist (character not created yet)
+        const playerName = player.nome || `Manager/Player #${pid.substring(0, 4)} (Aguardando Criação)`;
+        const clubName = player.clubeId || "---";
+        const season = player.currentSeason || "---";
+        
+        const card = document.createElement("div");
+        card.className = `lobby-player-card ${isReady ? "ready" : "not-ready"}`;
+        card.style.cssText = `
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid ${isReady ? "rgba(0, 255, 136, 0.4)" : "rgba(255, 255, 255, 0.1)"};
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        `;
+        
+        card.innerHTML = `
+            <div style="flex:1;">
+                <strong style="color:var(--text-main); display:block; margin-bottom:4px;">${playerName}</strong>
+                <div style="font-size:0.85rem; color:var(--text-muted);">
+                    ${clubName} • Temporada ${season}
                 </div>
-                ${isMe ? `<button class="lobby-ready-toggle ${isReady ? "ready" : "not-ready"}" onclick="window.toggleReadyStatus()">
-                    ${isReady ? "✓ PRONTO" : "AGUARDANDO"}
-                </button>` : `<span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}">
-                    ${isReady ? "PRONTO" : "AGUARDANDO"}
-                </span>`}
-            `;
-            
-            container.appendChild(card);
-        });
+            </div>
+            ${isMe ? `<button class="lobby-ready-toggle ${isReady ? "ready" : "not-ready"}" onclick="window.toggleReadyStatus()" style="
+                padding: 8px 16px;
+                border-radius: 6px;
+                border: none;
+                font-weight: 700;
+                font-size: 0.85rem;
+                cursor: pointer;
+                transition: all 0.3s;
+                background: ${isReady ? "rgba(255, 193, 7, 0.2)" : "rgba(0, 255, 136, 0.2)"};
+                color: ${isReady ? "#ffc107" : "#00ff88"};
+                border: 1px solid ${isReady ? "rgba(255, 193, 7, 0.4)" : "rgba(0, 255, 136, 0.4)"};
+            ">
+                ${isReady ? "⏸️ PRONTO" : "✅ PRONTO"}
+            </button>` : `<span class="lobby-status-badge ${isReady ? "ready" : "not-ready"}" style="
+                padding: 6px 12px;
+                border-radius: 6px;
+                font-size: 0.8rem;
+                font-weight: 700;
+                text-transform: uppercase;
+                background: ${isReady ? "rgba(0, 255, 136, 0.2)" : "rgba(255, 255, 255, 0.1)"};
+                color: ${isReady ? "#00ff88" : "var(--text-muted)"};
+                border: 1px solid ${isReady ? "rgba(0, 255, 136, 0.4)" : "rgba(255, 255, 255, 0.2)"};
+            ">
+                ${isReady ? "PRONTO" : "AGUARDANDO"}
+            </span>`}
+        `;
+        
+        container.appendChild(card);
+    });
+    
+    // Ensure ready button is visible and functional
+    const readyBtn = document.getElementById("btnToggleReady");
+    if (readyBtn) {
+        readyBtn.classList.remove("oculto");
+        const myPlayerData = lobbyData.players[playerId];
+        if (myPlayerData) {
+            updateReadyButton(myPlayerData.ready || false);
+        }
     }
 }
 
@@ -536,13 +583,21 @@ function checkSeasonSync(lobbyData) {
 
     const seasonSync = lobbyData.seasonSync;
     const statusText = document.getElementById("lobbyStatusText");
+    const statusDiv = document.getElementById("lobbyStatus");
+    
+    if (!statusText || !statusDiv) {
+        console.warn("lobbyStatus elements not found");
+        return;
+    }
 
     if (seasonSync.allPlayersReady) {
         statusText.textContent = "Todos prontos! Temporada pode começar.";
-        document.getElementById("lobbyStatus").style.borderColor = "var(--success)";
+        statusDiv.style.borderColor = "var(--success)";
+        statusDiv.style.background = "rgba(16, 185, 129, 0.1)";
     } else {
         statusText.textContent = "Aguardando jogadores ficarem prontos...";
-        document.getElementById("lobbyStatus").style.borderColor = "var(--border)";
+        statusDiv.style.borderColor = "var(--border)";
+        statusDiv.style.background = "rgba(0, 0, 0, 0.3)";
     }
 
     // Check if seasons match
@@ -552,21 +607,32 @@ function checkSeasonSync(lobbyData) {
         
         if (!allMatch) {
             statusText.textContent = "⚠️ Temporadas desincronizadas! Aguarde amigo terminar temporada atual.";
-            document.getElementById("lobbyStatus").style.borderColor = "var(--danger)";
+            statusDiv.style.borderColor = "var(--danger)";
+            statusDiv.style.background = "rgba(244, 63, 94, 0.1)";
         }
     }
 }
 
 function updateReadyButton(isReady) {
     const btn = document.getElementById("btnToggleReady");
+    if (!btn) {
+        console.warn("btnToggleReady not found");
+        return;
+    }
     if (isReady) {
         btn.textContent = "⏸️ Cancelar Pronto";
         btn.classList.remove("btn-primary");
         btn.classList.add("btn-warning");
+        btn.style.background = "rgba(255, 193, 7, 0.2)";
+        btn.style.color = "#ffc107";
+        btn.style.borderColor = "rgba(255, 193, 7, 0.4)";
     } else {
         btn.textContent = "✅ Pronto para Iniciar";
         btn.classList.remove("btn-warning");
         btn.classList.add("btn-primary");
+        btn.style.background = "var(--theme-primary)";
+        btn.style.color = "#000";
+        btn.style.borderColor = "var(--theme-primary)";
     }
 }
 
