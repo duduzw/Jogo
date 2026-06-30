@@ -147,9 +147,6 @@ export const clubes = [
     { id: "c_tou", nome: "Toulouse", ligaId: "fra_1", reputacao: 75, cor: "#4f2b7b", logo: "" },
     { id: "c_nan", nome: "Nantes", ligaId: "fra_1", reputacao: 74, cor: "#fcd715", logo: "" },
 
-    // ==========================================
-    // PORTUGAL - LIGA PORTUGAL (Completando 12 times)
-    // Já existem: FC Porto, Benfica, Sporting
       // PORTUGAL
     { id: "c_porto", nome: "FC Porto", ligaId: "pt_1", reputacao: 84, cor: "#00529c", logo: "https://cdn-img.staticzz.com/img/logos/equipas/9_imgbank_1728921003.png" },
     { id: "c_benfica", nome: "Benfica", ligaId: "pt_1", reputacao: 84, cor: "#ed1c24", logo: "https://assets.football-logos.cc/logos/portugal/512x512/benfica.03d905e8.png" },
@@ -260,6 +257,24 @@ export const clubes = [
     { id: "c_stade", nome: "Stade d'Abidjan", ligaId: "civ_1", reputacao: 71, cor: "#0055aa", logo: "" },
     { id: "c_isca", nome: "ISCA", ligaId: "civ_1", reputacao: 60, cor: "#444444", logo: "" },
     { id: "c_esb", nome: "ES Bafing", ligaId: "civ_1", reputacao: 60, cor: "#228b22", logo: "" },
+
+    // NORUEGA
+    { id: "c_bodo", nome: "Bodø/Glimt", ligaId: "nor_1", reputacao: 76, cor: "#f7d117", logo: "" },
+    { id: "c_brann", nome: "Brann", ligaId: "nor_1", reputacao: 73, cor: "#d71920", logo: "" },
+    { id: "c_rosenborg", nome: "Rosenborg", ligaId: "nor_1", reputacao: 75, cor: "#ffffff", logo: "" },
+    { id: "c_molde", nome: "Molde", ligaId: "nor_1", reputacao: 75, cor: "#1d5fa7", logo: "" },
+    { id: "c_viking", nome: "Viking", ligaId: "nor_1", reputacao: 74, cor: "#002b5c", logo: "" },
+    { id: "c_tromso", nome: "Tromsø", ligaId: "nor_1", reputacao: 70, cor: "#c8102e", logo: "" },
+    { id: "c_fredrikstad", nome: "Fredrikstad", ligaId: "nor_1", reputacao: 69, cor: "#d4001f", logo: "" },
+    { id: "c_kfum", nome: "KFUM Oslo", ligaId: "nor_1", reputacao: 66, cor: "#cc0000", logo: "" },
+    { id: "c_sandefjord", nome: "Sandefjord", ligaId: "nor_1", reputacao: 67, cor: "#0066cc", logo: "" },
+    { id: "c_sarpsborg", nome: "Sarpsborg 08", ligaId: "nor_1", reputacao: 68, cor: "#0099ff", logo: "" },
+    { id: "c_stromsgodset", nome: "Strømsgodset", ligaId: "nor_1", reputacao: 68, cor: "#003366", logo: "" },
+    { id: "c_hamkam", nome: "HamKam", ligaId: "nor_1", reputacao: 65, cor: "#007a33", logo: "" },
+    { id: "c_kristiansund", nome: "Kristiansund", ligaId: "nor_1", reputacao: 66, cor: "#003399", logo: "" },
+    { id: "c_bryne", nome: "Bryne", ligaId: "nor_1", reputacao: 64, cor: "#cc0000", logo: "" },
+    { id: "c_valerenga", nome: "Vålerenga", ligaId: "nor_1", reputacao: 72, cor: "#0054a6", logo: "" },
+    { id: "c_haugesund", nome: "Haugesund", ligaId: "nor_1", reputacao: 65, cor: "#0066ff", logo: "" },
 
     // MLS
 

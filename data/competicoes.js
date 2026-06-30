@@ -63,6 +63,8 @@ export const competicoes = [
     { id: "copa_tr", nome: "Turkish Cup", tipo: "copa", div: 1, logo: "https://static.flashscore.com/res/image/data/QexI2ehD-dOluB62Q.png" },
     { id: "supercopa_tr", nome: "Turkish Super Cup", tipo: "supercopa", div: 1, logo: "https://static.flashscore.com/res/image/data/E7B8z2Sp-I3pO0ATD.png" },
 
+    { id: "nor_1", nome: "Eliteserien", tipo: "liga", div: 1, logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/e/ee/Eliteserien_logo.png/250px-Eliteserien_logo.png" },
+
     // BELGICA
     { id: "be_1", nome: "Jupiler Pro League", tipo: "liga", div: 1, logo: "https://r2.thesportsdb.com/images/media/league/badge/mjit7n1593634474.png/medium" },
 

@@ -716,9 +716,15 @@ function carregarJogo() {
 const CONFIG_VAGAS_CONTINENTAIS = {
     "eng_1": { cl: 4, el: 2, col: 1 }, "esp_1": { cl: 4, el: 2, col: 1 }, "ita_1": { cl: 4, el: 2, col: 1 },
     "ger_1": { cl: 4, el: 2, col: 1 }, "fra_1": { cl: 3, el: 2, col: 1 }, "pt_1":  { cl: 2, el: 2, col: 1 },
-    "nl_1":  { cl: 2, el: 1, col: 2 }, "tr_1":  { cl: 2, el: 2, col: 1 }, "sco_1":  { cl: 1, el: 1, col: 1 }, "br_1":  { lib: 6, sul: 6 },
-    "arg_1": { lib: 5, sul: 6 },"uy_1":  { lib: 4, sul: 4 }, "ara_1": { cla: 4 }, "usa_1": { clc: 4 }, "mx_1": { clc: 4 },"nga_1": { clc: 4 },
-    "cvi_1": { clc: 2 },
+    "nl_1":  { cl: 2, el: 1, col: 2 }, "tr_1":  { cl: 2, el: 2, col: 1 }, "sco_1":  { cl: 1, el: 1, col: 1 }, 
+    "nor_1": { cl: 2, el: 2, col: 1 },
+
+    "br_1":  { lib: 6, sul: 6 }, "arg_1": { lib: 5, sul: 6 },"uy_1":  { lib: 4, sul: 4 }, 
+
+    "ara_1": { cla: 4 }, 
+    
+    "usa_1": { clc: 4 }, "mx_1": { clc: 4 },"nga_1": { clc: 4 },"cvi_1": { clc: 2 },
+
     "default_uefa": { cl: 1, el: 1, col: 1 }, "default_conmebol": { lib: 2, sul: 2 },
     "default_asia": { cla: 4 }, "default_concacaf": { clc: 4 },
 };
@@ -2366,6 +2372,8 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Süper Lig") || entidade.includes("tr_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/20.png?lm=1780043166";
         if(entidade.includes("Turkish Cup") || entidade.includes("copa_tr")) return "https://tmssl.akamaized.net//images/erfolge/medium/148.png?lm=1780049586";
         if(entidade.includes("Turkish Super Cup") || entidade.includes("Süpercopa_tr")) return "https://tmssl.akamaized.net//images/erfolge/medium/149.png?lm=1780055873";
+
+        if(entidade.includes("Eliteserien") || entidade.includes("nor_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/295.png?lm=1461847499";
 
          //ASIA
         if(entidade.includes("Saudi Pro") || entidade.includes("ara_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/271.png?lm=1748099013";
