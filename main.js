@@ -5476,7 +5476,7 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         console.error("Erro geral no botão jogar:", outerError);
     }
 });
-    } catch (error) {
+ catch (error) {
         console.error("Error entering the pitch:", error);
         mostrarToast("Erro", "Erro ao iniciar partida. Tenta novamente.", "danger");
     }
