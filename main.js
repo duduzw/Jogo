@@ -5474,7 +5474,7 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
         });
     } catch (outerError) {
         console.error("Erro geral no botão jogar:", outerError);
-    };
+    }
 });
 
 document.getElementById("btnDescansar")?.addEventListener("click", () => {
