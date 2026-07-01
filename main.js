@@ -5284,28 +5284,6 @@ document.addEventListener("change", function(event) {
 // ==========================================
 
 // Wipe Save and Return to Main Menu
-document.getElementById("btnReset")?.addEventListener("click", () => {
-    if (confirm("Tem a certeza que queres apagar todo o progresso e voltar ao menu principal?")) {
-        // Clear localStorage
-        localStorage.clear();
-        
-        // Leave Firebase lobby if online
-        if (window.firebaseIntegration && window.firebaseIntegration.leaveLobby) {
-            window.firebaseIntegration.leaveLobby();
-        }
-        
-        // Reload page to return to initial screen
-        location.reload();
-    }
-});
-
-// Disable National Team Call-up Animation Toggle
-window.configPularAnimacaoConvocacao = localStorage.getItem('skipCallupAnimation') === 'true';
-
-document.getElementById("chkDisableCallupAnim")?.addEventListener("change", (e) => {
-    window.configPularAnimacaoConvocacao = e.target.checked;
-    localStorage.setItem('skipCallupAnimation', e.target.checked);
-});
 document.getElementById("btnJogar")?.addEventListener("click", () => {
     try {
         // Check if we're on the main menu (telaModoSelecao) or in-game hub
@@ -5449,47 +5427,55 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
                 if(!isSel) {
                     jogador.estatisticasAtuais.jogos++;
                     if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
-            if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
-            registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
-        } else {
-            // International stats tracking
-            if(!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
-            jogador.statsSelecao.jogos++;
-            if(golosAAtribuir > 0) {
-                for(let i=0; i<golosAAtribuir; i++) {
-                    if(Math.random() < pGolo) { jogador.statsSelecao.gols++; golsJogadorPartida++; }
-                    else if(Math.random() < pAssist) { jogador.statsSelecao.assistencias++; assistsJogadorPartida++; }
-                }
-            }
-        }
-
-        registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
-        if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
-        else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
-
-        let msgBtn = document.getElementById("btnFecharModalPartida");
-        if(msgBtn) {
-            msgBtn.classList.remove("oculto");
-            msgBtn.onclick = () => {
-                try {
-                    msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
-                    resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
-                    let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
-                    if(!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
-                    jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
-                    if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
-                    simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
-
-                    // Reset ready state after match
-                    if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
-                        window.firebaseIntegration.setReadyForMatch(false);
+                    if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
+                    registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
+                } else {
+                    // International stats tracking
+                    if(!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
+                    jogador.statsSelecao.jogos++;
+                    if(golosAAtribuir > 0) {
+                        for(let i=0; i<golosAAtribuir; i++) {
+                            if(Math.random() < pGolo) { jogador.statsSelecao.gols++; golsJogadorPartida++; }
+                            else if(Math.random() < pAssist) { jogador.statsSelecao.assistencias++; assistsJogadorPartida++; }
+                        }
                     }
-                } catch (error) {
-                    console.error("Error processing match result:", error);
-                    mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
                 }
-            };
+
+                registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
+                if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
+                else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
+
+                let msgBtn = document.getElementById("btnFecharModalPartida");
+                if(msgBtn) {
+                    msgBtn.classList.remove("oculto");
+                    msgBtn.onclick = () => {
+                        try {
+                            msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
+                            resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
+                            let participouBem = golosAAtribuir > 0 || ((souMandante ? gc : gv) > (souMandante ? gv : gc));
+                            if(!isSel) ajustarTitularidade(participouBem ? (vindoDoBanco ? 7 : 4) : -3);
+                            jogador.moral = Math.max(0, Math.min(100, jogador.moral + (participouBem ? 4 : -3)));
+                            if(Math.random() < 0.38) abrirEntrevista("pos", { placar: `${gc}-${gv}` });
+                            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+
+                            // Reset ready state after match
+                            if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+                                window.firebaseIntegration.setReadyForMatch(false);
+                            }
+                        } catch (error) {
+                            console.error("Error processing match result:", error);
+                            mostrarToast("Erro", "Erro ao processar resultado da partida.", "danger");
+                        }
+                    };
+                }
+            } catch (error) {
+                console.error("Erro no callback pós-jogo:", error);
+            }
         });
+    } catch (outerError) {
+        console.error("Erro geral no botão jogar:", outerError);
+    }
+});
     } catch (error) {
         console.error("Error entering the pitch:", error);
         mostrarToast("Erro", "Erro ao iniciar partida. Tenta novamente.", "danger");
