@@ -1,4 +1,4 @@
-﻿﻿﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
+﻿﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
 import { MatchEngine } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
@@ -1766,20 +1766,36 @@ function renderArvoreMataMata(confrontos, corComp = "#00ff88", faseLabel = "") {
     if (!confrontos?.length) return "";
     const label = faseLabel || (confrontos.length === 1 ? "Final" : confrontos.length === 2 ? "Semifinal" : confrontos.length === 4 ? "Quartas" : "Oitavas");
     const slots = confrontos.map(conf => {
-        const pen = conf.penaltis ? `<span class="penalty-badge">${conf.placarPen || "Pênaltis"}</span>` : "";
-        const sc = conf.golsA !== null && conf.golsA !== undefined ? `${conf.golsA} - ${conf.golsB}` : "A definir";
-        const team = (t, win) => {
-            if (!t) return "";
+        const jogado = conf.golsA !== null && conf.golsA !== undefined;
+        const pen = conf.penaltis ? `<span class="penalty-badge">🎯 ${conf.placarPen || "Pênaltis"}</span>` : "";
+        const meuJogo = conf.timeA?.id === jogador?.selecaoId || conf.timeB?.id === jogador?.selecaoId;
+        const team = (t, gols, win) => {
+            if (!t) return `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
             const elim = conf.vencedorId && conf.vencedorId !== t.id;
-            return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilSelecao('${t.id}')"><img src="${t.logo || ""}"><span>${t.nome}</span></div>`;
+            return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilSelecao('${t.id}')">
+                <img class="bracket-slot-crest" src="${t.logo || ""}" onerror="this.style.visibility='hidden'">
+                <span class="bracket-slot-name">${t.nome}</span>
+                <span class="bracket-slot-goals">${jogado ? gols : "–"}</span>
+                ${win ? '<span class="bracket-slot-check">✓</span>' : ""}
+            </div>`;
         };
-        return `<div class="bracket-slot ${conf.timeA?.id === jogador?.selecaoId || conf.timeB?.id === jogador?.selecaoId ? "meu-jogo" : ""}" style="--comp-cor:${corComp}">
-            ${team(conf.timeA, conf.vencedorId === conf.timeA?.id)}
-            <div class="bracket-slot-score">${sc}${pen}</div>
-            ${team(conf.timeB, conf.vencedorId === conf.timeB?.id)}
+        return `<div class="bracket-slot ${meuJogo ? "meu-jogo" : ""} ${jogado ? "concluido" : "pendente"}" style="--comp-cor:${corComp}">
+            ${team(conf.timeA, conf.golsA, conf.vencedorId === conf.timeA?.id)}
+            <div class="bracket-slot-mid"><span class="bracket-slot-vs">${jogado ? "FT" : "VS"}</span>${pen}</div>
+            ${team(conf.timeB, conf.golsB, conf.vencedorId === conf.timeB?.id)}
         </div>`;
     }).join("");
-    return `<div class="bracket-tree"><div class="bracket-round"><div class="bracket-round-label">${label}</div>${slots}</div></div>`;
+    return `<div class="bracket-tree"><div class="bracket-round"><div class="bracket-round-label">${label}</div><div class="bracket-round-slots">${slots}</div></div></div>`;
+}
+
+function renderEtapasTorneio(tor) {
+    const vistas = [...(tor.historicoFases || []).map(f => f.fase), tor.fase];
+    const passos = vistas.filter((f, i) => i === 0 || f !== vistas[i - 1]);
+    if (passos.length < 2) return "";
+    return `<div class="comp-stepper">${passos.map((f, i) => {
+        const atual = i === passos.length - 1;
+        return `${i > 0 ? '<span class="comp-step-line"></span>' : ""}<div class="comp-step ${atual ? "atual" : "feito"}"><span class="comp-step-dot">${atual ? i + 1 : "✓"}</span><span class="comp-step-label">${f}</span></div>`;
+    }).join("")}</div>`;
 }
 
 function rotuloFaseTorneo(tor) {
@@ -1816,19 +1832,23 @@ function renderTorneioInternacionalCompleto(tor, key) {
             </div>
             <span class="meta-pill comp-fase-pill">${rotuloFaseTorneo(tor)}</span>
         </div>
-        <div class="comp-progress-wrap"><div class="comp-progress-bar" style="width:${prog}%"></div></div>`;
+        <div class="comp-progress-wrap"><div class="comp-progress-bar" style="width:${prog}%"></div></div>
+        ${renderEtapasTorneio(tor)}`;
     if (tor.historicoFases?.length) tor.historicoFases.forEach(f => { html += renderBlocoFaseInternacional(f, cor); });
     if (tor.tipo === "grupos" && tor.grupos) html += renderBlocoFaseInternacional(tor, cor);
     else if (tor.tipo === "liga" && tor.tabela) {
         const ord = [...tor.tabela].sort((a, b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs));
-        const colClass = elim ? "Classificados" : "#";
-        html += `<div class="fase-bloco bracket-phase"><h4 class="bracket-title">${elim ? "Tabela — vagas em jogo" : "Classificação"}</h4><table class="grupo-table comp-table-premium"><tr><th>${colClass}</th><th>Seleção</th><th>Pts</th><th>J</th><th>SG</th></tr>
+        const cutoff = elim ? (FORMATOS_INT[tor.compConfigId]?.vagas || 4) : null;
+        html += `<div class="fase-bloco bracket-phase"><h4 class="bracket-title">${elim ? "Tabela — vagas em jogo" : "Classificação"}</h4>
+        <div class="bracket-group-card comp-table-premium">
+        <table class="grupo-table"><thead><tr><th class="col-pos">#</th><th class="col-team">Seleção</th><th>P</th><th>J</th><th>SG</th></tr></thead><tbody>
             ${ord.map((e, i) => {
                 const s = SELECOES.find(x => x.id === e.id);
-                const qual = elim && i < (FORMATOS_INT[tor.compConfigId]?.vagas || 4);
-                return `<tr class="${qual ? "row-qualified" : ""}" onclick="abrirPerfilSelecao('${e.id}')"><td>${qual ? "✓" : i + 1}</td><td><img src="${s?.logo || ""}" class="bracket-flag">${s?.nome || e.nome}</td><td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf - e.gs}</td></tr>`;
+                const qual = elim && i < cutoff;
+                const rankClass = i === 0 ? "rank-1" : i === 1 ? "rank-2" : i === 2 ? "rank-3" : "";
+                return `<tr class="${qual ? "row-qualifica" : ""} ${elim && i === cutoff - 1 ? "linha-corte" : ""}" onclick="abrirPerfilSelecao('${e.id}')"><td class="col-pos"><span class="grupo-pos ${rankClass}">${qual ? "✓" : i + 1}</span></td><td class="col-team"><img src="${s?.logo || ""}" class="bracket-flag">${s?.nome || e.nome}</td><td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf - e.gs > 0 ? "+" : ""}${e.gf - e.gs}</td></tr>`;
             }).join("")}
-        </table></div>`;
+        </tbody></table></div></div>`;
     } else if (tor.tipo === "mata-mata" && tor.confrontos) {
         html += `<div class="fase-bloco bracket-phase"><h4 class="bracket-title">${tor.fase}</h4>${renderArvoreMataMata(tor.confrontos, cor, tor.fase)}</div>`;
     }
@@ -1944,15 +1964,25 @@ function renderizarPesquisaSelecoes() {
 
 function renderBlocoFaseInternacional(faseObj, corComp) {
     if(faseObj.tipo === "grupos" && faseObj.grupos) {
+        const avancam = faseObj.avancam || 2;
         let grid = `<div class="grupo-grid">`;
         faseObj.grupos.forEach(grp => {
             const ord = [...grp.equipas].sort((a,b) => b.pts - a.pts || (b.gf-b.gs) - (a.gf-a.gs));
-            grid += `<div class="bracket-group-card"><h4>${grp.nome}</h4><table class="grupo-table"><tr><th>Seleção</th><th>Pts</th><th>J</th><th>SG</th></tr>
-                ${ord.map(e => {
+            grid += `<div class="bracket-group-card" style="--comp-cor:${corComp || "var(--theme-primary)"}">
+                <div class="grupo-card-head"><h4>${grp.nome}</h4><span class="grupo-card-meta">${avancam} classificam</span></div>
+                <table class="grupo-table"><thead><tr><th class="col-pos">#</th><th class="col-team">Seleção</th><th>P</th><th>J</th><th>SG</th></tr></thead><tbody>
+                ${ord.map((e,i) => {
                     const s = SELECOES.find(x=>x.id===e.id);
-                    return `<tr class="${e.id===jogador?.selecaoId?'bracket-row-me':''}" onclick="abrirPerfilSelecao('${e.id}')"><td><img src="${s?.logo||''}" class="bracket-flag">${s?.nome||e.nome}</td><td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf-e.gs}</td></tr>`;
-                }).join("")}</table></div>`;
+                    const rankClass = i===0?"rank-1":i===1?"rank-2":i===2?"rank-3":"";
+                    const qualifica = i < avancam;
+                    return `<tr class="${e.id===jogador?.selecaoId?'bracket-row-me':''} ${qualifica?'row-qualifica':''} ${i===avancam-1?'linha-corte':''}" onclick="abrirPerfilSelecao('${e.id}')">
+                        <td class="col-pos"><span class="grupo-pos ${rankClass}">${i+1}</span></td>
+                        <td class="col-team"><img src="${s?.logo||''}" class="bracket-flag">${s?.nome||e.nome}</td>
+                        <td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf-e.gs > 0 ? "+" : ""}${e.gf-e.gs}</td>
+                    </tr>`;
+                }).join("")}</tbody></table></div>`;
         });
+        grid += `</div>`;
         return `<div class="fase-bloco bracket-phase"><h4 class="bracket-title">${faseObj.fase}</h4>${grid}</div>`;
     }
     if(faseObj.tipo === "mata-mata" && faseObj.confrontos) {
@@ -2279,6 +2309,98 @@ styleOverrides.innerHTML = `
     .manager-row em { font-style:normal; color:#facc15; font-weight:900; font-size:0.82rem; }
     .manager-row .btn { padding:8px 10px; font-size:0.72rem; }
     @media (max-width: 900px) { .manager-grid, .manager-kpis, .manager-controls { grid-template-columns:1fr; } .manager-hero { align-items:flex-start; flex-direction:column; } }
+
+    /* ==========================================
+       🏆 REDESIGN 2026: COMPETIÇÕES INT — GRUPOS & MATA-MATA
+       Camada final e definitiva — sobrepõe qualquer regra antiga
+       ========================================== */
+
+    /* ---- Bloco de fase (cabeçalho de cada etapa) ---- */
+    .bracket-phase { position:relative !important; overflow:visible !important; background:linear-gradient(150deg, rgba(255,255,255,0.045), rgba(0,0,0,0.55)) !important; border:1px solid rgba(255,255,255,0.08) !important; border-radius:18px !important; padding:22px !important; margin-bottom:22px !important; box-shadow:0 18px 40px rgba(0,0,0,0.3) !important; }
+    .bracket-phase::before { content:'' !important; position:absolute !important; inset:0 0 auto 0 !important; height:3px !important; border-radius:18px 18px 0 0 !important; background:linear-gradient(90deg, var(--comp-cor, var(--theme-primary)), transparent) !important; opacity:0.9 !important; }
+    .bracket-title { display:flex !important; align-items:center !important; gap:9px !important; margin:0 0 18px !important; padding:0 !important; color:var(--comp-cor, var(--theme-primary)) !important; font-size:0.82rem !important; font-weight:900 !important; text-transform:uppercase !important; letter-spacing:1.5px !important; }
+    .bracket-title::after { content:'' !important; flex:1 !important; height:1px !important; background:linear-gradient(90deg, rgba(255,255,255,0.18), transparent) !important; }
+    .bracket-title::before { content:'●' !important; font-size:0.55rem !important; color:var(--comp-cor, var(--theme-primary)) !important; }
+
+    /* ---- Stepper de etapas do torneio ---- */
+    .comp-stepper { display:flex; align-items:center; gap:0; overflow-x:auto; margin:2px 0 6px; padding-bottom:4px; }
+    .comp-step { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+    .comp-step-dot { display:flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; font-size:0.68rem; font-weight:900; background:rgba(255,255,255,0.08); color:#9a9aa2; flex-shrink:0; }
+    .comp-step-label { font-size:0.72rem; font-weight:800; color:#9a9aa2; text-transform:uppercase; letter-spacing:0.4px; white-space:nowrap; }
+    .comp-step.feito .comp-step-dot { background:rgba(16,185,129,0.18); color:var(--success); }
+    .comp-step.feito .comp-step-label { color:#c9c9cf; }
+    .comp-step.atual .comp-step-dot { background:var(--comp-cor, var(--theme-primary)); color:#000; box-shadow:0 0 0 4px color-mix(in srgb, var(--comp-cor, var(--theme-primary)) 22%, transparent); }
+    .comp-step.atual .comp-step-label { color:#fff; }
+    .comp-step-line { width:26px; height:2px; background:rgba(255,255,255,0.14); margin:0 6px; flex-shrink:0; }
+
+    /* ---- Fase de grupos ---- */
+    .grupo-grid { display:grid !important; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)) !important; gap:16px !important; margin-top:0 !important; }
+    .bracket-group-card { background:linear-gradient(160deg, rgba(255,255,255,0.05), rgba(0,0,0,0.5)) !important; border:1px solid rgba(255,255,255,0.09) !important; border-left:3px solid var(--comp-cor, var(--theme-primary)) !important; border-radius:14px !important; padding:16px !important; backdrop-filter:none !important; box-shadow:0 12px 26px rgba(0,0,0,0.25) !important; transition:0.25s !important; }
+    .bracket-group-card:hover { transform:translateY(-2px) !important; border-color:var(--comp-cor, var(--theme-primary)) !important; box-shadow:0 16px 32px rgba(0,0,0,0.32) !important; }
+    .grupo-card-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+    .bracket-group-card h4 { margin:0 !important; padding:0 !important; color:#fff !important; font-size:0.95rem !important; font-weight:900 !important; text-transform:uppercase !important; letter-spacing:1px !important; }
+    .bracket-group-card h4::before { content:none !important; }
+    .grupo-card-meta { font-size:0.65rem; color:var(--comp-cor, var(--theme-primary)); font-weight:800; text-transform:uppercase; letter-spacing:0.5px; white-space:nowrap; }
+
+    .grupo-table { width:100% !important; border-collapse:collapse !important; border-spacing:0 !important; }
+    .grupo-table thead th { text-align:left !important; padding:0 8px 8px !important; color:#7c7c85 !important; font-size:0.6rem !important; text-transform:uppercase !important; letter-spacing:1px !important; font-weight:900 !important; border-bottom:1px solid rgba(255,255,255,0.08) !important; background:none !important; }
+    .grupo-table th.col-pos, .grupo-table td.col-pos { text-align:center !important; width:30px; }
+    .grupo-table th:not(.col-team):not(.col-pos), .grupo-table td:not(.col-team):not(.col-pos) { text-align:center !important; }
+    .grupo-table tbody tr { cursor:pointer; transition:0.15s; }
+    .grupo-table tbody tr:hover td { background:rgba(255,255,255,0.045) !important; }
+    .grupo-table td { padding:9px 8px !important; font-size:0.85rem !important; font-weight:600 !important; color:#e4e4e7 !important; background:none !important; border-radius:0 !important; border-bottom:1px solid rgba(255,255,255,0.05) !important; }
+    .grupo-table tbody tr:last-child td { border-bottom:none !important; }
+    .grupo-table tr td:first-child, .grupo-table tr td:last-child { border-radius:0 !important; padding-left:8px !important; padding-right:8px !important; }
+    .grupo-table td.col-team { display:flex; align-items:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .grupo-table td strong { color:#fff !important; font-weight:900 !important; }
+
+    .grupo-pos { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:rgba(255,255,255,0.08); font-weight:900; font-size:0.72rem; color:#aaa; }
+    .grupo-pos.rank-1 { background:linear-gradient(135deg, #fde68a, #d97706); color:#241a00; }
+    .grupo-pos.rank-2 { background:linear-gradient(135deg, #f1f5f9, #94a3b8); color:#1a1a1a; }
+    .grupo-pos.rank-3 { background:linear-gradient(135deg, #f0c9a0, #b0692f); color:#241505; }
+
+    tr.row-qualifica td { background:color-mix(in srgb, var(--comp-cor, var(--theme-primary)) 7%, transparent) !important; }
+    tr.linha-corte td { border-bottom:2px dashed color-mix(in srgb, var(--comp-cor, var(--theme-primary)) 55%, transparent) !important; padding-bottom:12px !important; }
+
+    .bracket-row-me { background:color-mix(in srgb, var(--comp-cor, var(--theme-primary)) 14%, transparent) !important; }
+    .bracket-row-me td { color:var(--comp-cor, var(--theme-primary)) !important; font-weight:800 !important; }
+    .bracket-flag { width:24px !important; height:17px !important; object-fit:cover !important; border-radius:3px !important; margin-right:9px !important; vertical-align:middle !important; box-shadow:0 2px 6px rgba(0,0,0,0.3) !important; flex-shrink:0; }
+
+    .comp-table-premium { padding:16px !important; }
+
+    /* ---- Chaveamento / mata-mata ---- */
+    .bracket-tree { display:flex !important; gap:20px !important; overflow-x:auto !important; padding:2px 2px 8px !important; align-items:flex-start !important; scrollbar-color:var(--comp-cor, var(--theme-primary)) rgba(255,255,255,0.08); }
+    .bracket-round { min-width:0 !important; flex:1 1 100% !important; position:static !important; }
+    .bracket-round::after { display:none !important; }
+    .bracket-round-label { text-align:left !important; font-size:0.7rem !important; font-weight:900 !important; text-transform:uppercase !important; color:var(--comp-cor, var(--theme-primary)) !important; letter-spacing:1.5px !important; margin:0 0 12px !important; }
+    .bracket-round-slots { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:14px; }
+
+    .bracket-slot { background:linear-gradient(160deg, rgba(255,255,255,0.05), rgba(0,0,0,0.55)) !important; border:1px solid rgba(255,255,255,0.09) !important; border-left:3px solid var(--comp-cor, #00ff88) !important; border-radius:14px !important; padding:5px !important; display:block !important; gap:0 !important; position:relative !important; box-shadow:0 12px 26px rgba(0,0,0,0.25) !important; transition:0.2s !important; }
+    .bracket-slot:hover { transform:translateY(-2px); border-color:var(--comp-cor, #00ff88) !important; }
+    .bracket-slot.meu-jogo { box-shadow:0 0 0 1px var(--comp-cor, #00ff88), 0 16px 30px rgba(0,0,0,0.35) !important; }
+    .bracket-slot.pendente .bracket-slot-goals { opacity:0.35; }
+
+    .bracket-slot-team { display:grid; grid-template-columns:26px 1fr auto 16px; align-items:center; gap:9px; padding:8px 9px; border-radius:9px; cursor:pointer; font-weight:700; font-size:0.86rem; }
+    .bracket-slot-team:hover { background:rgba(255,255,255,0.05); }
+    .bracket-slot-crest { width:26px !important; height:18px !important; object-fit:cover; border-radius:4px; background:rgba(255,255,255,0.08); }
+    .bracket-slot-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e4e4e7; }
+    .bracket-slot-goals { font-variant-numeric:tabular-nums; font-weight:900; font-size:1.05rem; color:#fff; min-width:16px; text-align:center; }
+    .bracket-slot-check { color:var(--success); font-weight:900; font-size:0.8rem; }
+    .bracket-slot-team.winner { background:linear-gradient(90deg, rgba(16,185,129,0.16), rgba(16,185,129,0.02)); }
+    .bracket-slot-team.winner .bracket-slot-name { color:var(--success); }
+    .bracket-slot-team.eliminated { opacity:0.4; filter:grayscale(0.5); }
+    .bracket-slot-team.tbd { opacity:0.4; font-style:italic; cursor:default; }
+    .tbd-crest { display:flex !important; align-items:center; justify-content:center; color:#777; font-size:0.65rem; font-style:normal; }
+
+    .bracket-slot-mid { display:flex; align-items:center; justify-content:center; gap:8px; padding:1px 9px 3px; }
+    .bracket-slot-vs { font-size:0.6rem; font-weight:900; letter-spacing:1.5px; color:rgba(255,255,255,0.3); }
+    .penalty-badge { display:inline-block !important; margin:0 !important; font-size:0.62rem !important; padding:2px 7px !important; border-radius:999px !important; background:rgba(250,204,21,0.18) !important; color:#facc15 !important; font-weight:800 !important; text-transform:uppercase !important; }
+
+    @media (max-width: 640px) {
+        .comp-int-layout { grid-template-columns:1fr !important; }
+        .bracket-round-slots { grid-template-columns:1fr; }
+        .grupo-grid { grid-template-columns:1fr !important; }
+    }
 `;
 document.head.appendChild(styleOverrides);
 
@@ -2665,7 +2787,35 @@ function cardConvocadoAnimado(p, delay) {
 let convocacaoAnimationTimeouts = [];
 let convocacaoAnimationIntervals = [];
 
-function mostrarAnimacaoConvocacao(convocacao) {
+// Preferência do jogador: pular automaticamente a animação de convocação
+// nas ocasiões em que ele NÃO for convocado (evita perder tempo com listas irrelevantes).
+let pularConvocacaoAutomatico = localStorage.getItem("rumo_pref_pular_convocacao") === "true";
+
+window.alternarPularConvocacaoAutomatico = function() {
+    pularConvocacaoAutomatico = !pularConvocacaoAutomatico;
+    localStorage.setItem("rumo_pref_pular_convocacao", pularConvocacaoAutomatico ? "true" : "false");
+    mostrarToast(
+        "Preferência Guardada",
+        pularConvocacaoAutomatico
+            ? "A partir de agora, quando não fores convocado, a animação será pulada automaticamente."
+            : "A animação de convocação voltará a ser exibida normalmente.",
+        "info"
+    );
+    renderizarSelecoes();
+};
+
+function mostrarAnimacaoConvocacao(convocacao, forcarExibicao = false) {
+    // Se o jogador ativou "pular quando não for convocado" e esta não é uma consulta manual,
+    // mostra apenas um toast rápido em vez de abrir o modal com a animação completa.
+    if (!forcarExibicao && !convocacao.convocado && pularConvocacaoAutomatico) {
+        mostrarToast(
+            `Convocação ${convocacao.selecao.nome}`,
+            `${jogador.nome} ficou de fora da lista para ${convocacao.competicao?.nome || "Data FIFA"} desta vez.`,
+            "warning"
+        );
+        return;
+    }
+
     const antigo = document.getElementById("modalConvocacaoSelecao");
     if(antigo) antigo.remove();
     
@@ -2698,7 +2848,11 @@ function mostrarAnimacaoConvocacao(convocacao) {
                     <img src="${convocacao.selecao.logo}" alt="${convocacao.selecao.nome}" onerror="this.style.display='none'">
                     <div><span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">Convocação oficial</span><h2 style="margin:4px 0 0;">${convocacao.selecao.nome}</h2><p style="margin:4px 0 0; color:#aaa;">${convocacao.competicao?.nome || "Data FIFA"} • ${anoAtual}</p></div>
                 </div>
-                <div style="display:flex; gap:10px; align-items:center;">
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                    <label style="display:flex; align-items:center; gap:5px; font-size:0.72rem; color:#aaa; cursor:pointer; user-select:none;">
+                        <input type="checkbox" onchange="window.alternarPularConvocacaoAutomatico()" ${pularConvocacaoAutomatico ? "checked" : ""} style="width:14px; height:14px; cursor:pointer;">
+                        Sempre pular quando não for convocado
+                    </label>
                     <button class="btn-skip-anim" onclick="window.pularAnimacaoConvocacao()" style="padding:8px 16px; border-radius:8px; border:1px solid var(--warning); background:rgba(250,204,21,0.15); color:var(--warning); font-weight:700; cursor:pointer; font-size:0.85rem; text-transform:uppercase;">⏭️ Pular Animação</button>
                     <button class="close-btn" onclick="document.getElementById('modalConvocacaoSelecao')?.remove()">×</button>
                 </div>
@@ -2740,7 +2894,7 @@ function processarJanelaSelecoes(forcar = false) {
     if(forcar) {
         const ultima = selecoesEstado.convocacoes?.find(c => c.selecaoId === selecao.id);
         const convocacao = ultima ? reconstruirConvocacaoDeEstado(ultima, selecao, competicao) : gerarConvocacaoSelecao(selecao, competicao);
-        if(convocacao) mostrarAnimacaoConvocacao(convocacao);
+        if(convocacao) mostrarAnimacaoConvocacao(convocacao, true);
         return;
     }
 
@@ -2815,7 +2969,13 @@ function renderizarSelecoes() {
                         <img src="${selecao.logo}" alt="${selecao.nome}" onerror="this.style.display='none'">
                         <div><span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">Carreira internacional</span><h2 style="margin:4px 0;">Seleção ${selecao.nome}</h2><p style="margin:0; color:#aaa;">Próxima janela: ${proxima.nome}${proxima.div ? ` • Divisão ${proxima.div}` : ""}</p></div>
                     </div>
-                    <button class="btn btn-primary" onclick="processarJanelaSelecoes(true)">Ver convocação</button>
+                    <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end;">
+                        <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; color:#aaa; cursor:pointer; user-select:none; max-width:170px; line-height:1.2;">
+                            <input type="checkbox" id="chkPularConvocacao" onchange="window.alternarPularConvocacaoAutomatico()" ${pularConvocacaoAutomatico ? "checked" : ""} style="width:16px; height:16px; cursor:pointer; flex-shrink:0;">
+                            Pular animação quando eu não for convocado
+                        </label>
+                        <button class="btn btn-primary" onclick="processarJanelaSelecoes(true)">Ver convocação</button>
+                    </div>
                 </div>
                 <div class="selecao-card" style="margin-top:16px;">
                     <h3 style="margin-top:0;">Lista ${ultima ? `${ultima.competicao} ${ultima.ano}` : "prévia"}</h3>
@@ -4500,7 +4660,7 @@ subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId)
             window.firebaseIntegration.canAdvanceToNextSeason().then(canAdvance => {
                 if (!canAdvance) {
                     mostrarToast("Aguardando Amigo", "Seu amigo ainda não terminou a temporada atual.", "warning");
-                    document.getElementById("btnJogar").disabled = false;
+                    document.getElementById("btnJogarHub").disabled = false;
                     return;
                 }
                 // Proceed with season advancement
@@ -4538,7 +4698,7 @@ function advanceSeasonInternal() {
     window.salvarJogo();
     atualizarHub();
 
-    document.getElementById("btnJogar").disabled = false;
+    document.getElementById("btnJogarHub").disabled = false;
     mostrarToast("Ano Novo", `Bem-vindo à Temporada ${anoAtual}!`, "success");
 }
 
@@ -4992,7 +5152,7 @@ function atualizarHub() {
                     <div style="font-size:1.4rem; font-weight:700; color:var(--success);">🛌 Semana de Recuperação</div>
                     <div style="font-size:0.9rem; color:var(--text-muted);">Aproveita para recuperar energia e treinar</div>
                 `;
-                setText("btnJogar", "Passar Semana (Descanso) ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogar").disabled = false;
+                setText("btnJogarHub", "Passar Semana (Descanso) ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogarHub").disabled = false;
             } else {
                 const minhaSelecao = comp.isSelecao ? SELECOES.find(s => s.id === (comp.mandanteId || jogador.selecaoId)) : null;
                 let adv = comp.isSelecao ? SELECOES.find(s => s.id === comp.adversarioId) : clubes.find(c => c.id === comp.adversarioId);
@@ -5009,14 +5169,14 @@ function atualizarHub() {
                         <div style="display:flex; align-items:center;"><span style="font-weight:600; font-size:1.6rem; margin-right:10px;">${adv?.nome || 'Rival'}</span><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;"><img src="${advLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div></div>
                     </div>`;
                 const textoAcao = jogador.lesaoRodadas > 0 ? "Fora por Lesão ➔" : (jogador.titularidade >= 68 ? "Entrar em Relvado ➔" : "Entrar do Banco ➔");
-                setText("btnJogar", textoAcao); aplicarTemaCompeticao(comp.compConfigId || comp.compId); document.getElementById("btnJogar").disabled = false;
+                setText("btnJogarHub", textoAcao); aplicarTemaCompeticao(comp.compConfigId || comp.compId); document.getElementById("btnJogarHub").disabled = false;
             }
         } else if (!failsafeAtivado) { 
             uiProx.innerHTML = `<div style="font-size:1.2rem; font-weight:700; color:var(--warning);">⏳ Sem jogos marcados. Finais e decisões globais a decorrer...</div>`;
-            setText("btnJogar", "Avançar Semana Global ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogar").disabled = false;
+            setText("btnJogarHub", "Avançar Semana Global ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogarHub").disabled = false;
         } else {
             uiProx.innerHTML = `<div style="font-size:1.2rem; font-weight:700; color:var(--success);">🏁 A Época terminou! O mundo aguarda a Gala.</div>`;
-            setText("btnJogar", "Ir para a Gala Ouro ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogar").disabled = false;
+            setText("btnJogarHub", "Ir para a Gala Ouro ➔"); aplicarTemaCompeticao("hub"); document.getElementById("btnJogarHub").disabled = false;
         }
     }
     renderizarCalendarioTemporada();
@@ -5283,21 +5443,18 @@ document.addEventListener("change", function(event) {
 // ⚙️ INÍCIO, PARTIDAS E BOTÕES MESTRES
 // ==========================================
 
-// Wipe Save and Return to Main Menu
+// Botão "JOGAR" do menu principal - apenas navega para a seleção de modo
 document.getElementById("btnJogar")?.addEventListener("click", () => {
+    mudarTela("telaModo");
+});
+
+// Botão "Entrar em Relvado" do hub do jogo - simulação de partida
+document.getElementById("btnJogarHub")?.addEventListener("click", () => {
     try {
-        // Check if we're on the main menu (telaModoSelecao) or in-game hub
-        const telaModoSelecao = document.getElementById("telaModoSelecao");
-        if (!telaModoSelecao.classList.contains("oculto")) {
-            // Main menu - redirect to mode selection
-            mudarTela("telaModo");
-            return;
-        }
-        
         // In-game hub - proceed with match simulation
         inicializarEstadoCarreiraJogador();
         let comp = agendaTemporada[rodadaAtual - 1];
-        let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
+        let textoBtn = document.getElementById("btnJogarHub").innerText.toLowerCase();
 
         // Check if in online room mode and handle ready state
         if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
@@ -5310,8 +5467,8 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
                 // Set ready for match and wait for room sync
                 window.firebaseIntegration.setReadyForMatch(true);
                 mostrarToast("Sala Online", "Aguardando amigo para simular partida...", "info");
-                document.getElementById("btnJogar").disabled = true;
-                document.getElementById("btnJogar").innerText = "Aguardando...";
+                document.getElementById("btnJogarHub").disabled = true;
+                document.getElementById("btnJogarHub").innerText = "Aguardando...";
                 return;
             }
         }
@@ -5480,7 +5637,7 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
 document.getElementById("btnDescansar")?.addEventListener("click", () => {
     inicializarEstadoCarreiraJogador();
     let comp = agendaTemporada[rodadaAtual - 1]; 
-    let textoBtn = document.getElementById("btnJogar").innerText.toLowerCase();
+    let textoBtn = document.getElementById("btnJogarHub").innerText.toLowerCase();
     
     if (textoBtn.includes("avançar semana")) { simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub(); return; }
     if (textoBtn.includes("gala")) { processarFimTemporada(); return; }
@@ -5500,6 +5657,27 @@ document.getElementById("btnDescansar")?.addEventListener("click", () => {
     window.salvarJogo(); 
     atualizarHub();
     mostrarToast("Descanso", "A tua equipa jogou sem ti. Foste poupado esta rodada!", "info");
+});
+
+// Botão "Sair / Apagar Save" - apaga o progresso guardado e volta ao menu principal
+document.getElementById("btnReset")?.addEventListener("click", () => {
+    const confirmado = confirm("Tens a certeza que queres apagar o teu save? Esta ação é irreversível e vais perder todo o progresso da carreira.");
+    if (!confirmado) return;
+
+    try {
+        localStorage.removeItem("rumo_estrelato_pro_vivo");
+
+        // Se estiver numa sala online, sai da sala antes de recarregar
+        if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
+            window.firebaseIntegration.leaveRoom?.();
+        }
+
+        mostrarToast("Save Apagado", "O teu progresso foi apagado. A reiniciar...", "success");
+        setTimeout(() => location.reload(), 800);
+    } catch (error) {
+        console.error("Erro ao apagar save:", error);
+        mostrarToast("Erro", "Não foi possível apagar o save.", "danger");
+    }
 });
 
 document.getElementById("btnTreinar")?.addEventListener("click", () => {
