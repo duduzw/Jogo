@@ -4,13 +4,20 @@ const PESO_GOL_POS = { "Atacante": 1.0, "Ponta": 0.78, "Meia Ofensivo": 0.62, "M
 const PESO_AST_POS = { "Atacante": 0.32, "Ponta": 0.62, "Meia Ofensivo": 0.82, "Meio-Campista": 0.68, "Volante": 0.38, "Lateral": 0.44, "Zagueiro": 0.09, "Goleiro": 0.02 };
 
 export class MatchEngine {
-    constructor(jogadorReal, clubeMandanteId, clubeVisitanteId) {
+    constructor(jogadorReal, clubeMandanteId, clubeVisitanteId, minutoEntradaJogador = null) {
         this.jogadorReal = jogadorReal;
         this.clubeMandanteId = clubeMandanteId;
         this.clubeVisitanteId = clubeVisitanteId;
         this.idMandante = clubeMandanteId;
         this.idVisitante = clubeVisitanteId;
         this.isSelecao = false;
+
+        // Sistema de escalação: se minutoEntradaJogador for um número, o jogador
+        // começa no banco e só passa a poder participar (ser sorteado como autor
+        // de gol/assistência) a partir desse minuto. null/undefined = titular (joga desde o início).
+        this.minutoEntradaJogador = minutoEntradaJogador;
+        this.jogadorJaEntrou = (minutoEntradaJogador === null || minutoEntradaJogador === undefined);
+        this._entradaAnunciada = false;
 
         let cMandante = clubes.find(c => c.id === clubeMandanteId);
         let cVisitante = clubes.find(c => c.id === clubeVisitanteId);
@@ -57,19 +64,29 @@ export class MatchEngine {
         return peso;
     }
 
+    // Um jogador só pode ser sorteado como autor/assistente se já estiver em campo.
+    // Isto vale apenas para o jogador real (id === "player"); NPCs sempre podem.
+    podeParticipar(j) {
+        if (j.id !== "player") return true;
+        return this.jogadorJaEntrou;
+    }
+
     sortearAutor(elenco) {
-        const pool = elenco.map(j => ({ j, peso: this.pesoGolador(j) }));
+        const disponiveis = elenco.filter(j => this.podeParticipar(j));
+        const base = disponiveis.length > 0 ? disponiveis : elenco;
+        const pool = base.map(j => ({ j, peso: this.pesoGolador(j) }));
         const total = pool.reduce((acc, x) => acc + x.peso, 0);
         let alvo = Math.random() * total;
         for (const item of pool) {
             alvo -= item.peso;
             if (alvo <= 0) return item.j;
         }
-        return pool[0]?.j || elenco[0];
+        return pool[0]?.j || base[0];
     }
 
     sortearAssist(elenco, excluirId) {
-        const pool = elenco.filter(j => j.id !== excluirId).map(j => ({ j, peso: this.pesoAssistente(j) }));
+        const disponiveis = elenco.filter(j => j.id !== excluirId && this.podeParticipar(j));
+        const pool = disponiveis.map(j => ({ j, peso: this.pesoAssistente(j) }));
         if(pool.length === 0) return null;
         const total = pool.reduce((acc, x) => acc + x.peso, 0);
         let alvo = Math.random() * total;
@@ -100,6 +117,15 @@ export class MatchEngine {
 
         const cronometro = setInterval(() => {
             minuto += 3; let log = null; let rng = Math.random();
+
+            // Substituição: o jogador real entra em campo no minuto definido pelo treinador.
+            if (!this.jogadorJaEntrou && !this._entradaAnunciada && this.minutoEntradaJogador !== null && minuto >= this.minutoEntradaJogador) {
+                this.jogadorJaEntrou = true;
+                this._entradaAnunciada = true;
+                const timeJogadorEntra = this.isSelecao ? this.jogadorReal.selecaoId : this.jogadorReal.clubeId;
+                const nomeTimeEntra = timeJogadorEntra === this.clubeMandanteId ? this.nomeMandante : this.nomeVisitante;
+                onTick(minuto, placarCasa, placarVisita, `<span style="color:#facc15; font-weight:800;">🔄 ${minuto}' SUBSTITUIÇÃO NO ${nomeTimeEntra.toUpperCase()}: ${this.jogadorReal.nome} entra em campo!</span>`);
+            }
 
             if (rng < chanceC) {
                 placarCasa++;
@@ -141,7 +167,10 @@ export class MatchEngine {
 
             if (minuto >= 90) {
                 clearInterval(cronometro);
-                onComplete(placarCasa, placarVisita, marcadores);
+                // Argumentos extra (retrocompatíveis): indicam se o jogador entrou em campo
+                // e quantos minutos efetivamente disputou, para ajustar estatísticas/energia fora do engine.
+                const minutosJogados = this.jogadorJaEntrou ? Math.max(0, 90 - Math.max(0, this.minutoEntradaJogador || 0)) : 0;
+                onComplete(placarCasa, placarVisita, marcadores, this.jogadorJaEntrou, minutosJogados);
             }
         }, 110);
     }

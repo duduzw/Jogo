@@ -76,6 +76,31 @@
     </div>
 </div>
 
+<div id="modalNegociacao" class="modal oculto">
+    <div class="modal-content slide-in" style="max-width:640px; width:92%; max-height:88vh; overflow-y:auto;">
+        <div class="modal-header">
+            <h2 id="negTituloClube" style="margin:0;">💼 Negociação</h2>
+            <button class="close-btn" id="btnFecharNegociacao">✖</button>
+        </div>
+        <div id="negociacaoBody" style="padding:20px;"></div>
+    </div>
+</div>
+
+<div id="modalConversaTecnico" class="modal oculto">
+    <div class="modal-content slide-in" style="max-width:480px; width:90%;">
+        <div class="interview-card" style="box-shadow:none;">
+            <div style="display:flex; justify-content:space-between; gap:14px; align-items:flex-start;">
+                <div>
+                    <span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">👔 Conversa com o Técnico</span>
+                    <h2 id="conversaTecnicoTitulo" style="margin:8px 0 10px;"></h2>
+                    <p id="conversaTecnicoTexto" style="margin:0 0 14px; color:#ccc;"></p>
+                </div>
+            </div>
+            <button class="interview-option" id="btnFecharConversaTecnico" style="text-align:center; font-weight:800;">Entendido</button>
+        </div>
+    </div>
+</div>
+
 <div id="modalPerfilJogador" class="modal oculto">
     <div class="modal-content slide-in">
         <div class="modal-header" style="background: linear-gradient(90deg, var(--theme-primary), transparent);">
@@ -294,7 +319,6 @@
             <button class="menu-item" data-view="view-transferencias">📋 Mercado Mundial</button>
             <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
             <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
-            <button class="menu-item" data-view="view-pesquisa-sel">🔎 Pesquisar Seleções</button>
             <button class="menu-item" data-view="view-lifestyle">🏆 Lifestyle & Treino</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
@@ -323,6 +347,7 @@
                         <button class="btn btn-warning btn-lg" id="btnDescansar" style="color:#000;">🛌 Descansar</button>
                         <button class="btn btn-primary btn-lg" id="btnTreinar">Treinar</button>
                     </div>
+                    <button class="btn btn-block" id="btnMinhaTabela" style="margin-top:15px; padding:14px; background:rgba(0,255,136,0.1); border:1px solid var(--theme-primary); color:var(--theme-primary); text-transform:uppercase; letter-spacing:0.5px;">📊 Minha Tabela ➔</button>
                 </div>
 
                 <div class="stats-grid-3">
@@ -386,7 +411,6 @@
             <div id="view-transferencias" class="view-section oculto"></div>
             <div id="view-selecoes" class="view-section oculto"></div>
             <div id="view-comp-int" class="view-section oculto"></div>
-            <div id="view-pesquisa-sel" class="view-section oculto"></div>
             <div id="view-manager" class="view-section oculto">
                 <div class="manager-dashboard">
                     <div class="manager-dashboard-header">
