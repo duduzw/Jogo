@@ -1947,6 +1947,30 @@ function renderizarCompeticoesInternacionais() {
         { id: "nations", label: " Nations League" }
     ];
 
+    // Callout pessoal: contextualiza o dashboard em torno da campanha do
+    // próprio jogador pela seleção, em vez de só listar torneios genéricos.
+    const selecaoJogador = jogador?.selecaoId && jogador.selecaoId !== "none" ? SELECOES.find(s => s.id === jogador.selecaoId) : null;
+    const stSel = jogador?.statsSelecao || { jogos: 0, gols: 0, assistencias: 0 };
+    const minhaCampanhaHtml = selecaoJogador ? `
+        <div class="comp-int-minha-selecao">
+            <img src="${selecaoJogador.logo || ''}" alt="${selecaoJogador.nome}" onerror="this.style.visibility='hidden'">
+            <div>
+                <span class="comp-int-kicker" style="margin:0;">Minha Seleção</span>
+                <h3>${selecaoJogador.nome}</h3>
+                <span class="comp-int-status-badge ${jogador.naSelecao ? 'convocado' : 'fora'}">${jogador.naSelecao ? '✓ Convocado' : 'Fora da última lista'}</span>
+            </div>
+            <div class="comp-int-minha-stats">
+                <div><strong>${stSel.jogos || 0}</strong><span>Jogos</span></div>
+                <div><strong>${stSel.gols || 0}</strong><span>Gols</span></div>
+                <div><strong>${stSel.assistencias || 0}</strong><span>Assist.</span></div>
+                <div><strong>${(jogador.titulosSelecao || []).length}</strong><span>Títulos</span></div>
+            </div>
+        </div>` : `
+        <div class="comp-int-minha-selecao comp-int-minha-selecao-vazia">
+            <span style="font-size:1.8rem;">🌍</span>
+            <div><span class="comp-int-kicker" style="margin:0;">Minha Seleção</span><h3>Ainda sem seleção</h3><p style="margin:2px 0 0; color:#999; font-size:0.82rem;">Continue a ter boas atuações para ser convocado.</p></div>
+        </div>`;
+
     el.innerHTML = `
         <div class="comp-int-shell comp-int-page">
             <div class="comp-int-hero">
@@ -1961,34 +1985,36 @@ function renderizarCompeticoesInternacionais() {
                     <div class="comp-stat-box"><strong>${anoAtual % 4 === 1 ? anoAtual + 1 : anoAtual % 4 === 3 ? anoAtual + 1 : "—"}</strong><span>Próximo torneio grande</span></div>
                 </div>
             </div>
+            ${minhaCampanhaHtml}
             <div class="comp-cat-tabs">${cats.map(c => `<button type="button" class="comp-cat-tab ${filtroCat === c.id ? "ativo" : ""}" data-cat="${c.id}">${c.label}</button>`).join("")}</div>
-            <div class="comp-int-layout">
-                <aside class="comp-int-sidebar">
-                    <h4>Torneios ${anoAtual}</h4>
-                    ${torneios.length ? torneios.map(t => {
-                        const elim = isEliminatoria(t.comp.id);
-                        const done = ["Vagas Definidas", "Classificação Definida"].includes(t.tor.fase) || (t.tor.fase === "Campeão Definido" && !elim);
-                        const camp = !elim && t.tor.campeaoId ? SELECOES.find(s => s.id === t.tor.campeaoId)?.nome : null;
-                        return `<button type="button" class="comp-sidebar-item ${t.comp.id === compAtual?.comp.id ? "ativo" : ""}" data-comp="${t.comp.id}" style="--comp-cor:${t.tor.cor || CORES_COMP.default}">
-                            <span>${t.meta.icon}</span>
-                            <div><strong>${t.comp.nome.replace("Eliminatórias ", "").replace(" — Divisão ", " Div. ")}</strong>
-                            <small>${t.meta.subtitulo || rotuloFaseTorneo(t.tor)}</small>
-                            ${camp ? `<em>👑 ${camp}</em>` : (elim && done ? `<em>🎫 Vagas definidas</em>` : "")}
-                            </div>
-                        </button>`;
-                    }).join("") : `<p class="comp-empty-sidebar">Nenhuma competição neste filtro.</p>`}
-                </aside>
-                <main class="comp-int-main">
-                    ${compAtual ? renderTorneioInternacionalCompleto(compAtual.tor, compAtual.key) : `<div class="comp-empty-main"><span>🌍</span><p>Nenhum torneio internacional ativo nesta temporada.</p><small>Eliminatórias da Copa rodam em anos como ${anoAtual % 4 === 1 ? anoAtual : anoAtual + (1 - (anoAtual % 4))}. Euro/Eliminatórias Euro em ${anoAtual % 4 === 3 ? anoAtual : anoAtual + (3 - (anoAtual % 4))}.</small></div>`}
-                </main>
+            <div class="comp-int-cards-strip">
+                ${torneios.length ? torneios.map(t => {
+                    const elim = isEliminatoria(t.comp.id);
+                    const done = ["Vagas Definidas", "Classificação Definida"].includes(t.tor.fase) || (t.tor.fase === "Campeão Definido" && !elim);
+                    const camp = !elim && t.tor.campeaoId ? SELECOES.find(s => s.id === t.tor.campeaoId)?.nome : null;
+                    const prog = t.tor.tipo === "grupos" && t.tor.maxRodadas ? Math.min(100, Math.round(((t.tor.rodadaAtual || 1) - 1) / t.tor.maxRodadas * 100)) : (done ? 100 : 50);
+                    return `<button type="button" class="comp-tournament-card ${t.comp.id === compAtual?.comp.id ? "ativo" : ""}" data-comp="${t.comp.id}" style="--comp-cor:${t.tor.cor || CORES_COMP.default}">
+                        <div class="comp-tournament-card-top">
+                            <span class="comp-tournament-icon">${t.meta.icon}</span>
+                            ${camp ? `<span class="comp-tournament-crown" title="${camp}">👑</span>` : ""}
+                        </div>
+                        <strong>${t.comp.nome.replace("Eliminatórias ", "").replace(" — Divisão ", " Div. ")}</strong>
+                        <small>${t.meta.subtitulo || rotuloFaseTorneo(t.tor)}</small>
+                        <div class="comp-tournament-progress"><div style="width:${prog}%"></div></div>
+                        ${camp ? `<em class="comp-tournament-tag tag-champ">Campeão: ${camp}</em>` : (elim && done ? `<em class="comp-tournament-tag tag-vagas">🎫 Vagas definidas</em>` : `<em class="comp-tournament-tag">${rotuloFaseTorneo(t.tor)}</em>`)}
+                    </button>`;
+                }).join("") : `<p class="comp-empty-sidebar">Nenhuma competição neste filtro.</p>`}
             </div>
+            <main class="comp-int-main comp-int-main-full">
+                ${compAtual ? renderTorneioInternacionalCompleto(compAtual.tor, compAtual.key) : `<div class="comp-empty-main"><span>🌍</span><p>Nenhum torneio internacional ativo nesta temporada.</p><small>Eliminatórias da Copa rodam em anos como ${anoAtual % 4 === 1 ? anoAtual : anoAtual + (1 - (anoAtual % 4))}. Euro/Eliminatórias Euro em ${anoAtual % 4 === 3 ? anoAtual : anoAtual + (3 - (anoAtual % 4))}.</small></div>`}
+            </main>
         </div>`;
 
     el.querySelectorAll(".comp-cat-tab").forEach(btn => btn.onclick = () => {
         uiFiltroCompInt = btn.dataset.cat;
         renderizarCompeticoesInternacionais();
     });
-    el.querySelectorAll(".comp-sidebar-item").forEach(btn => btn.onclick = () => {
+    el.querySelectorAll(".comp-tournament-card").forEach(btn => btn.onclick = () => {
         uiSelectCompInt = btn.dataset.comp;
         aplicarTemaCompeticao(uiSelectCompInt);
         renderizarCompeticoesInternacionais();
@@ -6393,8 +6419,45 @@ function renderizarChaveamentosVisuais(copaSelecionada) {
     return `<div class="comp-detail-grid"><div>${html}</div>${montarRankingCompeticao(copaSelecionada)}</div>`;
 }
 
-// Renderiza o conteúdo de UMA fase (grupos ou mata-mata), sem o wrapper de
-// título/bloco antigo — o título passa a viver na aba correspondente.
+// Monta o HTML de um único confronto de mata-mata (cartão com os 2 clubes,
+// placar, e estado). Reaproveitado tanto pela árvore horizontal quanto por
+// qualquer outro contexto que precise mostrar um confronto isolado.
+function montarConfrontoCardHtml(conf) {
+    const isMeuJogo = conf.timeA.id === jogador.clubeId || conf.timeB.id === jogador.clubeId;
+    const pen = conf.penaltis ? `<span class="penalty-badge">Pênaltis</span>` : "";
+    const duasPartidas = conf.golsAIda !== null || conf.golsAVolta !== null;
+    let placarA, placarB, subInfo = "";
+    if (duasPartidas) {
+        const aggA = (conf.golsAIda||0)+(conf.golsAVolta||0), aggB = (conf.golsBIda||0)+(conf.golsBVolta||0);
+        if (conf.vencedorId) { placarA = aggA; placarB = aggB; subInfo = "Agregado"; }
+        else { placarA = conf.golsAIda ?? "–"; placarB = conf.golsBIda ?? "–"; subInfo = "Jogo de ida"; }
+    } else {
+        const jogado = conf.golsA !== null && conf.golsA !== undefined;
+        placarA = jogado ? conf.golsA : "–";
+        placarB = jogado ? conf.golsB : "–";
+    }
+    const jogadoFinal = !!conf.vencedorId || (!duasPartidas && conf.golsA !== null && conf.golsA !== undefined);
+    const team = (t, gols, win) => {
+        if (!t) return `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
+        const elim = conf.vencedorId && conf.vencedorId !== t.id;
+        return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilClube('${t.id}')">
+            <img class="bracket-slot-crest" src="${obterUrlImagem(t,'clube')}" onerror="this.style.visibility='hidden'">
+            <span class="bracket-slot-name">${t.nome}</span>
+            <span class="bracket-slot-goals">${gols}</span>
+            ${win ? '<span class="bracket-slot-check">✓</span>' : ""}
+        </div>`;
+    };
+    return `<div class="bracket-slot ${isMeuJogo ? "meu-jogo" : ""} ${jogadoFinal ? "concluido" : "pendente"}">
+        ${team(conf.timeA, placarA, conf.vencedorId === conf.timeA.id)}
+        <div class="bracket-slot-mid"><span class="bracket-slot-vs">${subInfo || (jogadoFinal ? "FT" : "VS")}</span>${pen}</div>
+        ${team(conf.timeB, placarB, conf.vencedorId === conf.timeB.id)}
+    </div>`;
+}
+
+// Renderiza o conteúdo de UMA fase de grupos, sem o wrapper de título/bloco
+// antigo — o título passa a viver na aba correspondente. Fases de mata-mata
+// já não passam por aqui: são combinadas numa árvore única (ver
+// renderArvoreHorizontalMataMata), em vez de uma aba por rodada.
 function renderConteudoFaseUnica(faseObj) {
     let html = ``;
     if(faseObj.tipo === "grupos") {
@@ -6418,41 +6481,73 @@ function renderConteudoFaseUnica(faseObj) {
         });
         gridGrupos += `</div>`;
         html += gridGrupos;
-    } else if (faseObj.tipo === "mata-mata" && faseObj.confrontos) {
-        const slots = faseObj.confrontos.map(conf => {
-            const isMeuJogo = conf.timeA.id === jogador.clubeId || conf.timeB.id === jogador.clubeId;
-            const pen = conf.penaltis ? `<span class="penalty-badge">Pênaltis</span>` : "";
-            const duasPartidas = conf.golsAIda !== null || conf.golsAVolta !== null;
-            let placarA, placarB, subInfo = "";
-            if (duasPartidas) {
-                const aggA = (conf.golsAIda||0)+(conf.golsAVolta||0), aggB = (conf.golsBIda||0)+(conf.golsBVolta||0);
-                if (conf.vencedorId) { placarA = aggA; placarB = aggB; subInfo = "Agregado"; }
-                else { placarA = conf.golsAIda ?? "–"; placarB = conf.golsBIda ?? "–"; subInfo = "Jogo de ida"; }
-            } else {
-                const jogado = conf.golsA !== null && conf.golsA !== undefined;
-                placarA = jogado ? conf.golsA : "–";
-                placarB = jogado ? conf.golsB : "–";
-            }
-            const jogadoFinal = !!conf.vencedorId || (!duasPartidas && conf.golsA !== null && conf.golsA !== undefined);
-            const team = (t, gols, win) => {
-                if (!t) return `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
-                const elim = conf.vencedorId && conf.vencedorId !== t.id;
-                return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilClube('${t.id}')">
-                    <img class="bracket-slot-crest" src="${obterUrlImagem(t,'clube')}" onerror="this.style.visibility='hidden'">
-                    <span class="bracket-slot-name">${t.nome}</span>
-                    <span class="bracket-slot-goals">${gols}</span>
-                    ${win ? '<span class="bracket-slot-check">✓</span>' : ""}
-                </div>`;
-            };
-            return `<div class="bracket-slot ${isMeuJogo ? "meu-jogo" : ""} ${jogadoFinal ? "concluido" : "pendente"}">
-                ${team(conf.timeA, placarA, conf.vencedorId === conf.timeA.id)}
-                <div class="bracket-slot-mid"><span class="bracket-slot-vs">${subInfo || (jogadoFinal ? "FT" : "VS")}</span>${pen}</div>
-                ${team(conf.timeB, placarB, conf.vencedorId === conf.timeB.id)}
-            </div>`;
-        }).join("");
-        html += `<div class="bracket-grid-confrontos">${slots}</div>`;
     }
     return html;
+}
+
+// ==========================================
+// ÁRVORE DE CHAVEAMENTO HORIZONTAL (mata-mata)
+// ==========================================
+// Combina TODAS as rodadas de mata-mata (Oitavas, Quartas, Semis, Final...) num
+// único painel, lado a lado horizontalmente, com linhas conectoras precisas
+// ligando cada par de confrontos ao confronto da rodada seguinte — em vez da
+// navegação antiga por abas (uma rodada por vez).
+function renderArvoreHorizontalMataMata(fasesMataMata) {
+    if (!fasesMataMata || !fasesMataMata.length) return `<div style="width:100%; text-align:center; padding:40px; color:#aaa;">Sorteio ainda não realizado.</div>`;
+
+    const MATCH_H = 78;   // altura de cada cartão de confronto
+    const GAP0 = 30;      // espaço vertical entre confrontos na 1ª rodada
+    const UNIT = MATCH_H + GAP0;
+    const COL_W = 232;    // largura de cada cartão/coluna
+    const COL_GAP = 54;   // largura do corredor de linhas conectoras entre rodadas
+
+    const nRounds = fasesMataMata.length;
+    const nMatchesRound0 = fasesMataMata[0].confrontos.length;
+    const totalHeight = Math.max(MATCH_H, nMatchesRound0 * UNIT - GAP0);
+
+    // Pré-calcula o "top" (posição vertical) de cada confronto em cada rodada,
+    // de forma que cada par da rodada r fique perfeitamente centrado sobre o
+    // confronto correspondente da rodada r+1.
+    const tops = fasesMataMata.map((fase, r) => {
+        const mult = Math.pow(2, r);
+        return fase.confrontos.map((_, i) => i * UNIT * mult + (UNIT * (mult - 1)) / 2);
+    });
+
+    const colunas = fasesMataMata.map((fase, r) => {
+        const cardsHtml = fase.confrontos.map((conf, i) => {
+            return `<div class="bracket-tree-match" style="top:${tops[r][i]}px; height:${MATCH_H}px; width:${COL_W}px;">${montarConfrontoCardHtml(conf)}</div>`;
+        }).join("");
+        return `<div class="bracket-tree-round" style="width:${COL_W}px;">
+            <div class="bracket-tree-round-title">${fase.fase || `Rodada ${r+1}`}</div>
+            <div class="bracket-tree-round-body" style="height:${totalHeight}px; width:${COL_W}px;">${cardsHtml}</div>
+        </div>`;
+    });
+
+    // Linhas SVG conectando cada par de confrontos da rodada r ao confronto
+    // correspondente da rodada r+1 (posições calculadas com a mesma fórmula
+    // usada acima, então os pontos batem exatamente).
+    const conectores = [];
+    for (let r = 0; r < nRounds - 1; r++) {
+        const topsR = tops[r];
+        const paths = [];
+        for (let i = 0; i < topsR.length; i += 2) {
+            if (topsR[i+1] === undefined) continue;
+            const yA = topsR[i] + MATCH_H/2;
+            const yB = topsR[i+1] + MATCH_H/2;
+            const yMid = (yA + yB) / 2;
+            const half = COL_GAP/2;
+            paths.push(`<path d="M0,${yA} H${half} M0,${yB} H${half} M${half},${yA} V${yB} M${half},${yMid} H${COL_GAP}" stroke="var(--theme-primary,#00ff88)" stroke-width="2" fill="none" opacity="0.5"/>`);
+        }
+        conectores.push(`<svg class="bracket-tree-connector" width="${COL_GAP}" height="${totalHeight}" viewBox="0 0 ${COL_GAP} ${totalHeight}" preserveAspectRatio="none">${paths.join("")}</svg>`);
+    }
+
+    let corpo = "";
+    for (let r = 0; r < nRounds; r++) {
+        corpo += colunas[r];
+        if (r < nRounds - 1) corpo += conectores[r];
+    }
+
+    return `<div class="bracket-tree-scroll"><div class="bracket-tree">${corpo}</div></div>`;
 }
 
 // Monta a navegação por abas/seções do mata-mata (Fase de Grupos, Oitavas,
@@ -6462,9 +6557,24 @@ function renderChaveamentoComAbas(fases) {
     const listaFases = (fases || []).filter(f => f && (f.tipo === "grupos" || f.tipo === "mata-mata"));
     if (!listaFases.length) return `<div style="width:100%; text-align:center; padding:40px; color:#aaa; font-size:1.05rem;">Sorteio ainda não realizado.</div>`;
 
-    const idxAtiva = listaFases.length - 1; // por padrão mostra a fase mais recente/atual
-    const tabsHtml = listaFases.map((f, i) => `<button class="bracket-tab-btn ${i === idxAtiva ? 'ativo' : ''}" data-fase-tab="${i}" onclick="mudarAbaBracket(this, ${i})">${f.fase || (f.tipo === 'grupos' ? 'Fase de Grupos' : `Fase ${i+1}`)}</button>`).join("");
-    const panelsHtml = listaFases.map((f, i) => `<div class="bracket-tab-panel ${i === idxAtiva ? 'ativo' : ''}" data-fase-panel="${i}">${renderConteudoFaseUnica(f)}</div>`).join("");
+    const fasesGrupos = listaFases.filter(f => f.tipo === "grupos");
+    const fasesMataMata = listaFases.filter(f => f.tipo === "mata-mata");
+
+    // Cada fase de grupos continua com a sua própria aba. Todas as fases de
+    // mata-mata (Oitavas, Quartas, Semis, Final...) são combinadas numa única
+    // aba, mostradas como uma árvore horizontal conectada — em vez de forçar
+    // o utilizador a trocar de aba para ver cada rodada isoladamente.
+    const abas = fasesGrupos.map(f => ({ titulo: f.fase || "Fase de Grupos", conteudo: renderConteudoFaseUnica(f) }));
+    if (fasesMataMata.length) {
+        abas.push({
+            titulo: fasesMataMata.length > 1 ? "Mata-Mata" : (fasesMataMata[0].fase || "Mata-Mata"),
+            conteudo: renderArvoreHorizontalMataMata(fasesMataMata)
+        });
+    }
+
+    const idxAtiva = abas.length - 1; // por padrão mostra a fase mais recente/atual
+    const tabsHtml = abas.map((a, i) => `<button class="bracket-tab-btn ${i === idxAtiva ? 'ativo' : ''}" data-fase-tab="${i}" onclick="mudarAbaBracket(this, ${i})">${a.titulo}</button>`).join("");
+    const panelsHtml = abas.map((a, i) => `<div class="bracket-tab-panel ${i === idxAtiva ? 'ativo' : ''}" data-fase-panel="${i}">${a.conteudo}</div>`).join("");
 
     return `<div class="bracket-tabs-wrap">
         <div class="bracket-tabs">${tabsHtml}</div>

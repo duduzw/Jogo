@@ -2049,3 +2049,255 @@ body.tema-libertadores {
 body.tema-pt {
     background: radial-gradient(circle at top, #004a25 0%, #09090b 70%) !important;
 }
+/* ==========================================
+   CHAVEAMENTO: abas + árvore horizontal (mata-mata)
+   ========================================== */
+.bracket-tabs-wrap { width: 100%; }
+
+.bracket-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid #2a2a2e;
+    padding-bottom: 12px;
+}
+
+.bracket-tab-btn {
+    background: #16161a;
+    border: 1px solid #2a2a2e;
+    color: #aaa;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.bracket-tab-btn:hover { border-color: var(--theme-primary); color: #fff; }
+
+.bracket-tab-btn.ativo {
+    background: var(--theme-primary);
+    border-color: var(--theme-primary);
+    color: #000;
+}
+
+.bracket-tab-panel { display: none; }
+.bracket-tab-panel.ativo { display: block; animation: fadeIn 0.2s ease; }
+
+/* Grid antigo (ainda usado como fallback simples caso necessário) */
+.bracket-grid-confrontos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+/* Cartão de confronto — usado tanto no grid antigo quanto na árvore nova */
+.bracket-slot {
+    background: #16161a;
+    border: 1px solid #2a2a2e;
+    border-radius: 10px;
+    overflow: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.bracket-slot.meu-jogo { border-color: var(--theme-primary); box-shadow: 0 0 12px rgba(0,255,136,0.18); }
+.bracket-slot.concluido { opacity: 0.95; }
+.bracket-slot.pendente { opacity: 0.75; }
+
+.bracket-slot-team {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    position: relative;
+}
+
+.bracket-slot-team:hover { background: rgba(255,255,255,0.04); }
+.bracket-slot-team.tbd { cursor: default; opacity: 0.5; }
+.bracket-slot-team.eliminated { opacity: 0.45; }
+.bracket-slot-team.winner { background: rgba(0,255,136,0.08); }
+
+.bracket-slot-crest { width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; }
+.tbd-crest {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #222; display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; color: #666; flex-shrink: 0;
+}
+
+.bracket-slot-name {
+    flex: 1;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bracket-slot-team.winner .bracket-slot-name { color: var(--theme-primary); font-weight: 800; }
+
+.bracket-slot-goals { font-size: 0.95rem; font-weight: 800; color: #fff; min-width: 18px; text-align: center; }
+.bracket-slot-check { color: var(--theme-primary); font-weight: 900; font-size: 0.8rem; }
+
+.bracket-slot-mid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 3px 0;
+    border-top: 1px solid #222;
+    border-bottom: 1px solid #222;
+    background: #0e0e11;
+}
+
+.bracket-slot-vs { font-size: 0.62rem; letter-spacing: 0.06em; color: #777; text-transform: uppercase; font-weight: 700; }
+
+.penalty-badge {
+    font-size: 0.6rem;
+    background: rgba(250,204,21,0.15);
+    color: #facc15;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 700;
+}
+
+/* ---- Árvore horizontal de mata-mata ---- */
+.bracket-tree-scroll {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 20px;
+}
+
+.bracket-tree {
+    display: flex;
+    align-items: flex-start;
+    width: max-content;
+    min-width: 100%;
+}
+
+.bracket-tree-round { flex-shrink: 0; }
+
+.bracket-tree-round-title {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--theme-primary);
+    text-align: center;
+    margin-bottom: 14px;
+    white-space: nowrap;
+}
+
+.bracket-tree-round-body { position: relative; }
+
+.bracket-tree-match { position: absolute; }
+
+.bracket-tree-match .bracket-slot { height: 100%; display: flex; flex-direction: column; justify-content: center; }
+
+.bracket-tree-connector { flex-shrink: 0; display: block; align-self: stretch; margin-top: 34px; }
+
+/* ==========================================
+   COMPETIÇÕES INTERNACIONAIS — redesign (callout pessoal + cards de torneio)
+   ========================================== */
+.comp-int-minha-selecao {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,0,0,0.2));
+    border: 1px solid rgba(0,255,136,0.25);
+    border-radius: 14px;
+    padding: 16px 22px;
+    margin: 18px 0;
+}
+
+.comp-int-minha-selecao img { width: 52px; height: 52px; object-fit: contain; flex-shrink: 0; }
+
+.comp-int-minha-selecao h3 { margin: 2px 0 6px; font-size: 1.15rem; color: #fff; }
+
+.comp-int-minha-selecao-vazia { border-color: #2a2a2e; background: rgba(255,255,255,0.02); }
+
+.comp-int-status-badge {
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.comp-int-status-badge.convocado { background: rgba(0,255,136,0.15); color: var(--theme-primary); }
+.comp-int-status-badge.fora { background: rgba(248,113,113,0.12); color: #f87171; }
+
+.comp-int-minha-stats { display: flex; gap: 22px; margin-left: auto; padding-left: 18px; border-left: 1px solid rgba(255,255,255,0.1); }
+.comp-int-minha-stats div { text-align: center; }
+.comp-int-minha-stats strong { display: block; font-size: 1.25rem; color: #fff; }
+.comp-int-minha-stats span { font-size: 0.66rem; color: #999; text-transform: uppercase; letter-spacing: 0.04em; }
+
+@media (max-width: 720px) {
+    .comp-int-minha-selecao { flex-wrap: wrap; }
+    .comp-int-minha-stats { margin-left: 0; padding-left: 0; border-left: none; width: 100%; justify-content: space-between; }
+}
+
+.comp-int-cards-strip {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding: 4px 2px 16px;
+    margin-bottom: 8px;
+}
+
+.comp-tournament-card {
+    flex: 0 0 auto;
+    width: 190px;
+    background: #16161a;
+    border: 1px solid #2a2a2e;
+    border-radius: 12px;
+    padding: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.comp-tournament-card:hover { transform: translateY(-2px); border-color: var(--comp-cor, var(--theme-primary)); }
+
+.comp-tournament-card.ativo {
+    border-color: var(--comp-cor, var(--theme-primary));
+    box-shadow: 0 0 0 1px var(--comp-cor, var(--theme-primary)), 0 8px 20px rgba(0,0,0,0.35);
+    background: linear-gradient(160deg, rgba(255,255,255,0.04), #16161a);
+}
+
+.comp-tournament-card-top { display: flex; align-items: center; justify-content: space-between; }
+.comp-tournament-icon { font-size: 1.4rem; }
+.comp-tournament-crown { font-size: 1.1rem; }
+
+.comp-tournament-card strong { font-size: 0.85rem; color: #eee; line-height: 1.2; }
+.comp-tournament-card small { font-size: 0.72rem; color: #999; }
+
+.comp-tournament-progress { height: 4px; border-radius: 3px; background: #222; overflow: hidden; margin-top: 2px; }
+.comp-tournament-progress div { height: 100%; background: var(--comp-cor, var(--theme-primary)); border-radius: 3px; }
+
+.comp-tournament-tag {
+    font-size: 0.66rem;
+    font-style: normal;
+    font-weight: 700;
+    color: var(--comp-cor, var(--theme-primary));
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.comp-tournament-tag.tag-champ { color: #facc15; }
+.comp-tournament-tag.tag-vagas { color: #60a5fa; }
+
+.comp-int-main-full { width: 100%; }
+
+.comp-int-premium {
+    border-image: none;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+}
