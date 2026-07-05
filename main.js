@@ -783,6 +783,12 @@ function obterZonaDaPosicao(zonas, indexPos) {
 }
 
 const TOP5_LIGAS_EUROPA = ["eng_1", "esp_1", "ita_1", "ger_1", "fra_1"];
+const PAISES_FORA_DA_UEFA = ["br", "arg", "uy", "ara", "usa", "mx", "nga", "cvi", "sel"];
+function ehLigaEuropeia(ligaId) {
+    if (!ligaId) return false;
+    const prefixo = ligaId.split("_")[0];
+    return !PAISES_FORA_DA_UEFA.includes(prefixo);
+}
 const POSICOES_CONVOCACAO = {
     goleiros: ["Goleiro"],
     laterais: ["Lateral"],
@@ -1254,7 +1260,7 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
         }
     });
     const sel = SELECOES.find(s => s.id === selecaoId);
-    registrarNoticia(`${sel?.nome || "Seleção"} campeã!`, `A Seleção ${sel?.nome} conquistou a ${nomeComp} ${anoAtual}!`, "Seleções");
+    registrarNoticia(`${sel?.nome || "Seleção"} campeã!`, `A Seleção ${sel?.nome} conquistou a ${nomeComp} ${anoAtual}!`, "Seleções", nomeComp, "trofeu");
 }
 
 function selecionarTimesTorneio(fmt, compConfig) {
@@ -1751,7 +1757,7 @@ function premiarLigasTemporada() {
             selecoesEstado.premiosLigaAno[chaveAno][liga.id] = { artilheiro: art.p.nome, gols: art.g };
             art.p.pontosPremio = (art.p.pontosPremio || 0) + 18;
             if (art.p.historicoCarreira?.[0]) art.p.historicoCarreira[0].trofeus = art.p.historicoCarreira[0].trofeus === "-" ? nomePremio : art.p.historicoCarreira[0].trofeus + ", " + nomePremio;
-            registrarNoticia(nomePremio, `${art.p.nome} foi o artilheiro da ${liga.nome} com ${art.g} gols.`, "Prémios");
+            registrarNoticia(nomePremio, `${art.p.nome} foi o artilheiro da ${liga.nome} com ${art.g} gols.`, "Prémios", { nome: art.p.nome, foto: art.p.foto }, "jogador");
             if ((art.p.id || "player") === "player") {
                 jogador.geral = Math.min(99, jogador.geral + 2);
                 jogador.moral = Math.min(100, jogador.moral + 12);
@@ -1764,7 +1770,7 @@ function premiarLigasTemporada() {
             const nomePremio = `Garçom da Liga — ${liga.nome}`;
             ast.p.pontosPremio = (ast.p.pontosPremio || 0) + 14;
             if (ast.p.historicoCarreira?.[0]) ast.p.historicoCarreira[0].trofeus = ast.p.historicoCarreira[0].trofeus === "-" ? nomePremio : ast.p.historicoCarreira[0].trofeus + ", " + nomePremio;
-            registrarNoticia(nomePremio, `${ast.p.nome} liderou as assistências da ${liga.nome} com ${ast.a}.`, "Prémios");
+            registrarNoticia(nomePremio, `${ast.p.nome} liderou as assistências da ${liga.nome} com ${ast.a}.`, "Prémios", { nome: ast.p.nome, foto: ast.p.foto }, "jogador");
             if ((ast.p.id || "player") === "player") {
                 jogador.geral = Math.min(99, jogador.geral + 1);
                 jogador.moral = Math.min(100, jogador.moral + 8);
@@ -2114,7 +2120,7 @@ styleOverrides.innerHTML = `
     .finalista-card h4 { margin:6px 0; font-size:1.08rem; }
     .finalista-stats { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:10px; }
     .finalista-stats span { padding:6px 8px; border-radius:999px; background:rgba(255,255,255,0.08); color:#e5e7eb; font-size:0.76rem; font-weight:800; }
-    .gala-awards-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin:24px 0; }
+    .gala-awards-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:24px 0; }
     .gala-award { background:rgba(255,255,255,0.055); padding:15px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); text-align:left; }
     .gala-award img { width:46px; height:46px; object-fit:contain !important; float:right; margin-left:10px; filter:drop-shadow(0 5px 12px rgba(0,0,0,0.45)); }
     .gala-award small { display:block; color:#a1a1aa; font-weight:900; text-transform:uppercase; margin-bottom:8px; }
@@ -2181,6 +2187,42 @@ styleOverrides.innerHTML = `
     .coach-talk-btn:hover { filter:brightness(1.08); }
     .match-log .gol-substituicao { color:#facc15 !important; font-weight:800; background:rgba(250,204,21,0.06); border:1px dashed rgba(250,204,21,0.3); border-radius:8px; padding:8px; }
     .interview-card .interview-tag-grande { display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; background:rgba(239,68,68,0.18); color:#f87171; font-size:0.68rem; font-weight:900; text-transform:uppercase; vertical-align:middle; }
+
+    /* NOTÍCIAS: cartão estilo "post" de rede social */
+    .noticia-post-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:16px 18px; }
+    .noticia-post-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .noticia-post-avatar, .noticia-post-avatar-fallback { width:38px; height:38px; border-radius:50%; object-fit:cover; background:rgba(255,255,255,0.08); flex-shrink:0; }
+    .noticia-post-avatar-fallback { display:flex; align-items:center; justify-content:center; font-size:1.1rem; }
+    .noticia-post-header strong { display:block; color:#fff; font-size:0.92rem; }
+    .noticia-post-cat { font-size:0.72rem; font-weight:800; text-transform:uppercase; }
+    .noticia-post-manchete { margin:0 0 4px; color:#f4f4f5; font-weight:800; font-size:1.02rem; }
+    .noticia-post-corpo { margin:0 0 12px; color:#cbd5e1; line-height:1.5; }
+    .noticia-post-footer { display:flex; gap:18px; color:#94a3b8; font-size:0.82rem; font-weight:700; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; }
+
+    /* NOTÍCIAS: cartão estilo "manchete de jornal" */
+    .noticia-jornal-card { background:#f4f1e8; color:#1a1a1a; border-radius:6px; padding:16px 20px; box-shadow:0 8px 22px rgba(0,0,0,0.35); }
+    .noticia-jornal-masthead { display:flex; justify-content:space-between; font-family:'Georgia', serif; font-weight:900; letter-spacing:1px; font-size:0.72rem; border-bottom:2px solid #1a1a1a; padding-bottom:6px; margin-bottom:10px; color:#1a1a1a; text-transform:uppercase; }
+    .noticia-jornal-body { display:flex; gap:14px; align-items:flex-start; }
+    .noticia-jornal-img { width:88px; height:88px; object-fit:cover; border:1px solid #1a1a1a; filter:grayscale(0.4) contrast(1.05); flex-shrink:0; }
+    .noticia-jornal-headline { font-family:'Georgia', serif; font-weight:900; font-size:1.28rem; margin:0 0 6px; line-height:1.15; color:#111; }
+    .noticia-jornal-texto { font-family:'Georgia', serif; margin:0; color:#333; line-height:1.45; font-size:0.92rem; column-count:1; }
+
+    /* GALA — barra de progresso das categorias */
+    .gala-progresso { display:flex; justify-content:center; gap:6px; margin:14px 0 4px; flex-wrap:wrap; }
+    .gala-progresso span { padding:5px 10px; border-radius:999px; font-size:0.68rem; font-weight:900; text-transform:uppercase; background:rgba(255,255,255,0.06); color:#71717a; border:1px solid rgba(255,255,255,0.08); }
+    .gala-progresso span.ativo { background:rgba(250,204,21,0.18); color:#facc15; border-color:rgba(250,204,21,0.4); }
+    .gala-progresso span.feito { color:#a1a1aa; }
+
+    /* GALA — Melhor 11 do Mundo (campo tático) */
+    .melhor11-pitch { position:relative; width:min(720px, 92vw); aspect-ratio:1.55/1; margin:20px auto; border-radius:16px; background:linear-gradient(180deg, #1c6e3a, #14532d); border:3px solid rgba(255,255,255,0.55); overflow:hidden; box-shadow:inset 0 0 60px rgba(0,0,0,0.4); }
+    .melhor11-pitch::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 10%, transparent 10% 20%); }
+    .melhor11-pitch::after { content:''; position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1/1; border:2px solid rgba(255,255,255,0.5); border-radius:50%; transform:translate(-50%,-50%); }
+    .melhor11-vaga { position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:4px; width:96px; opacity:0; animation:popIn 0.4s ease-out forwards; }
+    .melhor11-vaga img { width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid #facc15; background:#222; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
+    .melhor11-vaga .melhor11-avatar-vazio { width:46px; height:46px; border-radius:50%; background:rgba(255,255,255,0.15); border:2px dashed rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; font-size:0.8rem; color:#fff; }
+    .melhor11-vaga strong { font-size:0.68rem; color:#fff; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,0.8); line-height:1.1; background:rgba(0,0,0,0.45); padding:2px 5px; border-radius:5px; }
+    .melhor11-vaga span { font-size:0.6rem; color:#facc15; font-weight:900; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
+    .gala-award.premio-especial { border-color:rgba(250,204,21,0.4); background:linear-gradient(135deg, rgba(250,204,21,0.1), rgba(255,255,255,0.04)); }
     .fase-bloco { border-radius:14px !important; background:linear-gradient(145deg, rgba(24,24,27,0.92), rgba(0,0,0,0.58)) !important; border:1px solid rgba(255,255,255,0.12) !important; }
     .match-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
     .selecao-shell { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(280px,0.8fr); gap:18px; align-items:start; }
@@ -2927,8 +2969,19 @@ function mostrarToast(titulo, mensagem, tipo = 'info') {
     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
 }
 
-function registrarNoticia(manchete, corpo, categoria = "Geral") {
-    const item = { manchete, corpo, data: `${categoria} • ${anoAtual} • Rodada ${rodadaAtual}` };
+const FORMATOS_NOTICIA_FIXOS = {
+    "Entrevista": "post", "Mídia": "post", "Torcida": "post", "Rumor": "post", "Bastidores": "post", "Treino": "post",
+    "Prémios": "jornal", "Números": "jornal", "Seleções": "jornal", "Clássico": "jornal", "Mercado": "jornal", "Finanças": "jornal", "Tática": "jornal"
+};
+const HANDLES_POST = ["@ImprensaGlobal", "@FutMundialNews", "@RedacaoEsportiva", "@OlhoNoJogo", "@VozDoVestiario"];
+function registrarNoticia(manchete, corpo, categoria = "Geral", refImagem = null, tipoImagem = "jogador") {
+    const formato = FORMATOS_NOTICIA_FIXOS[categoria] || (Math.random() < 0.5 ? "post" : "jornal");
+    const item = {
+        manchete, corpo, data: `${categoria} • ${anoAtual} • Rodada ${rodadaAtual}`,
+        formato, refImagem, tipoImagem, categoria,
+        handle: HANDLES_POST[Math.floor(Math.random() * HANDLES_POST.length)],
+        curtidas: formato === "post" ? Math.floor(Math.random() * 4200) + 120 : null
+    };
     feedNoticias.unshift(item);
     eventosRecentes.unshift(item);
     eventosRecentes = eventosRecentes.slice(0, 60);
@@ -2955,7 +3008,7 @@ function registrarMovimentacao({ jogadorNome, jogadorId, tipo, valor, origemId, 
     registrarNoticia(
         `${jogadorNome} ${tipo === "emprestimo" ? "foi emprestado" : "foi transferido"} para ${mov.destino}`,
         `${mov.origem} -> ${mov.destino} | ${tipo === "emprestimo" ? "empréstimo" : formatarMoeda(valor || 0)} | ${mov.janela}`,
-        "Mercado"
+        "Mercado", { nome: jogadorNome }, "jogador"
     );
 }
 
@@ -4127,7 +4180,7 @@ window.responderEntrevista = function(tipo, idx) {
     jogador.moral = Math.max(0, Math.min(100, (jogador.moral || 55) + op.moral));
     ajustarTitularidade(op.titularidade);
     jogador.entrevistasRespondidas = (jogador.entrevistasRespondidas || 0) + 1;
-    registrarNoticia(op.noticia, `${jogador.nome}: "${op.texto}"`, "Entrevista");
+    registrarNoticia(op.noticia, `${jogador.nome}: "${op.texto}"`, "Entrevista", { nome: jogador.nome, foto: jogador.foto }, "jogador");
     modal._fechado = true;
     modal.remove();
     window.salvarJogo();
@@ -4636,15 +4689,39 @@ function renderizarNoticias() {
                     return `<span style="font-size:0.72rem; font-weight:800; padding:5px 10px; border-radius:20px; background:${est.cor}22; color:${est.cor}; border:1px solid ${est.cor}55;">${est.icone} ${cat}</span>`;
                 }).join("")}
             </div>` : ""}
-            <div style="display:grid; gap:12px;">
+            <div style="display:grid; gap:16px;">
                 ${noticias.length ? noticias.map(n => {
-                    const cat = (n.data || "").split(" • ")[0];
+                    const cat = n.categoria || (n.data || "").split(" • ")[0];
                     const est = categoriaEstilo[cat] || { icone: "📰", cor: "#3b82f6" };
+                    const img = n.refImagem ? obterUrlImagem(n.refImagem, n.tipoImagem || 'jogador') : "";
+                    if (n.formato === "post") {
+                        return `
+                        <div class="noticia-post-card">
+                            <div class="noticia-post-header">
+                                ${img ? `<img class="noticia-post-avatar" src="${img}" onerror="this.outerHTML='<div class=&quot;noticia-post-avatar-fallback&quot;>${est.icone}</div>'">` : `<div class="noticia-post-avatar-fallback">${est.icone}</div>`}                                <div>
+                                    <strong>${n.handle || "@ImprensaGlobal"}</strong>
+                                    <span class="noticia-post-cat" style="color:${est.cor};">${est.icone} ${cat}</span>
+                                </div>
+                            </div>
+                            <p class="noticia-post-manchete">${n.manchete}</p>
+                            <p class="noticia-post-corpo">${n.corpo}</p>
+                            <div class="noticia-post-footer">
+                                <span>❤️ ${(n.curtidas || 0).toLocaleString('pt-BR')}</span>
+                                <span>💬 ${Math.max(1, Math.round((n.curtidas || 100) / 38))}</span>
+                                <span>🔁 ${Math.max(0, Math.round((n.curtidas || 100) / 90))}</span>
+                            </div>
+                        </div>`;
+                    }
                     return `
-                    <div style="background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.1); border-left:3px solid ${est.cor}; border-radius:10px; padding:16px;">
-                        <span style="color:${est.cor}; font-size:0.8rem; font-weight:900; text-transform:uppercase;">${est.icone} ${n.data || "Notícia"}</span>
-                        <h3 style="margin:6px 0; color:#fff;">${n.manchete}</h3>
-                        <p style="margin:0; color:#cbd5e1;">${n.corpo}</p>
+                    <div class="noticia-jornal-card">
+                        <div class="noticia-jornal-masthead"><span>${est.icone} ${cat.toUpperCase()}</span><span>${n.data}</span></div>
+                        <div class="noticia-jornal-body">
+                            ${img ? `<img class="noticia-jornal-img" src="${img}" onerror="this.remove()">` : ""}
+                            <div>
+                                <h3 class="noticia-jornal-headline">${n.manchete}</h3>
+                                <p class="noticia-jornal-texto">${n.corpo}</p>
+                            </div>
+                        </div>
                     </div>`;
                 }).join("") : `<p style="color:#aaa;">Sem notícias por enquanto.</p>`}
             </div>
@@ -5108,7 +5185,11 @@ function simularRodadaMundial() {
     
     for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
         let maxJogos = (tabela.length - 1) * 2;
-        let timesParaSimular = tabela.filter(t => t.jogos < maxJogos && (ligaId !== competicoes.find(c=>c.id===compAtual?.compId)?.id || t.id !== jogador.clubeId));
+        let timesParaSimular = tabela.filter(t =>
+            t.jogos < maxJogos &&
+            (ligaId !== competicoes.find(c=>c.id===compAtual?.compId)?.id || t.id !== jogador.clubeId) &&
+            !(managerEstado?.ativo && t.id === managerEstado.clubeId)
+        );
         timesParaSimular.sort(() => Math.random() - 0.5);
         for (let i = 0; i < timesParaSimular.length - 1; i += 2) {
             let tC = timesParaSimular[i]; let tV = timesParaSimular[i+1];
@@ -5435,6 +5516,9 @@ function processarFimTemporada() {
             if(/Champions League|UEFA Champions|Libertadores|AFC Champions/i.test(trofeus)) x.scoreFinal += 42;
             else if(/Europa League|Conference League|Copa Libertadores|Sul-Americana/i.test(trofeus)) x.scoreFinal += 22;
             else if(/Premier League|La Liga|Bundesliga|Serie A|Ligue 1|Liga /i.test(trofeus) && !/Champions/i.test(trofeus)) x.scoreFinal += 10;
+            x.ligaId = liga;
+            // Pontuação específica para prêmios internacionais (pesa mais o desempenho pela seleção nacional)
+            x.scoreInternacional = x.scoreFinal + (x.p.statsSelecao?.gols || 0) * 3 + (x.p.statsSelecao?.assistencias || 0) * 2 + (x.p.titulosSelecao?.length || 0) * 20;
         });
         let rankingBolaOuro = [...todos].sort((a,b) => b.scoreFinal - a.scoreFinal);
 
@@ -5444,12 +5528,76 @@ function processarFimTemporada() {
         jogador.valorMercadoNum = calcularValorMercadoJogador(jogador);
         
         registrarNoticia("Fim de temporada", "A grande janela de transferências vai abrir junto com a nova época.", "Mercado");
+
+        // Manager Mode season review — piggybacks on the exact same season
+        // rollover as everyone else, since the manager's club lives in the same
+        // tabelasLigas used by the rest of the world.
+        if(managerEstado?.ativo && managerEstado.clubeId) {
+            const clubeMgr = clubes.find(c => c.id === managerEstado.clubeId);
+            const tabelaMgr = clubeMgr ? tabelasLigas[clubeMgr.ligaId] : null;
+            if(clubeMgr && tabelaMgr) {
+                const tabOrd = [...tabelaMgr].sort((a,b) => b.pontos - a.pontos || ((b.gols||0)-(b.golsSofridos||0)) - ((a.gols||0)-(a.golsSofridos||0)));
+                const posicaoFinal = tabOrd.findIndex(t => t.id === clubeMgr.id) + 1;
+                const totalTimes = tabOrd.length;
+                let ajusteConfianca = 0;
+                if(posicaoFinal === 1) ajusteConfianca = 15;
+                else if(posicaoFinal <= Math.ceil(totalTimes * 0.25)) ajusteConfianca = 8;
+                else if(posicaoFinal <= Math.ceil(totalTimes * 0.6)) ajusteConfianca = 0;
+                else if(posicaoFinal <= totalTimes - 3) ajusteConfianca = -8;
+                else ajusteConfianca = -18;
+
+                managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + ajusteConfianca));
+                registrarNoticia(
+                    posicaoFinal === 1 ? "Campeões!" : "Temporada encerrada",
+                    `${clubeMgr.nome} terminou a época em ${posicaoFinal}º/${totalTimes} lugar sob o comando de ${managerEstado.treinador?.nome || "seu treinador"}.`,
+                    "Manager"
+                );
+
+                if(managerEstado.confianca <= 0) {
+                    registrarNoticia("Demitido", `${managerEstado.treinador?.nome || "O treinador"} foi demitido pela diretoria do ${clubeMgr.nome} após a fraca campanha.`, "Manager");
+                    managerEstado = estadoManagerPadrao();
+                } else {
+                    // Refresh transfer budget and bring through a new youth intake for the new season.
+                    managerEstado.orcamentoTransferencias += Math.floor((clubeMgr.reputacao || 70) * (clubeMgr.reputacao >= 84 ? 900000 : 350000));
+                    managerEstado.base = gerarBaseManager(clubeMgr);
+                }
+            }
+        }
+
         premiarLigasTemporada();
         simularGalaEpica(rankingBolaOuro);
         
     } catch (e) { console.error(e); mostrarToast("Erro", "Falha na Gala.", "danger"); }
 }
 
+// Monta o "Melhor 11 do Mundo" da temporada: escolhe o melhor jogador disponível para
+// cada posição de uma formação 4-3-3, sem repetir jogador em mais de uma vaga.
+function montarMelhor11(ranking) {
+    const formacao = [
+        { pos: "Goleiro", label: "GOL", top: "90%", left: "50%" },
+        { pos: "Lateral", label: "LE", top: "72%", left: "14%" },
+        { pos: "Zagueiro", label: "ZAG", top: "78%", left: "38%" },
+        { pos: "Zagueiro", label: "ZAG", top: "78%", left: "62%" },
+        { pos: "Lateral", label: "LD", top: "72%", left: "86%" },
+        { pos: "Volante", label: "VOL", top: "56%", left: "50%" },
+        { pos: "Meio-Campista", label: "MC", top: "42%", left: "28%" },
+        { pos: "Meia Ofensivo", label: "MEI", top: "40%", left: "72%" },
+        { pos: "Ponta", label: "PE", top: "16%", left: "16%" },
+        { pos: "Atacante", label: "ATA", top: "10%", left: "50%" },
+        { pos: "Ponta", label: "PD", top: "16%", left: "84%" }
+    ];
+    const chave = (p) => p === jogador ? "player" : (p.id || p.nome);
+    const usados = new Set();
+    const porPosicao = {};
+    ranking.forEach(x => { if(!porPosicao[x.pos]) porPosicao[x.pos] = []; porPosicao[x.pos].push(x); });
+    Object.keys(porPosicao).forEach(pos => porPosicao[pos].sort((a,b) => b.scoreFinal - a.scoreFinal));
+    return formacao.map(slot => {
+        const cands = (porPosicao[slot.pos] || []).filter(x => !usados.has(chave(x.p)));
+        const escolhido = cands[0] || null;
+        if(escolhido) usados.add(chave(escolhido.p));
+        return { ...slot, escolhido };
+    });
+}
 
 function simularGalaEpica(ranking) {
     let top1 = ranking[0]; let top2 = ranking[1]; let top3 = ranking[2];
@@ -5459,16 +5607,31 @@ function simularGalaEpica(ranking) {
     const porAssistencias = [...ranking].sort((a,b) => b.a - a.a || b.scoreFinal - a.scoreFinal);
     const sub21 = ranking.filter(x => x.idade <= 21).sort((a,b) => b.scoreFinal - a.scoreFinal);
     const goleiros = ranking.filter(x => x.pos === "Goleiro").sort((a,b) => b.ovr - a.ovr || b.scoreFinal - a.scoreFinal);
+    const rankingInternacional = [...ranking].sort((a,b) => b.scoreInternacional - a.scoreInternacional);
+    const rankingEuropa = ranking.filter(x => ehLigaEuropeia(x.ligaId)).sort((a,b) => b.scoreFinal - a.scoreFinal);
+    const candidatosUefa = rankingEuropa.length >= 3 ? rankingEuropa : ranking;
 
     const premios = [
-        { nome: "Chuteira de Ouro", icon: "⚽", candidatos: porGols.slice(0, 3), vencedor: porGols[0], metrica: x => `${x.g} gols na temporada`, pontos: 35 },
-        { nome: "Rei das Assistencias", icon: "🎯", candidatos: porAssistencias.slice(0, 3), vencedor: porAssistencias[0], metrica: x => `${x.a} assistencias`, pontos: 30 },
-        { nome: "Golden Boy", icon: "⭐", candidatos: sub21.slice(0, 3), vencedor: sub21[0], metrica: x => `${x.idade} anos • OVR ${x.ovr}`, pontos: 25 },
-        { nome: "Luva de Ouro", icon: "🧤", candidatos: goleiros.slice(0, 3), vencedor: goleiros[0], metrica: x => `Goleiro • OVR ${x.ovr}`, pontos: 30 },
-        { nome: "Bola de Ouro", icon: "🏆", candidatos: [top1, top2, top3], vencedor: top1, metrica: x => `${x.g} gols • ${x.a} ast • OVR ${x.ovr}`, pontos: 80 }
+        { nome: "Chuteira de Ouro", icon: "⚽", candidatos: porGols.slice(0, 3), vencedor: porGols[0], metrica: x => `${x.g} gols na temporada`, pontos: 35, grande: false },
+        { nome: "Rei das Assistencias", icon: "🎯", candidatos: porAssistencias.slice(0, 3), vencedor: porAssistencias[0], metrica: x => `${x.a} assistencias`, pontos: 30, grande: false },
+        { nome: "Golden Boy", icon: "⭐", candidatos: sub21.slice(0, 3), vencedor: sub21[0], metrica: x => `${x.idade} anos • OVR ${x.ovr}`, pontos: 25, grande: false },
+        { nome: "Luva de Ouro", icon: "🧤", candidatos: goleiros.slice(0, 3), vencedor: goleiros[0], metrica: x => `Goleiro • OVR ${x.ovr}`, pontos: 30, grande: false },
+        { nome: "UEFA Best Player", icon: "🇪🇺", candidatos: candidatosUefa.slice(0, 3), vencedor: candidatosUefa[0], metrica: x => `${obterClubeJogador(x.p)?.nome || "Clube europeu"} • ${x.g}G ${x.a}A`, pontos: 55, grande: true },
+        { nome: "FIFA The Best", icon: "🌍", candidatos: rankingInternacional.slice(0, 3), vencedor: rankingInternacional[0], metrica: x => `${x.g} gols de clube • ${x.p.statsSelecao?.gols || 0} pela seleção`, pontos: 65, grande: true },
+        { nome: "Bola de Ouro", icon: "🏆", candidatos: [top1, top2, top3], vencedor: top1, metrica: x => `${x.g} gols • ${x.a} ast • OVR ${x.ovr}`, pontos: 80, grande: true }
     ].filter(p => p.vencedor && p.candidatos.length > 0);
 
     premiosIndividuaisPendentes = premios.map(p => ({ nome: p.nome, playerId: p.vencedor.p.id || (p.vencedor.p === jogador ? "player" : ""), pontos: p.pontos }));
+
+    premios.forEach(p => {
+        registrarNoticia(`${p.nome}: ${p.vencedor.p.nome} é o vencedor!`, `${p.vencedor.p.nome} conquistou o prêmio ${p.nome} da temporada (${p.metrica(p.vencedor)}).`, "Prémios", { nome: p.vencedor.p.nome, foto: p.vencedor.p.foto }, "jogador");
+    });
+
+    const melhor11 = montarMelhor11(ranking);
+    melhor11.filter(v => v.escolhido).forEach(v => {
+        premiosIndividuaisPendentes.push({ nome: "Melhor 11 do Mundo", playerId: v.escolhido.p.id || (v.escolhido.p === jogador ? "player" : ""), pontos: 15 });
+    });
+    registrarNoticia("Melhor 11 do Mundo revelado", `A seleção com os destaques da temporada por posição foi anunciada: ${melhor11.filter(v=>v.escolhido).map(v=>v.escolhido.p.nome).join(", ")}.`, "Prémios");
 
     const cardFinalista = (item, rank, id) => `
         <div class="finalista-card" id="${id}" data-rank="#${rank}">
@@ -5511,8 +5674,48 @@ function simularGalaEpica(ranking) {
             </div>
         </div>`;
 
+    const renderCandidatosGrandes = (premio, revelar = false) => {
+        const ordenado = [premio.candidatos[2], premio.candidatos[1], premio.candidatos[0]].filter(Boolean);
+        return `
+        <div class="gala-premio-palco">
+            <h3>${premio.icon} ${premio.nome}</h3>
+            <p style="margin:0; color:#a1a1aa; font-weight:700;">${revelar ? 'Vencedor revelado. O teatro veio abaixo.' : 'Os tres favoritos aparecem no telao...'}</p>
+            <div class="finalistas-grid">
+                ${ordenado.map((item, i) => {
+                    const rank = premio.candidatos.indexOf(item) + 1;
+                    const venceu = revelar && item.p.id === premio.vencedor.p.id;
+                    return `<div class="finalista-card revelado ${venceu ? 'vencedor' : ''}" data-rank="#${rank}">
+                        <img src="${obterUrlImagem(item.p, 'jogador')}" alt="${item.p.nome}">
+                        <span style="color:${rank === 1 ? '#facc15' : '#a1a1aa'}; font-weight:900; text-transform:uppercase; font-size:0.78rem;">${venceu ? '👑 Vencedor' : (rank === 1 ? 'Favorito' : rank + 'o lugar')}</span>
+                        <h4>${item.p.nome}</h4>
+                        <div class="finalista-stats"><span>OVR ${item.ovr}</span><span>${item.g} Gols</span><span>${item.a} Ast</span></div>
+                    </div>`;
+                }).join("")}
+            </div>
+        </div>`;
+    };
+
+    const renderMelhor11 = () => `
+        <div class="gala-premio-palco">
+            <h3>🧩 Melhor 11 do Mundo</h3>
+            <p style="margin:0 0 4px; color:#a1a1aa; font-weight:700;">Um jogador por posição, eleito pelo desempenho da temporada.</p>
+            <div class="melhor11-pitch">
+                ${melhor11.map((v, i) => `
+                    <div class="melhor11-vaga" style="top:${v.top}; left:${v.left}; animation-delay:${(i*0.09).toFixed(2)}s;">
+                        ${v.escolhido ? `<img src="${obterUrlImagem(v.escolhido.p, 'jogador')}" alt="${v.escolhido.p.nome}">` : `<div class="melhor11-avatar-vazio">?</div>`}
+                        <strong>${v.escolhido ? v.escolhido.p.nome : "—"}</strong>
+                        <span>${v.label}</span>
+                    </div>`).join("")}
+            </div>
+        </div>`;
+
     let mB = document.getElementById("modalBolaOuro");
     if(!mB) return;
+
+    const progressoHTML = `<div class="gala-progresso" id="galaProgresso">
+        ${premios.map(p => `<span data-nome="${p.nome}">${p.icon} ${p.nome}</span>`).join("")}
+        <span data-nome="Melhor 11 do Mundo">🧩 Melhor 11</span>
+    </div>`;
 
     mB.innerHTML = `
         <div class="modal-content gala-container-premium">
@@ -5520,13 +5723,9 @@ function simularGalaEpica(ranking) {
                 <button id="btnPularGala" class="gala-skip-btn">Avancar</button>
                 <div class="gala-kicker">Noite de gala mundial</div>
                 <h2 class="gala-luxo">Premios da Temporada ${anoAtual}</h2>
+                ${progressoHTML}
                 <div class="bola-de-ouro-trofeu" id="trofeuGalaAtual">${renderTrofeu(premios[0]?.nome || 'Bola de Ouro')}</div>
                 <p class="gala-subtitle" id="statusGalaText">Os principais nomes do ano estao chegando ao palco.</p>
-                <div class="finalistas-grid" id="finalistasBolaOuro" style="display:none;">
-                    ${cardFinalista(top3, 3, 'fCard0')}
-                    ${cardFinalista(top2, 2, 'fCard1')}
-                    ${cardFinalista(top1, 1, 'fCard2')}
-                </div>
                 <div id="vencedorReveladoCtx" style="min-height:220px;"></div>
             </div>
         </div>`;
@@ -5535,40 +5734,48 @@ function simularGalaEpica(ranking) {
 
     const ctx = () => document.getElementById("vencedorReveladoCtx");
     const status = () => document.getElementById("statusGalaText");
-
-    function mostrarFinalistasBolaOuro() {
-        const grid = document.getElementById("finalistasBolaOuro");
-        if(grid) grid.style.display = "grid";
-        setTimeout(() => { document.getElementById("fCard0")?.classList.add("revelado"); }, 300);
-        setTimeout(() => { document.getElementById("fCard1")?.classList.add("revelado"); }, 800);
-        setTimeout(() => { document.getElementById("fCard2")?.classList.add("revelado"); }, 1300);
-    }
+    const marcarProgresso = (nomeAtivo) => {
+        document.querySelectorAll("#galaProgresso span").forEach(el => {
+            const nome = el.dataset.nome;
+            el.classList.toggle("ativo", nome === nomeAtivo);
+            if(nome === nomeAtivo) el.classList.remove("feito");
+        });
+    };
+    const marcarConcluido = (nome) => { document.querySelector(`#galaProgresso span[data-nome="${CSS.escape(nome)}"]`)?.classList.add("feito"); document.querySelector(`#galaProgresso span[data-nome="${CSS.escape(nome)}"]`)?.classList.remove("ativo"); };
 
     function revelarPremio(idx) {
         const premio = premios[idx];
         if(!premio) {
-            atualizarTrofeu("Bola de Ouro");
-            document.getElementById("fCard2")?.classList.add("vencedor");
-            if(ctx()) ctx().innerHTML = `
-                <h1 class="gala-winner-name">👑 ${top1.p.nome}</h1>
-                <p style="margin:0; color:#d4d4d8; font-weight:800;">Bola de Ouro confirmada: ${top1.g} gols, ${top1.a} assistencias e OVR ${top1.ovr}</p>
-                <div class="gala-awards-grid">
-                    ${premios.map(p => `<div class="gala-award"><img src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
-                </div>
-                <div class="gala-final-actions"><button id="btnFecharGalaNovo" style="padding:15px 40px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1.05rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.22);">Avancar Temporada ➔</button></div>`;
-            document.getElementById("btnFecharGalaNovo").onclick = finalizarGala;
+            // Todos os prêmios individuais foram revelados: mostra o Melhor 11 do Mundo antes do resumo final.
+            marcarProgresso("Melhor 11 do Mundo");
+            atualizarTrofeu("Melhor 11 do Mundo");
+            if(status()) status().innerHTML = "E agora, o Melhor 11 do Mundo da temporada!";
+            if(ctx()) ctx().innerHTML = renderMelhor11();
+            setTimeout(() => {
+                marcarConcluido("Melhor 11 do Mundo");
+                if(ctx()) ctx().innerHTML = `
+                    <h1 class="gala-winner-name">👑 ${top1.p.nome}</h1>
+                    <p style="margin:0; color:#d4d4d8; font-weight:800;">Bola de Ouro confirmada: ${top1.g} gols, ${top1.a} assistencias e OVR ${top1.ovr}</p>
+                    <div class="gala-awards-grid">
+                        ${premios.map(p => `<div class="gala-award ${p.grande ? 'premio-especial' : ''}"><img src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
+                    </div>
+                    ${renderMelhor11()}
+                    <div class="gala-final-actions"><button id="btnFecharGalaNovo" style="padding:15px 40px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1.05rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.22);">Avancar Temporada ➔</button></div>`;
+                document.getElementById("btnFecharGalaNovo").onclick = finalizarGala;
+            }, 2600);
             return;
         }
 
+        marcarProgresso(premio.nome);
         atualizarTrofeu(premio.nome);
-        if(premio.nome === "Bola de Ouro") mostrarFinalistasBolaOuro();
         if(status()) status().innerHTML = `Agora: ${premio.nome}. Quem leva?`;
-        if(ctx()) ctx().innerHTML = renderCandidatos(premio, false);
+        if(ctx()) ctx().innerHTML = premio.grande ? renderCandidatosGrandes(premio, false) : renderCandidatos(premio, false);
         setTimeout(() => {
             if(status()) status().innerHTML = `${premio.nome}: vencedor revelado!`;
-            if(ctx()) ctx().innerHTML = renderCandidatos(premio, true);
-            setTimeout(() => revelarPremio(idx + 1), premio.nome === "Bola de Ouro" ? 2400 : 1700);
-        }, premio.nome === "Bola de Ouro" ? 2300 : 1600);
+            if(ctx()) ctx().innerHTML = premio.grande ? renderCandidatosGrandes(premio, true) : renderCandidatos(premio, true);
+            marcarConcluido(premio.nome);
+            setTimeout(() => revelarPremio(idx + 1), premio.grande ? 2400 : 1700);
+        }, premio.grande ? 2300 : 1600);
     }
 
     setTimeout(() => revelarPremio(0), 700);
@@ -5705,24 +5912,103 @@ window.managerPromoverJovem = function(baseId) {
 window.managerSimularPartida = function() {
     const clube = clubeManagerAtual();
     if(!clube) return;
-    const rivais = clubes.filter(c => c.ligaId === clube.ligaId && c.id !== clube.id);
-    const rival = rivais[Math.floor(Math.random() * rivais.length)] || clubes.find(c => c.id !== clube.id);
+
+    // The global football calendar is shared by every mode. If the player-mode
+    // season has already run out of scheduled weeks, point the manager at the
+    // Gala instead of quietly desyncing from the rest of the world.
+    const comp = agendaTemporada[rodadaAtual - 1];
+    if(!comp) {
+        mostrarToast("Diretoria", "A época terminou para todos os clubes. Fecha a Gala de fim de temporada antes de continuar.", "info");
+        return;
+    }
+
+    // Guard against managing the same club the player-character already plays
+    // for — that fixture is already resolved live via o Modo Jogador, simulating
+    // it again here would double-count it in the table.
+    if(jogador && clube.id === jogador.clubeId) {
+        mostrarToast("Manager", "Este clube já é o teu clube como jogador — disputa esta partida pelo Modo Jogador.", "warning");
+        return;
+    }
+
+    if(Object.keys(tabelasLigas).length === 0) inicializarTabelas();
+    const tabela = tabelasLigas[clube.ligaId];
+    if(!tabela) { mostrarToast("Erro", "Tabela da liga do teu clube não foi encontrada.", "danger"); return; }
+
+    const mt = tabela.find(t => t.id === clube.id);
+    if(!mt) { mostrarToast("Erro", "O teu clube não consta na tabela desta liga.", "danger"); return; }
+
+    const maxJogos = (tabela.length - 1) * 2;
+
+    // Manager's club already finished its fixtures for this league season — just
+    // keep the rest of the world moving (cups, internationals, other leagues)
+    // until the global season rolls over to the Gala.
+    if(mt.jogos >= maxJogos) {
+        mostrarToast("Diretoria", "O teu clube já disputou todos os jogos da liga esta época. A avançar o resto do mundo...", "info");
+        simularRodadaMundial();
+        rodadaAtual++;
+        window.salvarJogo();
+        if(typeof atualizarHub === 'function') atualizarHub();
+        renderizarManager();
+        return;
+    }
+
+    const rivaisElegiveis = tabela.filter(t => t.id !== clube.id && t.jogos < maxJogos);
+    const advEntry = rivaisElegiveis[Math.floor(Math.random() * rivaisElegiveis.length)];
+    if(!advEntry) {
+        mostrarToast("Diretoria", "Nenhum adversário disponível esta semana. A avançar a semana...", "info");
+        simularRodadaMundial();
+        rodadaAtual++;
+        window.salvarJogo();
+        if(typeof atualizarHub === 'function') atualizarHub();
+        renderizarManager();
+        return;
+    }
+    const rival = clubes.find(c => c.id === advEntry.id);
+
+    // Same statistical model the rest of the league uses for every other
+    // club-vs-club fixture, plus the manager's own tactical bonus and board
+    // confidence — keeps results consistent with the rest of the world instead
+    // of a separate, disconnected formula.
     const forcaA = (clube.reputacao || 70) + bonusTaticoManager() + (managerEstado.confianca - 50) / 10;
     const forcaB = rival?.reputacao || 70;
-    const gA = Math.max(0, Math.floor(Math.random() * 3 + (forcaA - forcaB) / 28));
-    const gB = Math.max(0, Math.floor(Math.random() * 3 + (forcaB - forcaA) / 28));
-    if(gA > gB) managerEstado.confianca = Math.min(100, managerEstado.confianca + 5);
-    else if(gA < gB) managerEstado.confianca = Math.max(0, managerEstado.confianca - 7);
-    else managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + 1));
+    const diff = (forcaA - forcaB) / 20;
+    const gA = Math.random() + diff + 0.1 > 0.5 ? Math.floor(Math.random() * 4) : 0;
+    const gB = Math.random() - diff > 0.6 ? Math.floor(Math.random() * 3) : 0;
+
+    mt.jogos++; advEntry.jogos++;
+    mt.gols = (mt.gols || 0) + gA; mt.golsSofridos = (mt.golsSofridos || 0) + gB;
+    advEntry.gols = (advEntry.gols || 0) + gB; advEntry.golsSofridos = (advEntry.golsSofridos || 0) + gA;
+    if(gA > gB) {
+        mt.pontos += 3; mt.vitorias = (mt.vitorias || 0) + 1; advEntry.derrotas = (advEntry.derrotas || 0) + 1;
+        managerEstado.confianca = Math.min(100, managerEstado.confianca + 5);
+    } else if(gB > gA) {
+        advEntry.pontos += 3; advEntry.vitorias = (advEntry.vitorias || 0) + 1; mt.derrotas = (mt.derrotas || 0) + 1;
+        managerEstado.confianca = Math.max(0, managerEstado.confianca - 7);
+    } else {
+        mt.pontos += 1; advEntry.pontos += 1; mt.empates = (mt.empates || 0) + 1; advEntry.empates = (advEntry.empates || 0) + 1;
+        managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + 1));
+    }
+    if(typeof atribuirEstatisticaNPC === 'function') {
+        atribuirEstatisticaNPC(mt.id, gA, clube.ligaId);
+        atribuirEstatisticaNPC(advEntry.id, gB, clube.ligaId);
+    }
+
     if(managerEstado.confianca <= 0) {
         registrarNoticia("Demitido", `${managerEstado.treinador?.nome || "O treinador"} perdeu o cargo no ${clube.nome}.`, "Manager");
         managerEstado = estadoManagerPadrao();
-        mostrarToast("Diretoria", "Confiança zerada. Procurar novo clube.", "danger");
+        mostrarToast("Diretoria", "Confiança zerada. Procura um novo clube.", "danger");
     } else {
         registrarNoticia("Jogo do manager", `${clube.nome} ${gA} x ${gB} ${rival?.nome || "Rival"} sob o comando de ${managerEstado.treinador?.nome}.`, "Manager");
         mostrarToast("Resultado Manager", `${clube.nome} ${gA} x ${gB} ${rival?.nome || "Rival"}`, gA >= gB ? "success" : "warning");
     }
+
+    // Keep the rest of the footballing world moving in the same tick, so cups,
+    // internationals and every other league stay in sync with the manager's club
+    // instead of freezing while only the manager's own score changes.
+    simularRodadaMundial();
+    rodadaAtual++;
     window.salvarJogo();
+    if(typeof atualizarHub === 'function') atualizarHub();
     renderizarManager();
 };
 
@@ -5733,7 +6019,7 @@ function renderizarManager() {
     managerEstado.treinador = treinador;
     if(!managerEstado.ativo || !managerEstado.clubeId) {
         const disponiveis = clubes
-            .filter(c => c.reputacao <= treinador.reputacao + 14)
+            .filter(c => c.reputacao <= treinador.reputacao + 14 && c.id !== jogador?.clubeId)
             .sort((a,b) => b.reputacao - a.reputacao)
             .slice(0, 12);
         el.innerHTML = `
@@ -5759,6 +6045,31 @@ function renderizarManager() {
         .slice(0, 8);
     managerEstado.folhaSalarial = calcularFolhaClube(clube.id);
     if(!managerEstado.base?.length) managerEstado.base = gerarBaseManager(clube);
+
+    // Real standing pulled from the same tabelasLigas the whole world plays out of —
+    // this is what makes the manager's club a genuine part of the season instead of
+    // a disconnected, isolated simulation.
+    let posicaoHtml = `<p style="color:#aaa;">Tabela ainda não disponível.</p>`;
+    let temporadaCompleta = false;
+    const tabelaLiga = tabelasLigas[clube.ligaId];
+    if(tabelaLiga) {
+        const maxJogos = (tabelaLiga.length - 1) * 2;
+        const tabOrd = [...tabelaLiga].sort((a,b) => b.pontos - a.pontos || ((b.gols||0)-(b.golsSofridos||0)) - ((a.gols||0)-(a.golsSofridos||0)));
+        const idx = tabOrd.findIndex(t => t.id === clube.id);
+        const mt = tabOrd[idx];
+        if(mt) {
+            temporadaCompleta = mt.jogos >= maxJogos;
+            posicaoHtml = `
+                <div class="manager-kpis" style="margin-bottom:12px;">
+                    <div><span>Posição</span><strong>${idx + 1}º / ${tabOrd.length}</strong></div>
+                    <div><span>Pontos</span><strong>${mt.pontos || 0}</strong></div>
+                    <div><span>Jogos</span><strong>${mt.jogos || 0}/${maxJogos}</strong></div>
+                    <div><span>Saldo</span><strong>${(mt.gols||0) - (mt.golsSofridos||0)}</strong></div>
+                </div>
+                <div class="manager-mini-note">${temporadaCompleta ? "Temporada da liga concluída — avança para a Gala de fim de época." : `V ${mt.vitorias||0} • E ${mt.empates||0} • D ${mt.derrotas||0}`}</div>`;
+        }
+    }
+
     el.innerHTML = `
         <div class="manager-shell">
             <div class="manager-hero">
@@ -5766,7 +6077,7 @@ function renderizarManager() {
                     <img src="${obterUrlImagem(clube, 'clube')}" alt="${clube.nome}">
                     <div><span class="comp-int-kicker">Modo Manager</span><h2>${clube.nome}</h2><p>${objetivoDiretoria(clube)}</p></div>
                 </div>
-                <div class="manager-actions"><button class="btn btn-primary" onclick="managerSimularPartida()">Simular Jogo</button></div>
+                <div class="manager-actions"><button class="btn btn-primary" onclick="managerSimularPartida()">${temporadaCompleta ? "Avançar Época" : "Simular Jogo"}</button></div>
             </div>
             <div class="manager-kpis">
                 <div><span>Confiança</span><strong>${managerEstado.confianca}%</strong></div>
@@ -5775,6 +6086,10 @@ function renderizarManager() {
                 <div><span>Reputação</span><strong>${treinador.reputacao}</strong></div>
             </div>
             <div class="manager-grid">
+                <section class="manager-panel">
+                    <h3>Posição na Liga</h3>
+                    ${posicaoHtml}
+                </section>
                 <section class="manager-panel">
                     <h3>Tática</h3>
                     <div class="manager-controls">
@@ -6441,9 +6756,9 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
                     }
 
                     const recordePessoal = registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
-                    if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida");
-                    else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida");
-                    if(recordePessoal) registrarNoticia("Melhor atuação da carreira", `${jogador.nome} bateu a própria marca pessoal em campo.`, "Números");
+                    if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida", { nome: jogador.nome, foto: jogador.foto }, "jogador");
+                    else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida", { nome: jogador.nome, foto: jogador.foto }, "jogador");
+                    if(recordePessoal) registrarNoticia("Melhor atuação da carreira", `${jogador.nome} bateu a própria marca pessoal em campo.`, "Números", { nome: jogador.nome, foto: jogador.foto }, "jogador");
 
                     let msgBtn = document.getElementById("btnFecharModalPartida");
                     if(msgBtn) {
@@ -6728,15 +7043,6 @@ document.getElementById("btnConnectFriend")?.addEventListener("click", () => {
 document.getElementById("btnToggleReady")?.addEventListener("click", () => {
     if (window.firebaseIntegration) {
         window.firebaseIntegration.toggleReadyStatus();
-    }
-});
-
-document.getElementById("btnLeaveLobby")?.addEventListener("click", () => {
-    if (window.firebaseIntegration) {
-        if (confirm("Tem certeza que deseja sair do lobby? Isso desconectará você do Universo Compartilhado.")) {
-            window.firebaseIntegration.leaveLobby();
-            mudarTela("view-hub");
-        }
     }
 });
 

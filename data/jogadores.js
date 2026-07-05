@@ -823,43 +823,94 @@ export const jogadoresIA = [
     { id: "j_blind", nome: "Daley Blind", idade: 34, geral: 79, clubeId: "c_gir", nacionalidade: "Holanda", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_gazzaniga", nome: "P. Gazzaniga", idade: 32, geral: 78, clubeId: "c_gir", nacionalidade: "Argentina", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
 
-    // ==========================================
-    // ITÁLIA - JOGADORES (Completando elencos)
-    // Completando Milan e Inter
-    // ================== AC MILAN 2025/26 ==================
 
-    { id: "j_maignan", nome: "Mike Maignan", idade: 30, geral: 88, clubeId: "c_milan", nacionalidade: "França", posicao:"Goleiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/88/10/168810_mike_maignan_20251228124300.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_sportiello", nome: "Marco Sportiello", idade: 34, geral: 77, clubeId: "c_milan", nacionalidade: "Italia", posicao:"Goleiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_tomori", nome: "Fikayo Tomori", idade: 28, geral: 84, clubeId: "c_milan", nacionalidade: "Inglaterra", posicao:"Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/60/64/386064_fikayo_tomori_20260320101548.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_pavlovic", nome: "Strahinja Pavlovic", idade: 25, geral: 82, clubeId: "c_milan", nacionalidade: "Servia", posicao:"Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/19/34/681934_strahinja_pavlovic_20251228124838.jpg", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_gabbia", nome: "Matteo Gabbia", idade: 26, geral: 80, clubeId: "c_milan", nacionalidade: "Italia", posicao:"Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_odogu", nome: "David Odogu", idade: 19, geral: 68, clubeId: "c_milan", nacionalidade: "Alemanha", posicao:"Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/86/04/1028604_david_odogu_20251228124810.jpg", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_youssouffofana", nome: "Youssouf Fofana", idade: 27, geral: 84, clubeId: "c_milan", nacionalidade: "França", posicao:"Meio-Campista", foto: "https://cdn-img.staticzz.com/img/jogadores/new/47/59/654759_youssouf_fofana_20251228125514.jpg", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_loftus", nome: "Ruben Loftus-Cheek", idade: 30, geral: 81, clubeId: "c_milan", nacionalidade: "Inglaterra", posicao:"Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_musah", nome: "Yunus Musah", idade: 23, geral: 80, clubeId: "c_milan", nacionalidade: "Estados Unidos", posicao:"Meio-Campista", foto: "https://cdn-img.staticzz.com/img/jogadores/new/29/87/642987_yunus_musah_20250825005900.jpg", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_modric", nome: "Luka Modrić", idade: 40, geral: 83, clubeId: "c_milan", nacionalidade: "Croácia", posicao:"Meio-Campista", foto: "https://cdn-img.staticzz.com/img/jogadores/new/68/72/26872_luka_modric_20251228125156.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_pulisic", nome: "Christian Pulisic", idade: 27, geral: 84, clubeId: "c_milan", nacionalidade: "Estados Unidos", posicao:"Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_leao", nome: "Rafael Leao", idade: 26, geral: 85, clubeId: "c_milan", nacionalidade: "Portugal", posicao:"Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/06/34/80634_rafael_leao_20260103003827.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_chukwueze", nome: "Samuel Chukwueze", idade: 27, geral: 81, clubeId: "c_milan", nacionalidade: "Nigeria", posicao:"Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_okafor", nome: "Noah Okafor", idade: 25, geral: 80, clubeId: "c_milan", nacionalidade: "Suica", posicao:"Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/34/89/593489_noah_okafor_20251202101223.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_santiagogimenez", nome: "Santiago Gimenez", idade: 25, geral: 83, clubeId: "c_milan", nacionalidade: "Mexico", posicao:"Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/40/94/584094_santiago_gimenez_20251228125957.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-        
-    { id: "j_barella", nome: "Nicolò Barella", idade: 27, geral: 86, clubeId: "c_inter", nacionalidade: "Itália", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_bastoni", nome: "A. Bastoni", idade: 25, geral: 85, clubeId: "c_inter", nacionalidade: "Itália", posicao:"Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/18/64/511864_alessandro_bastoni_20250904233014.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_calhanoglu", nome: "H. Çalhanoğlu", idade: 30, geral: 84, clubeId: "c_inter", nacionalidade: "Turquia", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_sommer", nome: "Yann Sommer", idade: 35, geral: 84, clubeId: "c_inter", nacionalidade: "Suíça", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_thuram", nome: "Marcus Thuram", idade: 27, geral: 83, clubeId: "c_inter", nacionalidade: "França", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // ITÁLIA 
+   
+    //AC MILAN 2025/26 
 
+    // GOLEIROS
+    { id: "j_maignan", nome: "Mike Maignan", idade: 30, geral: 88, clubeId: "c_milan", nacionalidade: "França", posicao: "Goleiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/88/10/168810_mike_maignan_20251228124300.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_terracciano", nome: "Pietro Terracciano", idade: 35, geral: 76, clubeId: "c_milan", nacionalidade: "Italia", posicao: "Goleiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // DEFENSORES
+    { id: "j_tomori", nome: "Fikayo Tomori", idade: 28, geral: 84, clubeId: "c_milan", nacionalidade: "Inglaterra", posicao: "Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/60/64/386064_fikayo_tomori_20260320101548.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_pavlovic", nome: "Strahinja Pavlovic", idade: 25, geral: 82, clubeId: "c_milan", nacionalidade: "Servia", posicao: "Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/19/34/681934_strahinja_pavlovic_20251228124838.jpg", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_gabbia", nome: "Matteo Gabbia", idade: 26, geral: 80, clubeId: "c_milan", nacionalidade: "Italia", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_dewinter", nome: "Koni De Winter", idade: 23, geral: 81, clubeId: "c_milan", nacionalidade: "Belgica", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_bartesaghi", nome: "Davide Bartesaghi", idade: 20, geral: 72, clubeId: "c_milan", nacionalidade: "Italia", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_athekame", nome: "Zachary Athekame", idade: 21, geral: 74, clubeId: "c_milan", nacionalidade: "Suica", posicao: "Lateral-Direito", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_estupinan", nome: "Pervis Estupiñán", idade: 28, geral: 82, clubeId: "c_milan", nacionalidade: "Equador", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_saelemaekers", nome: "Alexis Saelemaekers", idade: 27, geral: 81, clubeId: "c_milan", nacionalidade: "Belgica", posicao: "Lateral-Direito", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // MEIO-CAMPISTAS
+    { id: "j_ricci", nome: "Samuele Ricci", idade: 24, geral: 83, clubeId: "c_milan", nacionalidade: "Italia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_jashari", nome: "Ardon Jashari", idade: 23, geral: 82, clubeId: "c_milan", nacionalidade: "Suica", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_rabiot", nome: "Adrien Rabiot", idade: 31, geral: 84, clubeId: "c_milan", nacionalidade: "França", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_loftus", nome: "Ruben Loftus-Cheek", idade: 30, geral: 81, clubeId: "c_milan", nacionalidade: "Inglaterra", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // ATACANTES
+    { id: "j_leao", nome: "Rafael Leão", idade: 26, geral: 85, clubeId: "c_milan", nacionalidade: "Portugal", posicao: "Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/06/34/80634_rafael_leao_20260103003827.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_pulisic", nome: "Christian Pulisic", idade: 27, geral: 84, clubeId: "c_milan", nacionalidade: "Estados Unidos", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_nkunku", nome: "Christopher Nkunku", idade: 28, geral: 85, clubeId: "c_milan", nacionalidade: "França", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_goncaloramos", nome: "Gonçalo Ramos", idade: 25, geral: 84, clubeId: "c_milan", nacionalidade: "Portugal", posicao: "Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/83/76/428376_goncalo_ramos_20251103191410.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_santiagogimenez", nome: "Santiago Giménez", idade: 25, geral: 83, clubeId: "c_milan", nacionalidade: "Mexico", posicao: "Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/40/94/584094_santiago_gimenez_20251228125957.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_camarda", nome: "Francesco Camarda", idade: 18, geral: 76, clubeId: "c_milan", nacionalidade: "Italia", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_kostic", nome: "Andrej Kostić", idade: 19, geral: 70, clubeId: "c_milan", nacionalidade: "Servia", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+
+    //Inter de Milão
+    // GOLEIROS
+    { id: "j_sommer", nome: "Yann Sommer", idade: 37, geral: 86, clubeId: "c_inter", nacionalidade: "Suica", posicao: "Goleiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_martinez", nome: "Josep Martínez", idade: 28, geral: 79, clubeId: "c_inter", nacionalidade: "Espanha", posicao: "Goleiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // DEFENSORES
+    { id: "j_akanji", nome: "Manuel Akanji", idade: 31, geral: 86, clubeId: "c_inter", nacionalidade: "Suica", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_bastoni", nome: "Alessandro Bastoni", idade: 27, geral: 88, clubeId: "c_inter", nacionalidade: "Italia", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_bisseck", nome: "Yann Bisseck", idade: 25, geral: 83, clubeId: "c_inter", nacionalidade: "Alemanha", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_dimarco", nome: "Federico Dimarco", idade: 29, geral: 87, clubeId: "c_inter", nacionalidade: "Italia", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_carlosaugusto", nome: "Carlos Augusto", idade: 27, geral: 82, clubeId: "c_inter", nacionalidade: "Brasil", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // MEIO-CAMPISTAS
+    { id: "j_calhanoglu", nome: "Hakan Çalhanoğlu", idade: 32, geral: 87, clubeId: "c_inter", nacionalidade: "Turquia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_barella", nome: "Nicolò Barella", idade: 29, geral: 88, clubeId: "c_inter", nacionalidade: "Italia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_zielinski", nome: "Piotr Zieliński", idade: 32, geral: 84, clubeId: "c_inter", nacionalidade: "Polonia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_frattesi", nome: "Davide Frattesi", idade: 27, geral: 84, clubeId: "c_inter", nacionalidade: "Italia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_diouf", nome: "Andy Diouf", idade: 23, geral: 81, clubeId: "c_inter", nacionalidade: "França", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_sucic", nome: "Petar Sučić", idade: 22, geral: 80, clubeId: "c_inter", nacionalidade: "Croacia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_stankovic", nome: "Aleksandar Stanković", idade: 20, geral: 74, clubeId: "c_inter", nacionalidade: "Servia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_massolin", nome: "Yanis Massolin", idade: 23, geral: 70, clubeId: "c_inter", nacionalidade: "França", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_mkhitaryan", nome: "Henrikh Mkhitaryan", idade: 37, geral: 81, clubeId: "c_inter", nacionalidade: "Armenia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // ATACANTES
+    { id: "j_lautaro", nome: "Lautaro Martínez", idade: 29, geral: 89, clubeId: "c_inter", nacionalidade: "Argentina", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_thuram", nome: "Marcus Thuram", idade: 29, geral: 87, clubeId: "c_inter", nacionalidade: "França", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_luishenrique", nome: "Luis Henrique", idade: 24, geral: 81, clubeId: "c_inter", nacionalidade: "Brasil", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_bonny", nome: "Ange-Yoan Bonny", idade: 22, geral: 79, clubeId: "c_inter", nacionalidade: "França", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_fesposito", nome: "Francesco Pio Esposito", idade: 21, geral: 79, clubeId: "c_inter", nacionalidade: "Italia", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+      
     // Juventus
-    { id: "j_vlahovic", nome: "D. Vlahović", idade: 24, geral: 84, clubeId: "c_juv", nacionalidade: "Sérvia", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_chiesa", nome: "F. Chiesa", idade: 26, geral: 83, clubeId: "c_juv", nacionalidade: "Itália", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_rabiot", nome: "A. Rabiot", idade: 29, geral: 83, clubeId: "c_juv", nacionalidade: "França", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_szczesny", nome: "W. Szczęsny", idade: 34, geral: 84, clubeId: "c_juv", nacionalidade: "Polônia", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_bremer", nome: "Bremer", idade: 27, geral: 84, clubeId: "c_juv", nacionalidade: "Brasil", posicao:"Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/84/28/478428_bremer_20260104223359.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_francisco_conceicao", nome: "Francisco Conceicao", idade: 23, geral: 84, clubeId: "c_juv", nacionalidade: "Portugal", posicao:"Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/81/54/318154_francisco_conceicao_20260104223323.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // GOLEIROS
+    { id: "j_digregorio", nome: "Michele Di Gregorio", idade: 29, geral: 84, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Goleiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
 
-    // Napoli, Roma, Lazio, Atalanta, Fiorentina, Torino, Bologna, Sassuolo, Genoa
-    { id: "j_kdb", nome: "Kevin De Bruyne", idade: 33, geral: 89, clubeId: "c_nap", nacionalidade: "Bélgica",posicao:"Meio-Campista", foto: "https://www.ogol.com.br/img/jogadores/new/79/08/97908_kevin_de_bruyne_20260407122445.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    // DEFENSORES
+    { id: "j_bremer", nome: "Bremer", idade: 28, geral: 86, clubeId: "c_juv", nacionalidade: "Brasil", posicao: "Zagueiro", foto: "https://cdn-img.staticzz.com/img/jogadores/new/84/28/478428_bremer_20260104223359.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_gatti", nome: "Federico Gatti", idade: 28, geral: 82, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_kalulu", nome: "Pierre Kalulu", idade: 26, geral: 81, clubeId: "c_juv", nacionalidade: "França", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_lloydkelly", nome: "Lloyd Kelly", idade: 28, geral: 81, clubeId: "c_juv", nacionalidade: "Inglaterra", posicao: "Zagueiro", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_cambiaso", nome: "Andrea Cambiaso", idade: 26, geral: 84, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_cabal", nome: "Juan Cabal", idade: 25, geral: 79, clubeId: "c_juv", nacionalidade: "Colombia", posicao: "Lateral-Esquerdo", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+
+    // MEIO-CAMPISTAS
+    { id: "j_locatelli", nome: "Manuel Locatelli", idade: 28, geral: 84, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_koopmeiners", nome: "Teun Koopmeiners", idade: 28, geral: 85, clubeId: "c_juv", nacionalidade: "Holanda", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_mckennie", nome: "Weston McKennie", idade: 28, geral: 82, clubeId: "c_juv", nacionalidade: "Estados Unidos", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_khephrenthuram", nome: "Khéphren Thuram", idade: 25, geral: 84, clubeId: "c_juv", nacionalidade: "França", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_faticanti", nome: "Giacomo Faticanti", idade: 22, geral: 74, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Meio-Campista", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+
+    // ATACANTES
+    { id: "j_francisco_conceicao", nome: "Francisco Conceição", idade: 23, geral: 84, clubeId: "c_juv", nacionalidade: "Portugal", posicao: "Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/81/54/318154_francisco_conceicao_20260104223323.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_yildiz", nome: "Kenan Yıldız", idade: 21, geral: 86, clubeId: "c_juv", nacionalidade: "Turquia", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_jonathandavid", nome: "Jonathan David", idade: 26, geral: 86, clubeId: "c_juv", nacionalidade: "Canada", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_openda", nome: "Loïs Openda", idade: 26, geral: 85, clubeId: "c_juv", nacionalidade: "Belgica", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_boga", nome: "Jérémie Boga", idade: 29, geral: 80, clubeId: "c_juv", nacionalidade: "Costa do Marfim", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_zhegrova", nome: "Edon Zhegrova", idade: 27, geral: 83, clubeId: "c_juv", nacionalidade: "Kosovo", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+    { id: "j_ekhator", nome: "Jeff Ekhator", idade: 19, geral: 72, clubeId: "c_juv", nacionalidade: "Italia", posicao: "Atacante", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
+
+    // Napoli
+    { id: "j_kdb", nome: "Kevin De Bruyne", idade: 33, geral: 88, clubeId: "c_nap", nacionalidade: "Bélgica",posicao:"Meio-Campista", foto: "https://www.ogol.com.br/img/jogadores/new/79/08/97908_kevin_de_bruyne_20260407122445.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_dilorenzo", nome: "Di Lorenzo", idade: 31, geral: 84, clubeId: "c_nap", nacionalidade: "Itália", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_lobotka", nome: "S. Lobotka", idade: 29, geral: 83, clubeId: "c_nap", nacionalidade: "Eslováquia", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_anguissa", nome: "Zambo Anguissa", idade: 28, geral: 82, clubeId: "c_nap", nacionalidade: "Camarões", foto: "", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
@@ -999,7 +1050,6 @@ export const jogadoresIA = [
     { id: "j_dembele", nome: "O. Dembele", idade: 29, geral: 90, clubeId: "c_psg", nacionalidade: "França", posicao:"Ponta", foto: "https://cdn-img.staticzz.com/img/jogadores/new/83/24/488324_ousmane_dembele_20260208232541.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_kvaratskhelia", nome: "K. Kvaratskhelia", idade: 25, geral: 89, clubeId: "c_psg", nacionalidade: "Georgia", posicao:"Ponta", foto: "https://cdn-img.staticzz.com/img/jogadores/new/30/24/533024_khvicha_kvaratskhelia_20250616000301.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_barcola", nome: "Bradley Barcola", idade: 23, geral: 85, clubeId: "c_psg", nacionalidade: "França", posicao:"Ponta", foto: "https://cdn-img.staticzz.com/img/jogadores/new/83/06/748306_bradley_barcola_20260302131531.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
-    { id: "j_ramos_psg", nome: "Gonçalo Ramos", idade: 24, geral: 83, clubeId: "c_psg", nacionalidade: "Portugal", posicao:"Atacante", foto: "https://cdn-img.staticzz.com/img/jogadores/new/83/76/428376_goncalo_ramos_20251103191410.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     { id: "j_duoue", nome: "Desire Doue", idade: 20, geral: 82, clubeId: "c_psg", nacionalidade: "França", posicao:"Ponta", foto: "https://cdn-img.staticzz.com/img/jogadores/new/51/91/915191_desire_doue_20260217234034.png", statsTemporada: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, historicoCarreira: [] },
     
     // Marseille, Lyon, Monaco, Lille, etc.
