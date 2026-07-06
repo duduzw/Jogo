@@ -624,6 +624,7 @@ let agendaTemporada = [];
 let propostasPendentes = [];
 let negociacaoAtual = null;
 let premiosIndividuaisPendentes = [];
+let titulosClubesPendentes = [];
 let transferenciasHistorico = [];
 let eventosRecentes = [];
 let janelaMeioAnoProcessada = false;
@@ -660,7 +661,7 @@ window.salvarJogo = function() {
     localStorage.setItem("rumo_estrelato_pro_vivo", JSON.stringify({ 
         jogador, ano: anoAtual, rodada: rodadaAtual, agenda: agendaTemporada, 
         tabelas: tabelasLigas, copas: copasEstado, vagasContinentais: window.vagasContinentais, 
-        campeoesAnoAnterior: campeoesAnoAnterior, premiosIndividuaisPendentes: premiosIndividuaisPendentes,
+        campeoesAnoAnterior: campeoesAnoAnterior, premiosIndividuaisPendentes: premiosIndividuaisPendentes, titulosClubesPendentes: titulosClubesPendentes,
         transferenciasHistorico: transferenciasHistorico, eventosRecentes: eventosRecentes, janelaMeioAnoProcessada: janelaMeioAnoProcessada,
         selecoesEstado: selecoesEstado,
         managerEstado: managerEstado,
@@ -682,6 +683,7 @@ function carregarJogo() {
         if(dados.vagasContinentais) window.vagasContinentais = dados.vagasContinentais;
         if(dados.campeoesAnoAnterior) campeoesAnoAnterior = dados.campeoesAnoAnterior;
         if(dados.premiosIndividuaisPendentes) premiosIndividuaisPendentes = dados.premiosIndividuaisPendentes;
+        if(dados.titulosClubesPendentes) titulosClubesPendentes = dados.titulosClubesPendentes;
         if(dados.transferenciasHistorico) transferenciasHistorico = dados.transferenciasHistorico;
         if(dados.eventosRecentes) eventosRecentes = dados.eventosRecentes;
         if(dados.managerEstado) managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [], ...dados.managerEstado };
@@ -788,6 +790,139 @@ function ehLigaEuropeia(ligaId) {
     if (!ligaId) return false;
     const prefixo = ligaId.split("_")[0];
     return !PAISES_FORA_DA_UEFA.includes(prefixo);
+}
+
+// ==========================================
+// 🏅 REALISMO DA BOLA DE OURO — pesos por competição, pontos de título
+// e comparação justa entre posições.
+// ==========================================
+
+// Quanto cada gol/assistência vale, de acordo com a competição em que foi feito.
+// Marcar 10 gols na Champions vale mais do que 10 gols em amistosos.
+const PESO_COMPETICAO = {
+    uefa_cl: 1.50, conmebol_lib: 1.50,
+    uefa_el: 1.15, conmebol_sul: 1.15, concacaf_clc: 1.15, afc_cla: 1.15, uefa_col: 1.00,
+    uefa_supercup: 0.60, conmebol_recopa: 0.60,
+    intercontinental_cup: 1.50,
+    copa_mundo: 1.80, euro: 1.55, copa_america: 1.45,
+    gold_cup: 1.20, copa_africa: 1.30, copa_asia: 1.20, olimpiadas: 1.00,
+    eliminatorias_uefa: 0.70, eliminatorias_conmebol: 0.70, eliminatorias_concacaf: 0.70,
+    eliminatorias_caf: 0.70, eliminatorias_afc: 0.70, euro_qualy: 0.70,
+    nations_a: 0.85, nations_b: 0.55, nations_c: 0.45, nations_d: 0.40,
+    amistoso: 0.20
+};
+// Peso genérico por tipo de competição, usado quando o id não está no mapa acima
+// (ligas nacionais, copas nacionais, etc., que têm um id diferente por país).
+function pesoCompeticaoPorTipo(comp) {
+    if (!comp) return 1.00;
+    if (comp.tipo === "liga") return comp.div === 1 ? 1.00 : 0.55;
+    if (comp.tipo === "copa") return 0.80;
+    if (comp.tipo === "supercopa") return 0.60;
+    if (comp.tipo === "supercopa_continental") return 0.60;
+    if (comp.tipo === "continental") return comp.div === 1 ? 1.50 : 1.15;
+    if (comp.tipo === "torneio_intercontinental") return 1.50;
+    if (comp.tipo === "selecao") return comp.div >= 1 ? 1.20 : 0.70;
+    return 1.00;
+}
+function pesoCompeticaoId(compId) {
+    if (PESO_COMPETICAO[compId] !== undefined) return PESO_COMPETICAO[compId];
+    return pesoCompeticaoPorTipo(competicoes.find(c => c.id === compId));
+}
+
+// Pontos concedidos por título conquistado na temporada — a Champions e a
+// Libertadores valem o mesmo, uma Supercopa vale bem menos que um título nacional.
+const PONTOS_TITULO = {
+    ligaPrincipal: 35, ligaSecundaria: 10,
+    copaNacional: 20,
+    continentalElite: 50, continentalSecundaria: 30,
+    supercopaClube: 10, supercopaContinental: 15,
+    intercontinental: 40,
+    selecaoMundial: 60, selecaoContinentalMenor: 30,
+    selecaoOlimpiadas: 35, selecaoNations: 15
+};
+function pontosTituloClube(comp) {
+    if (!comp) return 15;
+    if (comp.tipo === "copa") return PONTOS_TITULO.copaNacional;
+    if (comp.tipo === "supercopa") return PONTOS_TITULO.supercopaClube;
+    if (comp.tipo === "supercopa_continental") return PONTOS_TITULO.supercopaContinental;
+    if (comp.tipo === "torneio_intercontinental") return PONTOS_TITULO.intercontinental;
+    if (comp.tipo === "continental") return comp.div === 1 ? PONTOS_TITULO.continentalElite : PONTOS_TITULO.continentalSecundaria;
+    return 15;
+}
+function pontosTituloSelecao(compConfigId) {
+    if (["copa_mundo", "euro", "copa_america"].includes(compConfigId)) return PONTOS_TITULO.selecaoMundial;
+    if (["gold_cup", "copa_africa", "copa_asia"].includes(compConfigId)) return PONTOS_TITULO.selecaoContinentalMenor;
+    if (compConfigId === "olimpiadas") return PONTOS_TITULO.selecaoOlimpiadas;
+    if ((compConfigId || "").startsWith("nations_")) return PONTOS_TITULO.selecaoNations;
+    return 15;
+}
+
+// Agrupa posições em 4 grandes blocos para comparar "iguais com iguais" na hora
+// de pontuar a Bola de Ouro — assim atacantes não dominam sempre o prêmio.
+function grupoPosicaoPremio(pos) {
+    if (["Atacante", "Ponta"].includes(pos)) return "atacante";
+    if (["Meia Ofensivo", "Meio-Campista", "Volante"].includes(pos)) return "meia";
+    if (["Zagueiro", "Lateral"].includes(pos)) return "defensor";
+    if (pos === "Goleiro") return "goleiro";
+    return "meia";
+}
+
+// Soma os gols/assistências do jogador em todas as competições que disputou na
+// temporada, cada uma já multiplicada pelo peso da competição (ver PESO_COMPETICAO).
+function statsPonderadosTemporada(p, totalGolsFallback = 0, totalAssistFallback = 0) {
+    const stats = p.statsCompeticoes || {};
+    const chaves = Object.keys(stats);
+    if (chaves.length === 0) return { golsP: totalGolsFallback, assistP: totalAssistFallback, jogosTotais: 0 };
+    let golsP = 0, assistP = 0, jogosTotais = 0;
+    chaves.forEach(compId => {
+        const st = stats[compId] || {};
+        const peso = pesoCompeticaoId(compId);
+        golsP += (st.gols || 0) * peso;
+        assistP += (st.assistencias || 0) * peso;
+        jogosTotais += (st.jogos || 0);
+    });
+    return { golsP, assistP, jogosTotais };
+}
+
+// O motor de partidas não simula cada desarme ou defesa individualmente, então
+// estes números são estimados a partir de dados reais da temporada (gols sofridos
+// pelo clube, jogos disputados e o nível geral do jogador) — o suficiente para dar
+// a zagueiros, laterais e goleiros critérios próprios na disputa da Bola de Ouro.
+function estimarPerfilDefensivo(p, ligaId, jogosNaLiga) {
+    const ovr = p.geral || 60;
+    const tabela = ligaId ? tabelasLigas[ligaId] : null;
+    const clube = tabela ? tabela.find(t => t.id === p.clubeId) : null;
+    let shareClean = 0.32;
+    if (clube && clube.jogos > 0) {
+        const mediaSofridaPorJogo = (clube.golsSofridos || 0) / clube.jogos;
+        shareClean = Math.max(0.05, Math.min(0.78, 1 - mediaSofridaPorJogo / 1.4));
+    }
+    const jogos = jogosNaLiga || 0;
+    const fatorOvr = Math.max(0, (ovr - 58)) / 100;
+    return {
+        jogosSemSofrerGol: Math.round(jogos * shareClean),
+        desarmes: Math.round(jogos * (0.9 + fatorOvr * 2.2)),
+        interceptacoes: Math.round(jogos * (0.7 + fatorOvr * 1.8)),
+        defesas: Math.round(jogos * (2.4 + fatorOvr * 2.6)),
+        penaltisDefendidos: Math.round(jogos * 0.045 * (ovr / 80))
+    };
+}
+
+// Normaliza uma métrica (0 a 100) comparando o valor do jogador com o melhor
+// valor do MESMO grupo de posição naquela temporada.
+function normalizarNoGrupo(valor, maxDoGrupo) {
+    if (!maxDoGrupo || maxDoGrupo <= 0) return 0;
+    return Math.max(0, Math.min(100, (valor / maxDoGrupo) * 100));
+}
+
+// getElencoClube() devolve uma CÓPIA do jogador principal (para poder marcar isMe),
+// então somar pontos direto nessa cópia nunca chegaria ao objeto real. Esta função
+// garante que o crédito vai sempre para o "jogador" verdadeiro quando for o caso.
+function creditarPontosPremio(j, pontos) {
+    const alvo = (j.id === "player" || j.isMe) ? jogador : j;
+    alvo.pontosPremio = (alvo.pontosPremio || 0) + pontos;
+    alvo.pontosPremioTemporada = (alvo.pontosPremioTemporada || 0) + pontos;
+    return alvo;
 }
 const POSICOES_CONVOCACAO = {
     goleiros: ["Goleiro"],
@@ -1243,6 +1378,7 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
     if (isEliminatoria(compId)) return;
     if(!selecoesEstado.campeoes[selecaoId]) selecoesEstado.campeoes[selecaoId] = [];
     selecoesEstado.campeoes[selecaoId].unshift({ ano: anoAtual, nome: nomeComp, torneioKey });
+    const pontosTitulo = pontosTituloSelecao(compId);
     const plantel = selecoesEstado.planteisTorneio[torneioKey]?.[selecaoId] || [];
     plantel.forEach(pid => {
         const p = pid === "player" ? jogador : jogadoresIA.find(j => j.id === pid);
@@ -1252,7 +1388,8 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
         if(p.historicoCarreira?.[0]) {
             p.historicoCarreira[0].trofeus = p.historicoCarreira[0].trofeus === "-" ? nomeComp : p.historicoCarreira[0].trofeus + ", " + nomeComp;
         }
-        p.pontosPremio = (p.pontosPremio || 0) + 45;
+        p.pontosPremio = (p.pontosPremio || 0) + pontosTitulo;
+        p.pontosPremioTemporada = (p.pontosPremioTemporada || 0) + pontosTitulo;
         
         // Push achievement to Firebase if this is the human player and online mode is active
         if (pid === "player" && window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
@@ -1756,6 +1893,7 @@ function premiarLigasTemporada() {
             const nomePremio = `Chuteira de Ouro — ${liga.nome}`;
             selecoesEstado.premiosLigaAno[chaveAno][liga.id] = { artilheiro: art.p.nome, gols: art.g };
             art.p.pontosPremio = (art.p.pontosPremio || 0) + 18;
+            art.p.pontosPremioTemporada = (art.p.pontosPremioTemporada || 0) + 18;
             if (art.p.historicoCarreira?.[0]) art.p.historicoCarreira[0].trofeus = art.p.historicoCarreira[0].trofeus === "-" ? nomePremio : art.p.historicoCarreira[0].trofeus + ", " + nomePremio;
             registrarNoticia(nomePremio, `${art.p.nome} foi o artilheiro da ${liga.nome} com ${art.g} gols.`, "Prémios", { nome: art.p.nome, foto: art.p.foto }, "jogador");
             if ((art.p.id || "player") === "player") {
@@ -1769,6 +1907,7 @@ function premiarLigasTemporada() {
         if (ast?.a > 0) {
             const nomePremio = `Garçom da Liga — ${liga.nome}`;
             ast.p.pontosPremio = (ast.p.pontosPremio || 0) + 14;
+            ast.p.pontosPremioTemporada = (ast.p.pontosPremioTemporada || 0) + 14;
             if (ast.p.historicoCarreira?.[0]) ast.p.historicoCarreira[0].trofeus = ast.p.historicoCarreira[0].trofeus === "-" ? nomePremio : ast.p.historicoCarreira[0].trofeus + ", " + nomePremio;
             registrarNoticia(nomePremio, `${ast.p.nome} liderou as assistências da ${liga.nome} com ${ast.a}.`, "Prémios", { nome: ast.p.nome, foto: ast.p.foto }, "jogador");
             if ((ast.p.id || "player") === "player") {
@@ -1786,6 +1925,9 @@ function resetarStatsNovaTemporada() {
     const zerar = (p) => {
         p.statsTemporada = { jogos: 0, gols: 0, assistencias: 0, notas: [] };
         p.statsCompeticoes = {};
+        // pontosPremioTemporada mede apenas os méritos DESTA temporada (troféus + prêmios
+        // conquistados agora), diferente de pontosPremio, que é o prestígio acumulado na carreira.
+        p.pontosPremioTemporada = 0;
         if(p === jogador) p.estatisticasAtuais = { jogos: 0, gols: 0, assistencias: 0 };
     };
     zerar(jogador);
@@ -4774,6 +4916,7 @@ function processarEventosAleatorios() {
         },
         () => {
             jogador.pontosPremio = (jogador.pontosPremio || 0) + 8;
+            jogador.pontosPremioTemporada = (jogador.pontosPremioTemporada || 0) + 8;
             registrarNoticia("Coletiva repercute forte", `"Quero decidir jogos grandes", disse ${jogador.nome} em entrevista. A frase ganhou força nas redes e aumentou o barulho pelo prêmio individual.`, "Entrevista");
         },
         () => {
@@ -5394,91 +5537,49 @@ window.avancarTemporada = function() {
         });
         premiosIndividuaisPendentes = [];
 
-        window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [] };
-        campeoesAnoAnterior = { ligas: {}, copas: {} };
+        // Os campeões e os pontos de título desta temporada já foram apurados mais
+        // cedo (ver apurarCampeoesTemporada, chamada antes da Gala) para que a Bola
+        // de Ouro reflita as taças ganhas NESTA mesma época. Aqui só escrevemos o
+        // nome do troféu no histórico de carreira, que só passou a existir agora.
+        titulosClubesPendentes.forEach(t => {
+            let vencedor = t.playerId === "player" ? jogador : jogadoresIA.find(j => j.id === t.playerId);
+            if(!vencedor || !vencedor.historicoCarreira?.[0]) return;
+            let hist = vencedor.historicoCarreira[0];
+            hist.trofeus = hist.trofeus === "-" ? t.nomeTrofeu : hist.trofeus + ", " + t.nomeTrofeu;
+        });
+        titulosClubesPendentes = [];
 
-        let descidas = []; 
-let subidas = [];
+        let descidas = [];
+        let subidas = [];
 
-for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
-    let tabOrd = [...tabela].sort((a,b) => b.pontos - a.pontos || ((b.gols||0) - (b.golsSofridos||0)) - ((a.gols||0) - (a.golsSofridos||0)) || (b.gols||0) - (a.gols||0));
-    
-    if(tabOrd[0]) {
-        let campeaoClube = clubes.find(c => c.id === tabOrd[0].id); 
-        let comp = competicoes.find(c => c.id === ligaId);
-        campeoesAnoAnterior.ligas[ligaId] = campeaoClube.id;
-        
-        if(campeaoClube) {
-            if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = []; 
-            campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
-            
-            let elencoCamp = getElencoClube(campeaoClube.id);
-            
-            elencoCamp.forEach(j => { 
-                if(j.historicoCarreira?.[0]) j.historicoCarreira[0].trofeus = j.historicoCarreira[0].trofeus === "-" ? comp.nome : j.historicoCarreira[0].trofeus + ", " + comp.nome; 
-                j.pontosPremio += 50; 
-            });
-        }
-    }
+        for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
+            let tabOrd = [...tabela].sort((a,b) => b.pontos - a.pontos || ((b.gols||0) - (b.golsSofridos||0)) - ((a.gols||0) - (a.golsSofridos||0)) || (b.gols||0) - (a.gols||0));
 
-    if(ligaId.endsWith("_1") || !ligaId.includes("_")) {
-        let rV = CONFIG_VAGAS_CONTINENTAIS[ligaId] || (ligaId.includes("br")||ligaId.includes("arg") ? CONFIG_VAGAS_CONTINENTAIS["default_conmebol"] : (ligaId.includes("ara") ? CONFIG_VAGAS_CONTINENTAIS["default_asia"] : (ligaId.includes("usa") ? CONFIG_VAGAS_CONTINENTAIS["default_concacaf"] : CONFIG_VAGAS_CONTINENTAIS["default_uefa"])));
-        if (rV.cl !== undefined) { window.vagasContinentais.uefa_cl.push(...tabOrd.slice(0, rV.cl).map(t=>t.id)); window.vagasContinentais.uefa_el.push(...tabOrd.slice(rV.cl, rV.cl + rV.el).map(t=>t.id)); window.vagasContinentais.uefa_col.push(...tabOrd.slice(rV.cl + rV.el, rV.cl + rV.el + rV.col).map(t=>t.id)); } 
-        else if (rV.lib !== undefined) { window.vagasContinentais.conmebol_lib.push(...tabOrd.slice(0, rV.lib).map(t=>t.id)); window.vagasContinentais.conmebol_sul.push(...tabOrd.slice(rV.lib, rV.lib + rV.sul).map(t=>t.id)); } 
-        else if (rV.cla !== undefined) { window.vagasContinentais.afc_cla.push(...tabOrd.slice(0, rV.cla).map(t=>t.id)); } 
-        else if (rV.clc !== undefined) { window.vagasContinentais.concacaf_clc.push(...tabOrd.slice(0, rV.clc).map(t=>t.id)); }
-    }
+            // ==========================================
+            // 🔄 NOVA LÓGICA DINÂMICA DE ASCENSÃO E QUEDA
+            // ==========================================
+            let matchDiv = ligaId.match(/_(\d+)$/); // Captura o número da divisão no fim do ID (ex: 1, 2, 3, 4)
 
-    // ==========================================
-    // 🔄 NOVA LÓGICA DINÂMICA DE ASCENSÃO E QUEDA
-    // ==========================================
-    let matchDiv = ligaId.match(/_(\d+)$/); // Captura o número da divisão no fim do ID (ex: 1, 2, 3, 4)
-    
-    if (matchDiv) {
-        let divAtual = parseInt(matchDiv[1]);
-        
-        // 📉 REGRA DE REBAIXAMENTO (Cair)
-        // Se existir uma divisão abaixo (ex: se estou na br_2 e existe a br_3), os 3 últimos caem
-        let proximaDivId = ligaId.replace(`_${divAtual}`, `_${divAtual + 1}`);
-        if (tabelasLigas[proximaDivId] && tabOrd.length > 4) {
-            descidas.push({ 
-                from: ligaId, 
-                to: proximaDivId, 
-                teams: tabOrd.slice(-3).map(t => t.id) 
-            });
-        }
+            if (matchDiv) {
+                let divAtual = parseInt(matchDiv[1]);
 
-        // 📈 REGRA DE ACESSO (Subir)
-        // Se eu não estiver na primeira divisão e a divisão de cima existir, os 3 primeiros sobem
-        let divAnteriorId = ligaId.replace(`_${divAtual}`, `_${divAtual - 1}`);
-        if (divAtual > 1 && tabelasLigas[divAnteriorId] && tabOrd.length > 3) {
-            subidas.push({ 
-                from: ligaId, 
-                to: divAnteriorId, 
-                teams: tabOrd.slice(0, 3).map(t => t.id) 
-            });
-        }
-    }
-}
+                // 📉 REGRA DE REBAIXAMENTO (Cair)
+                let proximaDivId = ligaId.replace(`_${divAtual}`, `_${divAtual + 1}`);
+                if (tabelasLigas[proximaDivId] && tabOrd.length > 4) {
+                    descidas.push({ from: ligaId, to: proximaDivId, teams: tabOrd.slice(-3).map(t => t.id) });
+                }
 
-// Executa as transferências de liga de forma definitiva
-descidas.forEach(d => d.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = d.to; }));
-subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = s.to; }));
-
-        for (const [compId, estado] of Object.entries(copasEstado)) {
-            let comp = competicoes.find(c => c.id === compId); if(!comp) continue;
-            let campeaoCopaId = estado.campeaoId || estado.confrontos?.[0]?.vencedorId; 
-            if(campeaoCopaId) {
-                let campeaoClube = clubes.find(c=>c.id===campeaoCopaId);
-                campeoesAnoAnterior.copas[compId] = campeaoCopaId;
-                if(campeaoClube) {
-                    if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = []; campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
-                    let elencoCamp = getElencoClube(campeaoClube.id);
-                    const bonusTitulo = ["continental", "supercopa_continental", "torneio_intercontinental"].includes(comp.tipo) ? 100 : 30;
-                    elencoCamp.forEach(j => { if(j.historicoCarreira?.[0]) j.historicoCarreira[0].trofeus = j.historicoCarreira[0].trofeus === "-" ? comp.nome : j.historicoCarreira[0].trofeus + ", " + comp.nome; j.pontosPremio += bonusTitulo; });
+                // 📈 REGRA DE ACESSO (Subir)
+                let divAnteriorId = ligaId.replace(`_${divAtual}`, `_${divAtual - 1}`);
+                if (divAtual > 1 && tabelasLigas[divAnteriorId] && tabOrd.length > 3) {
+                    subidas.push({ from: ligaId, to: divAnteriorId, teams: tabOrd.slice(0, 3).map(t => t.id) });
                 }
             }
         }
+
+        // Executa as transferências de liga de forma definitiva
+        descidas.forEach(d => d.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = d.to; }));
+        subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = s.to; }));
 
         // Check if all players are ready before advancing season (online mode)
         if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
@@ -5527,22 +5628,119 @@ function advanceSeasonInternal() {
     mostrarToast("Ano Novo", `Bem-vindo à Temporada ${anoAtual}!`, "success");
 }
 
+// Apura os campeões de ligas, copas nacionais, torneios continentais, supercopas
+// e do torneio intercontinental — e já credita os pontos de título (ver PONTOS_TITULO)
+// a quem os conquistou NESTA temporada. É chamada a partir de processarFimTemporada(),
+// ou seja, antes da Gala — assim quem foi campeão da Champions em maio concorre à
+// Bola de Ouro de junho com esse troféu já valendo, e não só no ano seguinte.
+function apurarCampeoesTemporada() {
+    window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [] };
+    campeoesAnoAnterior = { ligas: {}, copas: {} };
+    titulosClubesPendentes = [];
+
+    for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
+        let tabOrd = [...tabela].sort((a,b) => b.pontos - a.pontos || ((b.gols||0) - (b.golsSofridos||0)) - ((a.gols||0) - (a.golsSofridos||0)) || (b.gols||0) - (a.gols||0));
+
+        if(tabOrd[0]) {
+            let campeaoClube = clubes.find(c => c.id === tabOrd[0].id);
+            let comp = competicoes.find(c => c.id === ligaId);
+            if(campeaoClube) {
+                campeoesAnoAnterior.ligas[ligaId] = campeaoClube.id;
+                if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = [];
+                campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp?.nome || ligaId}`);
+
+                const pontosTitulo = (comp?.div === 1) ? PONTOS_TITULO.ligaPrincipal : PONTOS_TITULO.ligaSecundaria;
+                let elencoCamp = getElencoClube(campeaoClube.id);
+                elencoCamp.forEach(j => {
+                    const alvo = creditarPontosPremio(j, pontosTitulo);
+                    titulosClubesPendentes.push({ playerId: alvo === jogador ? "player" : alvo.id, nomeTrofeu: comp?.nome || ligaId });
+                });
+            }
+        }
+
+        if(ligaId.endsWith("_1") || !ligaId.includes("_")) {
+            let rV = CONFIG_VAGAS_CONTINENTAIS[ligaId] || (ligaId.includes("br")||ligaId.includes("arg") ? CONFIG_VAGAS_CONTINENTAIS["default_conmebol"] : (ligaId.includes("ara") ? CONFIG_VAGAS_CONTINENTAIS["default_asia"] : (ligaId.includes("usa") ? CONFIG_VAGAS_CONTINENTAIS["default_concacaf"] : CONFIG_VAGAS_CONTINENTAIS["default_uefa"])));
+            if (rV.cl !== undefined) { window.vagasContinentais.uefa_cl.push(...tabOrd.slice(0, rV.cl).map(t=>t.id)); window.vagasContinentais.uefa_el.push(...tabOrd.slice(rV.cl, rV.cl + rV.el).map(t=>t.id)); window.vagasContinentais.uefa_col.push(...tabOrd.slice(rV.cl + rV.el, rV.cl + rV.el + rV.col).map(t=>t.id)); }
+            else if (rV.lib !== undefined) { window.vagasContinentais.conmebol_lib.push(...tabOrd.slice(0, rV.lib).map(t=>t.id)); window.vagasContinentais.conmebol_sul.push(...tabOrd.slice(rV.lib, rV.lib + rV.sul).map(t=>t.id)); }
+            else if (rV.cla !== undefined) { window.vagasContinentais.afc_cla.push(...tabOrd.slice(0, rV.cla).map(t=>t.id)); }
+            else if (rV.clc !== undefined) { window.vagasContinentais.concacaf_clc.push(...tabOrd.slice(0, rV.clc).map(t=>t.id)); }
+        }
+    }
+
+    for (const [compId, estado] of Object.entries(copasEstado)) {
+        let comp = competicoes.find(c => c.id === compId); if(!comp) continue;
+        let campeaoCopaId = estado.campeaoId || estado.confrontos?.[0]?.vencedorId;
+        if(campeaoCopaId) {
+            let campeaoClube = clubes.find(c=>c.id===campeaoCopaId);
+            campeoesAnoAnterior.copas[compId] = campeaoCopaId;
+            if(campeaoClube) {
+                if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = [];
+                campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
+                let elencoCamp = getElencoClube(campeaoClube.id);
+                const pontosTitulo = pontosTituloClube(comp);
+                elencoCamp.forEach(j => {
+                    const alvo = creditarPontosPremio(j, pontosTitulo);
+                    titulosClubesPendentes.push({ playerId: alvo === jogador ? "player" : alvo.id, nomeTrofeu: comp.nome });
+                });
+            }
+        }
+    }
+}
+
 function processarFimTemporada() {
     forcarFimDeCopas();
+    apurarCampeoesTemporada();
 
     try {
-        let todos = [jogador, ...jogadoresIA.filter(x=>!x.aposentado)].map(p => ({ p: p, g: p.estatisticasAtuais ? p.estatisticasAtuais.gols : (p.statsTemporada?.gols || 0), a: p.estatisticasAtuais ? p.estatisticasAtuais.assistencias : (p.statsTemporada?.assistencias || 0), ovr: p.geral, idade: p.idade, pos: p.posicao }));
-        todos.forEach(x => { 
-            x.scoreFinal = (x.g * 2.5) + (x.a * 1.5) + (x.ovr * 1.2) + (x.p.pontosPremio || 0);
-            const liga = obterClubeJogador(x.p)?.ligaId;
-            if(TOP5_LIGAS_EUROPA.includes(liga)) { x.scoreFinal *= 1.55; x.scoreFinal += 18; }
-            else if(obterClubeJogador(x.p)?.reputacao >= 85) x.scoreFinal *= 1.12;
-            if((x.p.statsSelecao?.gols || 0) + (x.p.statsSelecao?.assistencias || 0) > 8) x.scoreFinal += 6;
-            const trofeus = (x.p.historicoCarreira?.[0]?.trofeus || "") + (x.p.titulosSelecao || []).map(t => t.trofeu).join(" ");
-            if(/Champions League|UEFA Champions|Libertadores|AFC Champions/i.test(trofeus)) x.scoreFinal += 42;
-            else if(/Europa League|Conference League|Copa Libertadores|Sul-Americana/i.test(trofeus)) x.scoreFinal += 22;
-            else if(/Premier League|La Liga|Bundesliga|Serie A|Ligue 1|Liga /i.test(trofeus) && !/Champions/i.test(trofeus)) x.scoreFinal += 10;
-            x.ligaId = liga;
+        // ==========================================
+        // 🏅 CALCULO REALISTA DA BOLA DE OURO
+        // Compara cada jogador só com outros da mesma posição, pesa gols/assistências
+        // pela importância da competição e soma os pontos de título da temporada.
+        // ==========================================
+        let todos = [jogador, ...jogadoresIA.filter(x=>!x.aposentado)].map(p => {
+            const g = p.estatisticasAtuais ? p.estatisticasAtuais.gols : (p.statsTemporada?.gols || 0);
+            const a = p.estatisticasAtuais ? p.estatisticasAtuais.assistencias : (p.statsTemporada?.assistencias || 0);
+            const { golsP, assistP, jogosTotais } = statsPonderadosTemporada(p, g, a);
+            const liga = obterClubeJogador(p)?.ligaId;
+            const grupo = grupoPosicaoPremio(p.posicao);
+            const media = Math.max(4.0, Math.min(9.8, (p.geral || 60) / 14 + (jogosTotais > 0 ? ((golsP * (grupo === "defensor" || grupo === "goleiro" ? 0.4 : 1.0)) + assistP * 0.7) / jogosTotais : 0)));
+            const perfilDef = (grupo === "defensor" || grupo === "goleiro") ? estimarPerfilDefensivo(p, liga, jogosTotais) : null;
+            return { p, g, a, golsP, assistP, jogosTotais, ovr: p.geral, idade: p.idade, pos: p.posicao, grupo, media, perfilDef, ligaId: liga };
+        });
+
+        // Métrica bruta específica de cada bloco de posição (ver pedido: atacantes
+        // são julgados por gols/assistências, defensores por solidez defensiva, etc.)
+        todos.forEach(x => {
+            if(x.grupo === "atacante") {
+                x.metricaBruta = x.golsP * 1.7 + x.assistP * 0.9 + (x.golsP + x.assistP) * 0.5 + x.media * 1.3;
+            } else if(x.grupo === "meia") {
+                x.metricaBruta = x.assistP * 1.7 + x.golsP * 0.9 + x.media * 1.5;
+            } else if(x.grupo === "defensor") {
+                x.metricaBruta = (x.perfilDef.jogosSemSofrerGol * 1.4) + (x.perfilDef.desarmes * 0.5) + (x.perfilDef.interceptacoes * 0.5) + x.media * 1.6 + x.golsP * 1.1;
+            } else {
+                x.metricaBruta = (x.perfilDef.jogosSemSofrerGol * 1.7) + (x.perfilDef.defesas * 0.35) + (x.perfilDef.penaltisDefendidos * 3) + x.media * 1.5;
+            }
+        });
+
+        // Normaliza a métrica bruta (0-100) dentro do próprio grupo de posição,
+        // para que atacantes não dominem sempre o prêmio.
+        const maxPorGrupo = {};
+        todos.forEach(x => { maxPorGrupo[x.grupo] = Math.max(maxPorGrupo[x.grupo] || 0, x.metricaBruta); });
+        todos.forEach(x => {
+            let posicional = normalizarNoGrupo(x.metricaBruta, maxPorGrupo[x.grupo]);
+            // Prêmios individuais imitam o viés real do futebol: praticamente sempre
+            // vão para as 5 grandes ligas europeias. Fora delas dá pra aparecer no
+            // Top 30 numa temporada excepcional, mas é raro vencer de fato — por
+            // isso é um desconto forte na força do desempenho, não um teto rígido.
+            const forcaLiga = TOP5_LIGAS_EUROPA.includes(x.ligaId) ? 1.0 : (obterClubeJogador(x.p)?.reputacao >= 85 ? 0.55 : 0.3);
+            posicional *= forcaLiga;
+            // Goleiros já venceram a Bola de Ouro na vida real (Yashin, 1963) mas é
+            // raríssimo — reduzimos bastante a força sem zerar a chance.
+            if(x.grupo === "goleiro") posicional *= 0.62;
+            const prestigioLiga = TOP5_LIGAS_EUROPA.includes(x.ligaId) ? 8 : (obterClubeJogador(x.p)?.reputacao >= 85 ? 4 : 0);
+            const prestigioSelecao = Math.min(10, ((x.p.statsSelecao?.gols || 0) + (x.p.statsSelecao?.assistencias || 0)) * 0.4);
+            x.scoreFinal = posicional + (x.p.pontosPremioTemporada || 0) + prestigioLiga + prestigioSelecao;
+            x.ligaId = x.ligaId;
             // Pontuação específica para prêmios internacionais (pesa mais o desempenho pela seleção nacional)
             x.scoreInternacional = x.scoreFinal + (x.p.statsSelecao?.gols || 0) * 3 + (x.p.statsSelecao?.assistencias || 0) * 2 + (x.p.titulosSelecao?.length || 0) * 20;
         });
@@ -5599,18 +5797,22 @@ function processarFimTemporada() {
 // Monta o "Melhor 11 do Mundo" da temporada: escolhe o melhor jogador disponível para
 // cada posição de uma formação 4-3-3, sem repetir jogador em mais de uma vaga.
 function montarMelhor11(ranking) {
+    // Em vez de posicionar cada jogador com coordenadas absolutas (que cortavam o
+    // cartão do goleiro e dos pontas em telas menores), o time é montado em LINHAS
+    // (Goleiro / Defesa / Meio / Ataque) — um layout que se adapta a qualquer altura
+    // de tela sem cortar nada.
     const formacao = [
-        { pos: "Goleiro", label: "GOL", top: "90%", left: "50%" },
-        { pos: "Lateral", label: "LE", top: "72%", left: "14%" },
-        { pos: "Zagueiro", label: "ZAG", top: "78%", left: "38%" },
-        { pos: "Zagueiro", label: "ZAG", top: "78%", left: "62%" },
-        { pos: "Lateral", label: "LD", top: "72%", left: "86%" },
-        { pos: "Volante", label: "VOL", top: "56%", left: "50%" },
-        { pos: "Meio-Campista", label: "MC", top: "42%", left: "28%" },
-        { pos: "Meia Ofensivo", label: "MEI", top: "40%", left: "72%" },
-        { pos: "Ponta", label: "PE", top: "16%", left: "16%" },
-        { pos: "Atacante", label: "ATA", top: "10%", left: "50%" },
-        { pos: "Ponta", label: "PD", top: "16%", left: "84%" }
+        { pos: "Goleiro", label: "GOL", linha: "goleiro" },
+        { pos: "Lateral", label: "LE", linha: "defesa" },
+        { pos: "Zagueiro", label: "ZAG", linha: "defesa" },
+        { pos: "Zagueiro", label: "ZAG", linha: "defesa" },
+        { pos: "Lateral", label: "LD", linha: "defesa" },
+        { pos: "Volante", label: "VOL", linha: "meio" },
+        { pos: "Meio-Campista", label: "MC", linha: "meio" },
+        { pos: "Meia Ofensivo", label: "MEI", linha: "meio" },
+        { pos: "Ponta", label: "PE", linha: "ataque" },
+        { pos: "Atacante", label: "ATA", linha: "ataque" },
+        { pos: "Ponta", label: "PD", linha: "ataque" }
     ];
     const chave = (p) => p === jogador ? "player" : (p.id || p.nome);
     const usados = new Set();
@@ -5626,7 +5828,8 @@ function montarMelhor11(ranking) {
 }
 
 function simularGalaEpica(ranking) {
-    let top1 = ranking[0]; let top2 = ranking[1]; let top3 = ranking[2];
+    const top30 = ranking.slice(0, 30);
+    let top1 = top30[0]; let top2 = top30[1]; let top3 = top30[2];
     if (!top1 || !top2 || !top3) { mostrarToast("Gala", "Ainda nao ha jogadores suficientes para a premiacao.", "warning"); return; }
 
     const porGols = [...ranking].sort((a,b) => b.g - a.g || b.scoreFinal - a.scoreFinal);
@@ -5637,19 +5840,28 @@ function simularGalaEpica(ranking) {
     const rankingEuropa = ranking.filter(x => ehLigaEuropeia(x.ligaId)).sort((a,b) => b.scoreFinal - a.scoreFinal);
     const candidatosUefa = rankingEuropa.length >= 3 ? rankingEuropa : ranking;
 
+    // Ícone de cada prêmio: para os troféus ligados a uma competição real (UEFA / FIFA),
+    // usamos a logo verdadeira da competição em vez de um emoji genérico.
+    const iconEmoji = (e) => e;
+    const iconLogoComp = (nomeComp) => `<img src="${obterUrlImagem(nomeComp, 'trofeu')}" alt="${nomeComp}" style="height:1.1em;width:1.1em;object-fit:contain;vertical-align:-0.2em;">`;
+
+    // A Bola de Ouro tem tratamento próprio (Top 30 revelado aos poucos) e por isso
+    // fica fora da lista genérica de prêmios abaixo.
     const premios = [
-        { nome: "Chuteira de Ouro", icon: "⚽", candidatos: porGols.slice(0, 3), vencedor: porGols[0], metrica: x => `${x.g} gols na temporada`, pontos: 35, grande: false },
-        { nome: "Rei das Assistencias", icon: "🎯", candidatos: porAssistencias.slice(0, 3), vencedor: porAssistencias[0], metrica: x => `${x.a} assistencias`, pontos: 30, grande: false },
-        { nome: "Golden Boy", icon: "⭐", candidatos: sub21.slice(0, 3), vencedor: sub21[0], metrica: x => `${x.idade} anos • OVR ${x.ovr}`, pontos: 25, grande: false },
-        { nome: "Luva de Ouro", icon: "🧤", candidatos: goleiros.slice(0, 3), vencedor: goleiros[0], metrica: x => `Goleiro • OVR ${x.ovr}`, pontos: 30, grande: false },
-        { nome: "UEFA Best Player", icon: "🇪🇺", candidatos: candidatosUefa.slice(0, 3), vencedor: candidatosUefa[0], metrica: x => `${obterClubeJogador(x.p)?.nome || "Clube europeu"} • ${x.g}G ${x.a}A`, pontos: 55, grande: true },
-        { nome: "FIFA The Best", icon: "🌍", candidatos: rankingInternacional.slice(0, 3), vencedor: rankingInternacional[0], metrica: x => `${x.g} gols de clube • ${x.p.statsSelecao?.gols || 0} pela seleção`, pontos: 65, grande: true },
-        { nome: "Bola de Ouro", icon: "🏆", candidatos: [top1, top2, top3], vencedor: top1, metrica: x => `${x.g} gols • ${x.a} ast • OVR ${x.ovr}`, pontos: 80, grande: true }
+        { nome: "Chuteira de Ouro", icon: iconEmoji("⚽"), candidatos: porGols.slice(0, 3), vencedor: porGols[0], metrica: x => `${x.g} gols na temporada`, pontos: 35, grande: false },
+        { nome: "Rei das Assistencias", icon: iconEmoji("🎯"), candidatos: porAssistencias.slice(0, 3), vencedor: porAssistencias[0], metrica: x => `${x.a} assistencias`, pontos: 30, grande: false },
+        { nome: "Golden Boy", icon: iconEmoji("⭐"), candidatos: sub21.slice(0, 3), vencedor: sub21[0], metrica: x => `${x.idade} anos • OVR ${x.ovr}`, pontos: 25, grande: false },
+        { nome: "Luva de Ouro", icon: iconEmoji("🧤"), candidatos: goleiros.slice(0, 3), vencedor: goleiros[0], metrica: x => `Goleiro • OVR ${x.ovr}`, pontos: 30, grande: false },
+        { nome: "UEFA Best Player", icon: iconLogoComp("Champions League"), candidatos: candidatosUefa.slice(0, 3), vencedor: candidatosUefa[0], metrica: x => `${obterClubeJogador(x.p)?.nome || "Clube europeu"} • ${x.g}G ${x.a}A`, pontos: 55, grande: true },
+        { nome: "FIFA The Best", icon: iconLogoComp("Copa do Mundo"), candidatos: rankingInternacional.slice(0, 3), vencedor: rankingInternacional[0], metrica: x => `${x.g} gols de clube • ${x.p.statsSelecao?.gols || 0} pela seleção`, pontos: 65, grande: true }
     ].filter(p => p.vencedor && p.candidatos.length > 0);
 
-    premiosIndividuaisPendentes = premios.map(p => ({ nome: p.nome, playerId: p.vencedor.p.id || (p.vencedor.p === jogador ? "player" : ""), pontos: p.pontos }));
+    const premioBolaOuro = { nome: "Bola de Ouro", icon: iconEmoji("🏆"), candidatos: [top1, top2, top3], vencedor: top1, metrica: x => `${x.g} gols • ${x.a} ast • OVR ${x.ovr}`, pontos: 80, grande: true };
+    const todosPremiosResumo = [...premios, premioBolaOuro];
 
-    premios.forEach(p => {
+    premiosIndividuaisPendentes = todosPremiosResumo.map(p => ({ nome: p.nome, playerId: p.vencedor.p.id || (p.vencedor.p === jogador ? "player" : ""), pontos: p.pontos }));
+
+    todosPremiosResumo.forEach(p => {
         registrarNoticia(`${p.nome}: ${p.vencedor.p.nome} é o vencedor!`, `${p.vencedor.p.nome} conquistou o prêmio ${p.nome} da temporada (${p.metrica(p.vencedor)}).`, "Prémios", { nome: p.vencedor.p.nome, foto: p.vencedor.p.foto }, "jogador");
     });
 
@@ -5658,14 +5870,6 @@ function simularGalaEpica(ranking) {
         premiosIndividuaisPendentes.push({ nome: "Melhor 11 do Mundo", playerId: v.escolhido.p.id || (v.escolhido.p === jogador ? "player" : ""), pontos: 15 });
     });
     registrarNoticia("Melhor 11 do Mundo revelado", `A seleção com os destaques da temporada por posição foi anunciada: ${melhor11.filter(v=>v.escolhido).map(v=>v.escolhido.p.nome).join(", ")}.`, "Prémios");
-
-    const cardFinalista = (item, rank, id) => `
-        <div class="finalista-card" id="${id}" data-rank="#${rank}">
-            <img src="${obterUrlImagem(item.p, 'jogador')}" alt="${item.p.nome}">
-            <span style="color:${rank === 1 ? '#facc15' : '#a1a1aa'}; font-weight:900; text-transform:uppercase; font-size:0.78rem;">${rank === 1 ? 'Favorito da Noite' : rank + 'o lugar'}</span>
-            <h4>${item.p.nome}</h4>
-            <div class="finalista-stats"><span>OVR ${item.ovr}</span><span>${item.g} Gols</span><span>${item.a} Ast</span></div>
-        </div>`;
 
     const renderTrofeu = (nome) => `<img src="${obterUrlImagem(nome, 'trofeu')}" alt="${nome}" onerror="this.outerHTML='🏆'">`;
     const atualizarTrofeu = (nome) => { const el = document.getElementById("trofeuGalaAtual"); if(el) el.innerHTML = renderTrofeu(nome); };
@@ -5686,10 +5890,12 @@ function simularGalaEpica(ranking) {
         }
     };
 
+    // Nenhum "favorito" é indicado antes da revelação — todos os nomeados aparecem
+    // em pé de igualdade, exatamente como numa cerimônia real.
     const renderCandidatos = (premio, revelar = false) => `
         <div class="gala-premio-palco">
             <h3>${premio.icon} ${premio.nome}</h3>
-            <p style="margin:0; color:#a1a1aa; font-weight:700;">${revelar ? 'Vencedor revelado. O teatro veio abaixo.' : 'Os tres favoritos aparecem no telao...'}</p>
+            <p style="margin:0; color:#a1a1aa; font-weight:700;">${revelar ? 'Vencedor revelado. O teatro veio abaixo.' : 'Os tres nomeados aparecem no telao...'}</p>
             <div class="gala-candidatos-grid">
                 ${premio.candidatos.map(c => `
                     <div class="gala-candidato ${revelar && c.p.id === premio.vencedor.p.id ? 'vencedor' : ''}">
@@ -5701,18 +5907,19 @@ function simularGalaEpica(ranking) {
         </div>`;
 
     const renderCandidatosGrandes = (premio, revelar = false) => {
-        const ordenado = [premio.candidatos[2], premio.candidatos[1], premio.candidatos[0]].filter(Boolean);
+        // A ordem de exibição embaralha os nomeados (não é 3º/2º/1º) até a revelação,
+        // para que ninguém consiga adivinhar o vencedor pela posição no ecrã.
+        const ordemExibicao = premio._ordemExibicao || (premio._ordemExibicao = [...premio.candidatos].sort(() => Math.random() - 0.5));
         return `
         <div class="gala-premio-palco">
             <h3>${premio.icon} ${premio.nome}</h3>
-            <p style="margin:0; color:#a1a1aa; font-weight:700;">${revelar ? 'Vencedor revelado. O teatro veio abaixo.' : 'Os tres favoritos aparecem no telao...'}</p>
+            <p style="margin:0; color:#a1a1aa; font-weight:700;">${revelar ? 'Vencedor revelado. O teatro veio abaixo.' : 'Os tres nomeados aparecem no telao...'}</p>
             <div class="finalistas-grid">
-                ${ordenado.map((item, i) => {
-                    const rank = premio.candidatos.indexOf(item) + 1;
+                ${ordemExibicao.map((item) => {
                     const venceu = revelar && item.p.id === premio.vencedor.p.id;
-                    return `<div class="finalista-card revelado ${venceu ? 'vencedor' : ''}" data-rank="#${rank}">
+                    return `<div class="finalista-card revelado ${venceu ? 'vencedor' : ''}">
                         <img src="${obterUrlImagem(item.p, 'jogador')}" alt="${item.p.nome}">
-                        <span style="color:${rank === 1 ? '#facc15' : '#a1a1aa'}; font-weight:900; text-transform:uppercase; font-size:0.78rem;">${venceu ? '👑 Vencedor' : (rank === 1 ? 'Favorito' : rank + 'o lugar')}</span>
+                        <span style="color:${venceu ? '#facc15' : '#a1a1aa'}; font-weight:900; text-transform:uppercase; font-size:0.78rem;">${venceu ? '👑 Vencedor' : 'Nomeado'}</span>
                         <h4>${item.p.nome}</h4>
                         <div class="finalista-stats"><span>OVR ${item.ovr}</span><span>${item.g} Gols</span><span>${item.a} Ast</span></div>
                     </div>`;
@@ -5725,13 +5932,39 @@ function simularGalaEpica(ranking) {
         <div class="gala-premio-palco">
             <h3>🧩 Melhor 11 do Mundo</h3>
             <p style="margin:0 0 4px; color:#a1a1aa; font-weight:700;">Um jogador por posição, eleito pelo desempenho da temporada.</p>
-            <div class="melhor11-pitch">
-                ${melhor11.map((v, i) => `
-                    <div class="melhor11-vaga" style="top:${v.top}; left:${v.left}; animation-delay:${(i*0.09).toFixed(2)}s;">
-                        ${v.escolhido ? `<img src="${obterUrlImagem(v.escolhido.p, 'jogador')}" alt="${v.escolhido.p.nome}">` : `<div class="melhor11-avatar-vazio">?</div>`}
-                        <strong>${v.escolhido ? v.escolhido.p.nome : "—"}</strong>
-                        <span>${v.label}</span>
+            <div class="melhor11-campo">
+                ${["goleiro","defesa","meio","ataque"].map(linha => `
+                    <div class="melhor11-linha melhor11-linha-${linha}">
+                        ${melhor11.filter(v => v.linha === linha).map((v, i) => `
+                            <div class="melhor11-vaga" style="animation-delay:${(i*0.09).toFixed(2)}s;">
+                                ${v.escolhido ? `<img src="${obterUrlImagem(v.escolhido.p, 'jogador')}" alt="${v.escolhido.p.nome}">` : `<div class="melhor11-avatar-vazio">?</div>`}
+                                <strong>${v.escolhido ? v.escolhido.p.nome : "—"}</strong>
+                                <span>${v.label}</span>
+                            </div>`).join("")}
                     </div>`).join("")}
+            </div>
+        </div>`;
+
+    // Placar da Bola de Ouro: mostra sempre as 30 posições, mas só preenche os
+    // nomes das que já foram reveladas (de trás para frente, do 30º ao 1º lugar).
+    const renderTop30Board = (reveladosDoFim) => `
+        <div class="gala-premio-palco">
+            <h3>🏆 Bola de Ouro — Top 30</h3>
+            <p style="margin:0 0 4px; color:#a1a1aa; font-weight:700;">A lista vai sendo revelada de trás para a frente. Quem chegará ao topo?</p>
+            <div class="top30-board">
+                ${top30.map((x, i) => {
+                    const rank = i + 1;
+                    const posDoFim = top30.length - rank + 1;
+                    const revelado = posDoFim <= reveladosDoFim;
+                    return `<div class="top30-slot ${revelado ? 'revelado' : ''} ${rank <= 3 ? 'top3' : ''}">
+                        <span class="top30-rank">${rank}º</span>
+                        ${revelado ? `<img src="${obterUrlImagem(x.p, 'jogador')}" alt="${x.p.nome}">` : `<div class="top30-avatar-oculto">?</div>`}
+                        <div class="top30-info">
+                            <strong>${revelado ? x.p.nome : '???'}</strong>
+                            <span>${revelado ? `${x.g}G ${x.a}A • OVR ${x.ovr}` : ''}</span>
+                        </div>
+                    </div>`;
+                }).join("")}
             </div>
         </div>`;
 
@@ -5740,6 +5973,7 @@ function simularGalaEpica(ranking) {
 
     const progressoHTML = `<div class="gala-progresso" id="galaProgresso">
         ${premios.map(p => `<span data-nome="${p.nome}">${p.icon} ${p.nome}</span>`).join("")}
+        <span data-nome="Bola de Ouro">🏆 Bola de Ouro</span>
         <span data-nome="Melhor 11 do Mundo">🧩 Melhor 11</span>
     </div>`;
 
@@ -5769,28 +6003,72 @@ function simularGalaEpica(ranking) {
     };
     const marcarConcluido = (nome) => { document.querySelector(`#galaProgresso span[data-nome="${CSS.escape(nome)}"]`)?.classList.add("feito"); document.querySelector(`#galaProgresso span[data-nome="${CSS.escape(nome)}"]`)?.classList.remove("ativo"); };
 
+    function mostrarResumoFinal() {
+        marcarConcluido("Melhor 11 do Mundo");
+        if(ctx()) ctx().innerHTML = `
+            <h1 class="gala-winner-name">👑 ${top1.p.nome}</h1>
+            <p style="margin:0; color:#d4d4d8; font-weight:800;">Bola de Ouro confirmada: ${top1.g} gols, ${top1.a} assistencias e OVR ${top1.ovr}</p>
+            <div class="gala-awards-grid">
+                ${todosPremiosResumo.map(p => `<div class="gala-award ${p.grande ? 'premio-especial' : ''}"><img src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
+            </div>
+            ${renderMelhor11()}
+            <div class="gala-final-actions"><button id="btnFecharGalaNovo" style="padding:15px 40px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1.05rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.22);">Avancar Temporada ➔</button></div>`;
+        document.getElementById("btnFecharGalaNovo").onclick = finalizarGala;
+    }
+
+    function revelarMelhor11() {
+        marcarProgresso("Melhor 11 do Mundo");
+        atualizarTrofeu("Melhor 11 do Mundo");
+        if(status()) status().innerHTML = "E agora, o Melhor 11 do Mundo da temporada!";
+        if(ctx()) ctx().innerHTML = renderMelhor11();
+        setTimeout(mostrarResumoFinal, 2600);
+    }
+
+    // A Bola de Ouro é revelada em ondas de 4, de trás para a frente (30º ➝ 4º),
+    // e só então o pódio (3º, 2º e o vencedor) é anunciado passo a passo — sem
+    // jamais indicar quem é o favorito antes da hora.
+    function revelarBolaDeOuro() {
+        marcarProgresso("Bola de Ouro");
+        atualizarTrofeu("Bola de Ouro");
+        const totalFundo = Math.max(0, top30.length - 3);
+        let reveladosDoFim = 0;
+        if(status()) status().innerHTML = "A lista da Bola de Ouro comeca a ser revelada, de tras para frente...";
+        if(ctx()) ctx().innerHTML = renderTop30Board(0);
+
+        function passoLote() {
+            reveladosDoFim = Math.min(totalFundo, reveladosDoFim + 4);
+            if(ctx()) ctx().innerHTML = renderTop30Board(reveladosDoFim);
+            if(reveladosDoFim < totalFundo) setTimeout(passoLote, 700);
+            else setTimeout(revelarTerceiro, 1300);
+        }
+        function revelarTerceiro() {
+            if(status()) status().innerHTML = "E o terceiro colocado da Bola de Ouro e...";
+            setTimeout(() => {
+                if(ctx()) ctx().innerHTML = renderTop30Board(totalFundo + 1);
+                setTimeout(revelarSegundo, 1900);
+            }, 1300);
+        }
+        function revelarSegundo() {
+            if(status()) status().innerHTML = "Em segundo lugar...";
+            setTimeout(() => {
+                if(ctx()) ctx().innerHTML = renderTop30Board(totalFundo + 2);
+                setTimeout(revelarVencedor, 2100);
+            }, 1300);
+        }
+        function revelarVencedor() {
+            if(status()) status().innerHTML = "E a Bola de Ouro vai para...";
+            setTimeout(() => {
+                if(ctx()) ctx().innerHTML = renderTop30Board(totalFundo + 3);
+                marcarConcluido("Bola de Ouro");
+                setTimeout(revelarMelhor11, 2600);
+            }, 1800);
+        }
+        setTimeout(passoLote, 900);
+    }
+
     function revelarPremio(idx) {
         const premio = premios[idx];
-        if(!premio) {
-            // Todos os prêmios individuais foram revelados: mostra o Melhor 11 do Mundo antes do resumo final.
-            marcarProgresso("Melhor 11 do Mundo");
-            atualizarTrofeu("Melhor 11 do Mundo");
-            if(status()) status().innerHTML = "E agora, o Melhor 11 do Mundo da temporada!";
-            if(ctx()) ctx().innerHTML = renderMelhor11();
-            setTimeout(() => {
-                marcarConcluido("Melhor 11 do Mundo");
-                if(ctx()) ctx().innerHTML = `
-                    <h1 class="gala-winner-name">👑 ${top1.p.nome}</h1>
-                    <p style="margin:0; color:#d4d4d8; font-weight:800;">Bola de Ouro confirmada: ${top1.g} gols, ${top1.a} assistencias e OVR ${top1.ovr}</p>
-                    <div class="gala-awards-grid">
-                        ${premios.map(p => `<div class="gala-award ${p.grande ? 'premio-especial' : ''}"><img src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
-                    </div>
-                    ${renderMelhor11()}
-                    <div class="gala-final-actions"><button id="btnFecharGalaNovo" style="padding:15px 40px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1.05rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.22);">Avancar Temporada ➔</button></div>`;
-                document.getElementById("btnFecharGalaNovo").onclick = finalizarGala;
-            }, 2600);
-            return;
-        }
+        if(!premio) { revelarBolaDeOuro(); return; }
 
         marcarProgresso(premio.nome);
         atualizarTrofeu(premio.nome);
