@@ -1721,7 +1721,14 @@ function leaveLobby() {
 // ==========================================
 
 function createPregameRoom(roomCode, playerId, gameMode) {
-    if (!db) return;
+    // 🛡️ FIX: esta era a causa raiz do Modo Online não funcionar — o Firebase só era
+    // inicializado pelo fluxo antigo "Modo Online" (initializeOnlineMode), que nunca é
+    // chamado a partir do lobby pré-jogo atual. "db" ficava null para sempre e toda
+    // função de sala saía em silêncio no primeiro "if (!db) return;".
+    if (!db && !initializeFirebase()) {
+        mostrarToast("Erro", "Não foi possível ligar ao servidor online. Verifica a tua ligação.", "danger");
+        return;
+    }
     
     const roomRef = db.ref(`pregameRooms/${roomCode}`);
     
@@ -1731,6 +1738,7 @@ function createPregameRoom(roomCode, playerId, gameMode) {
         gameMode: gameMode,
         status: 'waiting',
         maxPlayers: 2,
+        startSeason: 2026, // temporada em que ambas as carreiras vão começar
         players: {
             [playerId]: {
                 name: `${gameMode === "manager" ? "Treinador" : "Jogador"} #1 (Anfitrião)`,
@@ -1749,7 +1757,10 @@ function createPregameRoom(roomCode, playerId, gameMode) {
 }
 
 function joinPregameRoom(roomCode, playerId, gameMode) {
-    if (!db) return;
+    if (!db && !initializeFirebase()) {
+        mostrarToast("Erro", "Não foi possível ligar ao servidor online. Verifica a tua ligação.", "danger");
+        return;
+    }
     
     const roomRef = db.ref(`pregameRooms/${roomCode}`);
     
@@ -1804,7 +1815,8 @@ function joinPregameRoom(roomCode, playerId, gameMode) {
 }
 
 function leavePregameLobby(roomCode, playerId) {
-    if (!db || !roomCode || !playerId) return;
+    if (!db && !initializeFirebase()) return;
+    if (!roomCode || !playerId) return;
     
     const roomRef = db.ref(`pregameRooms/${roomCode}`);
     
@@ -1837,7 +1849,8 @@ function leavePregameLobby(roomCode, playerId) {
 }
 
 function toggleLobbyReady(roomCode, playerId) {
-    if (!db || !roomCode || !playerId) return;
+    if (!db && !initializeFirebase()) return;
+    if (!roomCode || !playerId) return;
     
     const roomRef = db.ref(`pregameRooms/${roomCode}/players/${playerId}/ready`);
     
@@ -1852,7 +1865,8 @@ function toggleLobbyReady(roomCode, playerId) {
 }
 
 function startCareerFromLobby(roomCode) {
-    if (!db || !roomCode) return;
+    if (!db && !initializeFirebase()) return;
+    if (!roomCode) return;
     
     const roomRef = db.ref(`pregameRooms/${roomCode}`);
     
@@ -1903,6 +1917,16 @@ function setupPregameRoomListener(roomCode, playerId) {
             if (pregameRoomListener === roomRef) {
                 pregameRoomListener = null;
             }
+
+            // 🌐 Sincroniza a temporada/rodada de ambos os jogadores para o
+            // mesmo valor no exato momento em que a carreira partilhada
+            // começa — é para isto que o lobby e o botão "Pronto" servem:
+            // garantir que anfitrião e convidado iniciem na mesma data.
+            const anoSincronizado = roomData.startSeason || 2026;
+            if (window.sincronizarTemporadaOnline) {
+                window.sincronizarTemporadaOnline(anoSincronizado, 1);
+            }
+
             mudarTela("telaCriacao");
             return;
         }

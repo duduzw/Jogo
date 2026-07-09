@@ -66,6 +66,18 @@
     </div>
 </div>
 
+<div id="modalPenalti" class="modal oculto">
+    <div class="modal-content" style="background: var(--bg-dark); border: 2px solid var(--gold); max-width: 500px;">
+        <div class="modal-header">
+            <h3 style="margin:0; font-weight:800;">⚽ PENALTI!</h3>
+            <button class="close-btn" onclick="document.getElementById('modalPenalti').classList.add('oculto')">✖</button>
+        </div>
+        <div id="penaltiContent" style="padding: 20px;">
+            <!-- Penalty minigame content will be injected here -->
+        </div>
+    </div>
+</div>
+
 <div id="modalPesquisa" class="modal oculto">
     <div class="modal-content">
         <div class="modal-header">
@@ -320,6 +332,7 @@
             <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
             <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
             <button class="menu-item" data-view="view-lifestyle">🏆 Lifestyle & Treino</button>
+            <button class="menu-item" id="btnFalarTecnico">🧑‍💼 Falar com Técnico</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
         </nav>
@@ -352,8 +365,9 @@
 
                 <div class="stats-grid-3">
                     <div class="dashboard-card stat-box">
-                        <span class="stat-label">Golos Marcados</span>
+                        <span class="stat-label" id="labelGolsTemp">Golos Marcados</span>
                         <h2 id="estGolsTemp" class="stat-value text-success">0</h2>
+                        <h2 id="estDefesasTemp" class="stat-value text-success" style="display:none;">0</h2>
                     </div>
                     <div class="dashboard-card stat-box">
                         <span class="stat-label">Jogos Realizados</span>

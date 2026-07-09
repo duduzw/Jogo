@@ -20,6 +20,7 @@ export const jogadorModelo = {
     selecaoId: "none",
     naSelecao: false,
     foto: "",
+    jogouPartidaDesdeUltimoTreino: false,
     estatisticasAtuais: {
         jogos: 0,
         gols: 0,

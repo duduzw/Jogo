@@ -97,8 +97,9 @@ export class MatchEngine {
         return pool[0]?.j;
     }
 
-    simularPartidaAoVivo(onTick, onComplete) {
+    simularPartidaAoVivo(onTick, onComplete, onPenalti = null) {
         let placarCasa = 0; let placarVisita = 0; let minuto = 0; let marcadores = [];
+        let emPausaPenalti = false;
 
         let modJogador = 1.0;
         if (this.jogadorReal.energia < 40) modJogador = 0.6;
@@ -115,16 +116,87 @@ export class MatchEngine {
         let chanceC = (fMandanteEfetiva / total) * 0.045 + 0.005; 
         let chanceV = (fVisitanteEfetiva / total) * 0.045;
 
-        const cronometro = setInterval(() => {
+        // 🧤 Modo goleiro: se o jogador real for guarda-redes, cada remate perigoso
+        // sofrido pela sua equipa tem hipótese de virar defesa dele em vez de golo sofrido.
+        const souGoleiro = this.jogadorReal.posicao === "Goleiro";
+        const resolverDefesaGoleiro = (equipaSofre) => {
+            const golKeeperNaEquipa = souGoleiro && this.podeParticipar(this.jogadorReal) &&
+                ((equipaSofre === "casa" && timeJogador === this.clubeMandanteId) || (equipaSofre === "visita" && timeJogador === this.clubeVisitanteId));
+            if (!golKeeperNaEquipa) return false;
+            const chanceDefesa = 0.30 + Math.max(0, (this.jogadorReal.geral - 65)) * 0.012;
+            if (Math.random() < chanceDefesa) {
+                if (!this.jogadorReal.estatisticasAtuais.defesas) this.jogadorReal.estatisticasAtuais.defesas = 0;
+                this.jogadorReal.estatisticasAtuais.defesas++;
+                return true;
+            }
+            return false;
+        };
+
+        const rodarTick = () => {
             minuto += 3; let log = null; let rng = Math.random();
 
-            // Substituição: o jogador real entra em campo no minuto definido pelo treinador.
             if (!this.jogadorJaEntrou && !this._entradaAnunciada && this.minutoEntradaJogador !== null && minuto >= this.minutoEntradaJogador) {
                 this.jogadorJaEntrou = true;
                 this._entradaAnunciada = true;
                 const timeJogadorEntra = this.isSelecao ? this.jogadorReal.selecaoId : this.jogadorReal.clubeId;
                 const nomeTimeEntra = timeJogadorEntra === this.clubeMandanteId ? this.nomeMandante : this.nomeVisitante;
                 onTick(minuto, placarCasa, placarVisita, `<span style="color:#facc15; font-weight:800;">🔄 ${minuto}' SUBSTITUIÇÃO NO ${nomeTimeEntra.toUpperCase()}: ${this.jogadorReal.nome} entra em campo!</span>`);
+            }
+
+            // ⚽ Pênalti: pequena chance a cada lance perigoso. Se o jogador real puder
+            // cobrar (é ele quem tem bola, jogador de linha) ou defender (é o goleiro do
+            // lado que sofre), a simulação PAUSA e pede a decisão via onPenalti(...).
+            if (rng > 0.965 && rng <= 0.975) {
+                const bateCasa = Math.random() < (fMandanteEfetiva / total);
+                const timeBateNome = bateCasa ? this.nomeMandante : this.nomeVisitante;
+                const equipaSofre = bateCasa ? "visita" : "casa";
+                const golsBate = timeJogador === (bateCasa ? this.clubeMandanteId : this.clubeVisitanteId);
+                const souGoleiroDefende = souGoleiro && this.podeParticipar(this.jogadorReal) &&
+                    timeJogador === (bateCasa ? this.clubeVisitanteId : this.clubeMandanteId);
+                const souCobradorPotencial = !souGoleiro && golsBate && this.podeParticipar(this.jogadorReal) && ["Atacante","Ponta","Meia Ofensivo","Meio-Campista"].includes(this.jogadorReal.posicao);
+
+                onTick(minuto, placarCasa, placarVisita, `<span style="color:#facc15; font-weight:800;">🚩 ${minuto}' PÊNALTI PARA O ${timeBateNome.toUpperCase()}!</span>`);
+
+                const concluirPenalti = (defendeu, cobradorNome) => {
+                    if (defendeu) {
+                        onTick(minuto, placarCasa, placarVisita, `<span style="color:#a855f7; font-weight:800;">🧤 DEFESA! O guarda-redes ${souGoleiroDefende ? "É VOCÊ! " : ""}impede o pênalti de ${cobradorNome}!</span>`);
+                    } else {
+                        if (bateCasa) placarCasa++; else placarVisita++;
+                        onTick(minuto, placarCasa, placarVisita, `<span style="color: #10b981; font-weight: 800;">⚽ GOLO DE PÊNALTI! ${cobradorNome}${souCobradorPotencial ? " (É VOCÊ!)" : ""} não desperdiça!</span>`);
+                        if (golsBate && !this.isSelecao && this.jogadorReal.estatisticasAtuais) {
+                            if (souCobradorPotencial) this.jogadorReal.estatisticasAtuais.gols++;
+                        }
+                        marcadores.push(souCobradorPotencial ? "player" : "npc_pen");
+                    }
+                    onTick(minuto, placarCasa, placarVisita, null);
+                    if (minuto >= 90) { finalizar(); } else { this.cronometro = setInterval(rodarTick, 110); }
+                };
+
+                if ((souGoleiroDefende || souCobradorPotencial) && typeof onPenalti === "function") {
+                    clearInterval(this.cronometro);
+                    onPenalti(souGoleiroDefende ? "defender" : "cobrar", (direcaoEscolhida) => {
+                        let chanceSucesso = souGoleiroDefende
+                            ? 0.22 + Math.max(0, (this.jogadorReal.geral - 65)) * 0.01 // defender: base baixa, sobe com OVR
+                            : 0.68 + Math.max(0, (this.jogadorReal.geral - 65)) * 0.006; // cobrar: base alta, sobe com OVR
+                        const acertouLado = Math.random() < 0.55; // goleiro "lê" o lado certo
+                        if (souGoleiroDefende) {
+                            const defendeu = acertouLado && Math.random() < chanceSucesso;
+                            if (defendeu && !this.jogadorReal.estatisticasAtuais.defesas) this.jogadorReal.estatisticasAtuais.defesas = 0;
+                            if (defendeu) this.jogadorReal.estatisticasAtuais.defesas++;
+                            concluirPenalti(defendeu, souGoleiroDefende ? "você" : (bateCasa ? this.sortearAutor(this.elencoMandante).nome : this.sortearAutor(this.elencoVisitante).nome));
+                        } else {
+                            const converteu = Math.random() < chanceSucesso;
+                            concluirPenalti(!converteu, "você");
+                        }
+                    });
+                    return;
+                } else {
+                    // Sem envolvimento direto do jogador: resolve automaticamente.
+                    const defendeu = resolverDefesaGoleiro(equipaSofre) || Math.random() < 0.24;
+                    const cobrador = bateCasa ? this.sortearAutor(this.elencoMandante) : this.sortearAutor(this.elencoVisitante);
+                    concluirPenalti(defendeu, cobrador.nome);
+                    return;
+                }
             }
 
             if (rng < chanceC) {
@@ -142,36 +214,45 @@ export class MatchEngine {
                 marcadores.push(autor.id);
             } 
             else if (rng < chanceC + chanceV) {
-                placarVisita++;
-                let autor = this.sortearAutor(this.elencoVisitante);
-                if(autor.id === "player") {
-                    if(!this.isSelecao) this.jogadorReal.estatisticasAtuais.gols++;
-                    log = `<span style="color: #10b981; font-weight: 800;">⚽ ${minuto}' GOLO DO ${this.nomeVisitante.toUpperCase()}! É SEU! Finalização de craque!</span>`;
+                // 🧤 Antes de sofrer o golo, dá hipótese ao goleiro real de defender.
+                if (resolverDefesaGoleiro("casa")) {
+                    log = `<span style="color: #a855f7; font-weight: 800;">🧤 ${minuto}' DEFESAÇA SUA! Tirou um golo praticamente feito!</span>`;
                 } else {
-                    if (autor.statsTemporada) autor.statsTemporada.gols++;
-                    const assist = Math.random() < 0.72 ? this.sortearAssist(this.elencoVisitante, autor.id) : null;
-                    if(assist?.statsTemporada && assist.id !== autor.id) assist.statsTemporada.assistencias++;
-                    log = `<span style="color: #ef4444;">⚽ ${minuto}' GOLO DO ${this.nomeVisitante.toUpperCase()}! ${autor.nome}${assist ? ` (assist. ${assist.nome})` : ""} marca!</span>`;
+                    placarVisita++;
+                    let autor = this.sortearAutor(this.elencoVisitante);
+                    if(autor.id === "player") {
+                        if(!this.isSelecao) this.jogadorReal.estatisticasAtuais.gols++;
+                        log = `<span style="color: #10b981; font-weight: 800;">⚽ ${minuto}' GOLO DO ${this.nomeVisitante.toUpperCase()}! É SEU! Finalização de craque!</span>`;
+                    } else {
+                        if (autor.statsTemporada) autor.statsTemporada.gols++;
+                        const assist = Math.random() < 0.72 ? this.sortearAssist(this.elencoVisitante, autor.id) : null;
+                        if(assist?.statsTemporada && assist.id !== autor.id) assist.statsTemporada.assistencias++;
+                        log = `<span style="color: #ef4444;">⚽ ${minuto}' GOLO DO ${this.nomeVisitante.toUpperCase()}! ${autor.nome}${assist ? ` (assist. ${assist.nome})` : ""} marca!</span>`;
+                    }
+                    marcadores.push(autor.id);
                 }
-                marcadores.push(autor.id);
             } 
             else if (rng > 0.94) {
                 let timeAtaque = Math.random() > 0.5 ? this.nomeMandante : this.nomeVisitante;
                 log = `<span style="color: #cbd5e1;">😲 ${minuto}' NA TRAVE! O ataque do ${timeAtaque} quase marca!</span>`;
             } 
             else if (rng > 0.91) {
-                log = `<span style="color: #a855f7;">🧤 ${minuto}' ENORME DEFESA! O guarda-redes estica-se todo!</span>`;
+                const defesaMinha = resolverDefesaGoleiro(timeJogador === this.clubeMandanteId ? "casa" : "visita");
+                log = defesaMinha
+                    ? `<span style="color: #a855f7; font-weight: 800;">🧤 ${minuto}' GRANDE DEFESA SUA! Estica-se todo e evita o golo!</span>`
+                    : `<span style="color: #a855f7;">🧤 ${minuto}' ENORME DEFESA! O guarda-redes estica-se todo!</span>`;
             }
 
             onTick(minuto, placarCasa, placarVisita, log);
+            if (minuto >= 90) finalizar();
+        };
 
-            if (minuto >= 90) {
-                clearInterval(cronometro);
-                // Argumentos extra (retrocompatíveis): indicam se o jogador entrou em campo
-                // e quantos minutos efetivamente disputou, para ajustar estatísticas/energia fora do engine.
-                const minutosJogados = this.jogadorJaEntrou ? Math.max(0, 90 - Math.max(0, this.minutoEntradaJogador || 0)) : 0;
-                onComplete(placarCasa, placarVisita, marcadores, this.jogadorJaEntrou, minutosJogados);
-            }
-        }, 110);
+        const finalizar = () => {
+            clearInterval(this.cronometro);
+            const minutosJogados = this.jogadorJaEntrou ? Math.max(0, 90 - Math.max(0, this.minutoEntradaJogador || 0)) : 0;
+            onComplete(placarCasa, placarVisita, marcadores, this.jogadorJaEntrou, minutosJogados);
+        };
+
+        this.cronometro = setInterval(rodarTick, 110);
     }
 }

@@ -2585,3 +2585,254 @@ body.tema-pt {
 .bracket-tree-scroll::-webkit-scrollbar-thumb { background: var(--theme-primary); border-radius: 6px; }
 
 .comp-detail-grid { overflow: visible; }
+
+/* ==========================================
+   MODO MANAGER — telas que ainda não tinham nenhum CSS próprio
+   ========================================== */
+
+/* Avatar redondo dentro do item de elenco (a CSS antiga só previa um emoji) */
+.squad-player-avatar-img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.15); }
+.squad-player-item.titular { border-color: var(--theme-primary); background: rgba(0,255,136,0.06); }
+
+/* Tela de escolher clube */
+.manager-shell { padding: 0 4px; }
+.manager-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: linear-gradient(135deg, rgba(212,175,55,0.08), rgba(0,0,0,0.2));
+    border: 1px solid rgba(212,175,55,0.2);
+    border-radius: 16px;
+    padding: 22px 26px;
+    margin-bottom: 24px;
+}
+.manager-hero h2 { margin: 4px 0; font-size: 1.6rem; color: #fff; }
+.manager-hero p { margin: 0; color: #aaa; max-width: 480px; }
+.manager-license { text-align: center; background: rgba(0,0,0,0.4); border: 1px solid var(--world-cup-gold); border-radius: 12px; padding: 12px 20px; }
+.manager-license strong { display: block; color: var(--world-cup-gold); font-size: 1.3rem; }
+.manager-license span { font-size: 0.78rem; color: #ccc; }
+
+.manager-club-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
+.manager-club-card {
+    background: #16161a;
+    border: 1px solid #2a2a2e;
+    border-radius: 12px;
+    padding: 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.manager-club-card:hover { border-color: var(--world-cup-gold); transform: translateY(-3px); box-shadow: 0 8px 20px rgba(212,175,55,0.15); }
+.manager-club-card img { width: 56px; height: 56px; object-fit: contain; margin-bottom: 10px; }
+.manager-club-card strong { display: block; color: #eee; font-size: 0.95rem; margin-bottom: 4px; }
+.manager-club-card span { font-size: 0.75rem; color: #999; }
+
+/* Painéis genéricos (posição na liga, base, etc.) */
+.manager-panel { background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 20px; }
+.manager-panel h3 { margin: 0 0 14px; color: var(--world-cup-gold); font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.manager-kpis { display: flex; gap: 18px; flex-wrap: wrap; }
+.manager-kpis div { text-align: center; }
+.manager-kpis strong { display: block; font-size: 1.3rem; color: #fff; }
+.manager-kpis span { font-size: 0.7rem; color: #999; text-transform: uppercase; }
+.manager-mini-note { margin-top: 10px; font-size: 0.82rem; color: #ccc; }
+
+.manager-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+}
+.manager-row:hover { background: rgba(255,255,255,0.03); }
+.manager-row img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.manager-row span { flex: 1; display: flex; flex-direction: column; }
+.manager-row strong { font-size: 0.88rem; color: #eee; }
+.manager-row small { font-size: 0.72rem; color: #999; }
+.manager-row em { font-style: normal; font-size: 0.8rem; color: var(--theme-primary); font-weight: 700; }
+
+.manager-full-squad-list { display: flex; flex-direction: column; }
+.finance-overview { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.finance-card { background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px 20px; flex: 1; min-width: 160px; }
+.finance-card h4 { margin: 0 0 8px; font-size: 0.78rem; color: #999; text-transform: uppercase; }
+.finance-card strong { font-size: 1.2rem; color: var(--world-cup-gold); }
+
+/* Campo tático — escalação em campo com clique/drag para trocar jogadores */
+.pitch-field { position: relative; width: 100%; height: 480px; z-index: 1; }
+
+.pitch-slot {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    width: 76px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    text-align: center;
+    padding: 4px;
+    border-radius: 10px;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.pitch-slot:hover { background: rgba(255,255,255,0.08); transform: translate(-50%, -50%) scale(1.05); }
+.pitch-slot.selecionado { background: rgba(0,255,136,0.18); box-shadow: 0 0 0 2px var(--theme-primary); transform: translate(-50%, -50%) scale(1.08); }
+
+.pitch-slot-badge {
+    font-size: 0.58rem;
+    font-weight: 800;
+    color: #0a0a0a;
+    background: var(--world-cup-gold);
+    padding: 1px 6px;
+    border-radius: 6px;
+    margin-bottom: 3px;
+    letter-spacing: 0.03em;
+}
+
+.pitch-slot img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; background: #222; margin-bottom: 2px; }
+.pitch-slot strong { font-size: 0.7rem; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 74px; }
+.pitch-slot small { font-size: 0.62rem; color: #d4f7e6; text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-weight: 700; }
+
+.pitch-slot-vazio { border: 2px dashed rgba(255,255,255,0.35); border-radius: 50%; width: 46px; height: 46px; justify-content: center; }
+.pitch-slot-vazio-icon { color: rgba(255,255,255,0.5); font-size: 1.2rem; font-weight: 800; }
+
+.pitch-bench {
+    margin-top: 14px;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 14px;
+    position: relative;
+    z-index: 1;
+}
+.pitch-bench h4 { margin: 0 0 10px; color: #eee; font-size: 0.85rem; }
+.pitch-bench h4 small { display: block; color: #999; font-weight: 400; font-size: 0.72rem; margin-top: 2px; }
+
+.pitch-bench-list { display: flex; gap: 10px; flex-wrap: wrap; }
+.pitch-bench-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-width: 160px;
+}
+.pitch-bench-item:hover { border-color: var(--theme-primary); }
+.pitch-bench-item.selecionado { border-color: var(--theme-primary); background: rgba(0,255,136,0.12); box-shadow: 0 0 0 1px var(--theme-primary); }
+.pitch-bench-item img { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.pitch-bench-item strong { display: block; font-size: 0.8rem; color: #eee; }
+.pitch-bench-item small { font-size: 0.68rem; color: #999; }
+
+@media (max-width: 900px) {
+    .tactics-layout { grid-template-columns: 1fr; height: auto; }
+    .pitch-field { height: 400px; }
+    .pitch-slot { width: 60px; }
+    .pitch-slot img { width: 34px; height: 34px; }
+}
+
+/* ==========================================
+   CINEMÁTICA DE ABERTURA DE COMPETIÇÃO (1º jogo do ano)
+   ========================================== */
+.intro-comp-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: introFadeIn 0.5s ease;
+}
+.intro-comp-overlay.oculto { display: none; }
+
+@keyframes introFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.intro-comp-video { width: 100%; height: 100%; object-fit: cover; }
+.intro-comp-video.oculto { display: none; }
+
+.intro-comp-fallback {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 50%, #111 0%, #000 75%);
+}
+.intro-comp-fallback.oculto { display: none; }
+
+.intro-comp-rays {
+    position: absolute;
+    inset: -20%;
+    background: repeating-conic-gradient(from 0deg, var(--intro-cor, #facc15) 0deg 2deg, transparent 2deg 14deg);
+    opacity: 0.16;
+    animation: introRaysSpin 16s linear infinite;
+}
+
+@keyframes introRaysSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.intro-comp-logo {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    object-fit: contain;
+    margin-bottom: 22px;
+    filter: drop-shadow(0 0 40px var(--intro-cor, #facc15));
+    animation: introLogoZoom 1.4s cubic-bezier(.2,.9,.3,1.3) both;
+}
+
+@keyframes introLogoZoom { 0% { transform: scale(0.2) rotate(-8deg); opacity: 0; } 60% { transform: scale(1.12) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+
+.intro-comp-title {
+    position: relative;
+    margin: 0;
+    font-size: 2.4rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.35em;
+    color: #fff;
+    text-shadow: 0 0 30px var(--intro-cor, #facc15);
+    text-align: center;
+    padding: 0 20px;
+    animation: introTitleReveal 1.2s ease 0.3s both;
+}
+
+@keyframes introTitleReveal { from { opacity: 0; letter-spacing: 0.8em; } to { opacity: 1; letter-spacing: 0.35em; } }
+
+.intro-comp-sub {
+    position: relative;
+    margin: 14px 0 0;
+    color: #aaa;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    animation: introFadeIn 1.5s ease 0.8s both;
+}
+
+.intro-comp-skip {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    z-index: 2;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    padding: 8px 18px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.intro-comp-skip:hover { background: rgba(255,255,255,0.18); }
+
+@media (max-width: 600px) {
+    .intro-comp-logo { width: 110px; height: 110px; }
+    .intro-comp-title { font-size: 1.5rem; letter-spacing: 0.2em; }
+}
