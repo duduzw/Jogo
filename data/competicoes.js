@@ -60,16 +60,24 @@ export const competicoes = [
     
     // TURQUIA
     { id: "tr_1", nome: "Süper Lig", tipo: "liga", div: 1, logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/6/6f/Trendyol_S%C3%BCper_Lig_2024_logo.png/250px-Trendyol_S%C3%BCper_Lig_2024_logo.png" },
+    { id: "tr_2", nome: "1.Lig", tipo: "liga", div: 2, logo: "https://tmssl.akamaized.net//images/logo/header/tr2.png?lm=1691091073" },
     { id: "copa_tr", nome: "Turkish Cup", tipo: "copa", div: 1, logo: "https://static.flashscore.com/res/image/data/QexI2ehD-dOluB62Q.png" },
     { id: "supercopa_tr", nome: "Turkish Super Cup", tipo: "supercopa", div: 1, logo: "https://static.flashscore.com/res/image/data/E7B8z2Sp-I3pO0ATD.png" },
 
+    // NORUEGA
     { id: "nor_1", nome: "Eliteserien", tipo: "liga", div: 1, logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/e/ee/Eliteserien_logo.png/250px-Eliteserien_logo.png" },
+    { id: "copa_nor", nome: "Taça NM", tipo: "copa", div: 1, logo: "https://static.flashscore.com/res/image/data/CAaiTEkD-8d10ke6o.png" },
+    { id: "supercopa_nor", nome: "Mesterfinalen", tipo: "supercopa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/en/thumb/0/0a/Mesterfinalen_logo.svg/120px-Mesterfinalen_logo.svg.png" },
 
     // BELGICA
     { id: "be_1", nome: "Jupiler Pro League", tipo: "liga", div: 1, logo: "https://r2.thesportsdb.com/images/media/league/badge/mjit7n1593634474.png/medium" },
+    { id: "copa_be", nome: "Croky Cup", tipo: "copa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/fr/thumb/c/c1/Logo_Croky_Cup.svg/langfr-250px-Logo_Croky_Cup.svg.png" },
+    { id: "supercopa_be", nome: "Pro League Super Cup", tipo: "supercopa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Supercoupe_Pro_League.jpg/250px-Supercoupe_Pro_League.jpg" },
 
     // ESCOCIA
     { id: "sco_1", nome: "Scottish Premiership", tipo: "liga", div: 1, logo: "https://tmssl.akamaized.net//images/logo/header/sc1.png?lm=1750156806" },
+    { id: "copa_sco", nome: "Scottish Challenge Cup", tipo: "copa", div: 1, logo: "https://r2.thesportsdb.com/images/media/league/badge/6m7mow1693378371.png/medium" },
+    { id: "supercopa_sco", nome: "Scottish Super Cup", tipo: "supercopa", div: 1, logo: "https://static.flashscore.com/res/image/data/E7B8z2Sp-I3pO0ATD.png" },
 
     // ARÁBIA
     { id: "ara_1", nome: "Saudi Pro League", tipo: "liga", div: 1, logo: "https://assets.football-logos.cc/logos/saudi-arabia/512x512/saudi-professional-league.59d5c8af.png" },

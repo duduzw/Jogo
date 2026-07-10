@@ -32,6 +32,7 @@ let playersListener = null;
 let roomListener = null;
 let heartbeatInterval = null;
 let pregameRoomListener = null;
+let friendDataListener = null;
 
 // ==========================================
 // INITIALIZATION
@@ -672,7 +673,13 @@ function syncPlayerDataToFirebase() {
 
     // Safely access jogador from window scope
     const jogador = window.jogador;
-    const anoAtual = window.anoAtual;
+    // 🛡️ FIX: usa a ponte "ao vivo" quando disponível — window.anoAtual/rodadaAtual
+    // sozinhos podem estar desatualizados, pois main.js os mantém em variáveis
+    // internas do módulo.
+    const estadoAtual = (typeof window.obterEstadoTemporadaAtual === 'function')
+        ? window.obterEstadoTemporadaAtual()
+        : { ano: window.anoAtual, rodada: window.rodadaAtual };
+    const anoAtual = estadoAtual.ano;
 
     if (!jogador) {
         console.warn("syncPlayerDataToFirebase: jogador not available yet");
@@ -686,6 +693,7 @@ function syncPlayerDataToFirebase() {
         posicao: jogador.posicao,
         geral: jogador.geral,
         valorMercado: jogador.valorMercado,
+        contrato: jogador.contrato || 0,
         clubeId: jogador.clubeId,
         foto: jogador.foto || ""
     };
@@ -730,6 +738,7 @@ function syncPlayerDataToFirebase() {
     db.ref(`players/${playerId}/achievements`).set(achievementsData);
     db.ref(`players/${playerId}/lastUpdated`).set(Date.now());
     db.ref(`players/${playerId}/currentSeason`).set(anoAtual || 2026);
+    db.ref(`players/${playerId}/currentRound`).set(estadoAtual.rodada || 1);
 }
 
 // ==========================================
@@ -792,7 +801,10 @@ function convertFirebasePlayerToLocal(firebasePlayerId, playerData) {
     if (!playerData.profile) return null;
 
     const profile = playerData.profile;
-    const stats = playerData.stats || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
+    // 🛡️ FIX: syncPlayerDataToFirebase grava as estatísticas em stats.club.*
+    // (separadas de stats.international.*) — lê-las direto de stats.* fazia
+    // com que ficassem sempre em 0, mesmo com gols/assistências reais.
+    const stats = (playerData.stats && playerData.stats.club) || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
     const achievements = playerData.achievements || [];
 
     return {
@@ -804,6 +816,7 @@ function convertFirebasePlayerToLocal(firebasePlayerId, playerData) {
         geral: profile.geral,
         valorMercado: profile.valorMercado,
         clubeId: profile.clubeId,
+        contrato: profile.contrato || 0,
         foto: profile.foto || "",
         statsTemporada: {
             jogos: stats.jogos || 0,
@@ -824,7 +837,8 @@ function updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingInd
     if (!playerData.profile) return;
 
     const profile = playerData.profile;
-    const stats = playerData.stats || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
+    // 🛡️ FIX: mesma correção — as estatísticas ficam em stats.club.*, não em stats.* direto.
+    const stats = (playerData.stats && playerData.stats.club) || { jogos: 0, gols: 0, assistencias: 0, notas: [] };
     const achievements = playerData.achievements || [];
 
     window.jogadoresIA[existingIndex] = {
@@ -836,6 +850,7 @@ function updateLocalPlayerFromFirebase(firebasePlayerId, playerData, existingInd
         geral: profile.geral,
         valorMercado: profile.valorMercado,
         clubeId: profile.clubeId,
+        contrato: profile.contrato || 0,
         foto: profile.foto || "",
         statsTemporada: {
             jogos: stats.jogos || 0,
@@ -912,6 +927,12 @@ function setupFirebasePlayersListener() {
                 }
             } catch (err) {
                 console.error("Erro ao processar dados de um player específico:", firebasePlayerId, err);
+            }
+
+            // 🌐 Guarda o clube do parceiro (usado por gerarAgenda() para marcar
+            // o confronto direto entre os dois jogadores online no calendário).
+            if (firebasePlayerId === friendId && playerData.profile) {
+                window.onlinePartnerClubeId = playerData.profile.clubeId;
             }
         });
 
@@ -1437,6 +1458,213 @@ function getFriendData() {
 }
 
 // ==========================================
+// 🌐 MUNDO COMPARTILHADO (LOBBY ONLINE)
+// ==========================================
+// Liga toda a infraestrutura de sincronização já existente (pesquisa/elenco
+// com o amigo, perfil/estatísticas, feed de notícias) assim que a carreira
+// partilhada começa a partir do lobby pré-jogo.
+function activateSharedWorld(myId, partnerId) {
+    if (!db && !initializeFirebase()) return false;
+    if (!myId) return false;
+
+    playerId = myId;
+    isOnlineMode = true;
+
+    if (partnerId) {
+        friendId = partnerId;
+        getFriendData(); // populamos friendData (usado no feed de conquistas do amigo)
+        setupAchievementListener();
+        // Mantém friendData atualizado ao vivo para o roster do clube funcionar sempre
+        if (!friendDataListener) {
+            friendDataListener = db.ref(`players/${friendId}`).on("value", (snapshot) => {
+                if (snapshot.exists()) friendData = snapshot.val();
+            });
+        }
+    }
+
+    setupFirebasePlayersListener();
+    syncPlayerDataToFirebase();
+    console.log(`🌐 Mundo compartilhado ativado. Eu: ${myId} | Amigo: ${partnerId || "—"}`);
+    return true;
+}
+
+// Verifica se o jogador pode avançar para a próxima rodada sem ultrapassar o
+// amigo em mais de 1 rodada. Retorna uma Promise<boolean>.
+function podeAvancarRodada(minhaProximaRodada) {
+    if (!isOnlineMode || !friendId || !db) return Promise.resolve(true);
+
+    return db.ref(`players/${friendId}/currentRound`).once('value')
+        .then(snapshot => {
+            const rodadaAmigo = snapshot.exists() ? (snapshot.val() || 1) : 1;
+            return (minhaProximaRodada - rodadaAmigo) <= 1;
+        })
+        .catch(() => true); // em caso de erro de rede, não bloqueia o jogador
+}
+
+// ==========================================
+// 🌐 MUNDO REALMENTE COMPARTILHADO
+// ==========================================
+// Chave estável para o mundo partilhado dos dois jogadores (não depende da
+// sala do lobby, que já foi apagada a essa altura).
+function obterWorldKey() {
+    if (!playerId || !friendId) return null;
+    return [playerId, friendId].sort().join('_');
+}
+
+// Decide, de forma determinística e sem negociação, qual dos dois jogadores
+// é responsável por simular a rodada mundial "de verdade" e transmiti-la.
+function souHostDoMundo() {
+    if (!playerId || !friendId) return true;
+    return playerId < friendId;
+}
+
+// Sistema de "pronto": marca-me como pronto para a rodada indicada e só
+// resolve true quando o amigo também estiver. Se ele ainda não estiver,
+// resolve false e regista um listener que chama aoFicarPronto() assim que
+// ele ficar — assim ninguém precisa ficar a clicar repetidamente.
+function aguardarProntoRodada(rodada, aoFicarPronto) {
+    if (!isOnlineMode || !friendId || !db) return Promise.resolve(true);
+    const worldKey = obterWorldKey();
+    if (!worldKey) return Promise.resolve(true);
+
+    db.ref(`sharedWorlds/${worldKey}/readyRound/${playerId}`).set(rodada);
+
+    return db.ref(`sharedWorlds/${worldKey}/readyRound/${friendId}`).once('value').then(snap => {
+        const rodadaAmigo = snap.exists() ? snap.val() : 0;
+        if (rodadaAmigo >= rodada) return true;
+
+        const ref = db.ref(`sharedWorlds/${worldKey}/readyRound/${friendId}`);
+        const listener = ref.on('value', (s) => {
+            if (s.exists() && s.val() >= rodada) {
+                ref.off('value', listener);
+                if (typeof aoFicarPronto === 'function') aoFicarPronto();
+            }
+        });
+        return false;
+    }).catch(() => true);
+}
+
+// O anfitrião do mundo (ver souHostDoMundo) transmite o resultado autoritativo
+// da rodada — tabelas de liga e estado das copas — para o amigo aplicar
+// diretamente, em vez de simular a sua própria versão aleatória.
+function transmitirEstadoMundial(rodada, ano, estado) {
+    if (!db) return;
+    const worldKey = obterWorldKey();
+    if (!worldKey) return;
+    db.ref(`sharedWorlds/${worldKey}/worldState/r${rodada}_${ano}`).set({ ...estado, ts: Date.now() });
+}
+
+// O convidado usa isto para ir buscar (e esperar por, se ainda não existir)
+// o estado mundial autoritativo transmitido pelo anfitrião para esta rodada.
+function obterEstadoMundial(rodada, ano) {
+    const worldKey = obterWorldKey();
+    if (!db || !worldKey) return Promise.resolve(null);
+    const ref = db.ref(`sharedWorlds/${worldKey}/worldState/r${rodada}_${ano}`);
+    return new Promise((resolve) => {
+        let resolvido = false;
+        const listener = ref.on('value', (snap) => {
+            if (snap.exists() && !resolvido) {
+                resolvido = true;
+                ref.off('value', listener);
+                resolve(snap.val());
+            }
+        });
+        // Rede de segurança: se em 20s o anfitrião ainda não transmitiu nada
+        // (ex: falha de rede), não deixa o convidado preso para sempre.
+        setTimeout(() => {
+            if (!resolvido) { resolvido = true; ref.off('value', listener); resolve(null); }
+        }, 20000);
+    });
+}
+
+// ==========================================
+// 🌐 CONFRONTO DIRETO ONLINE — TRANSMISSÃO AO VIVO
+// ==========================================
+// Quando os clubes dos dois jogadores online se enfrentam, o anfitrião do
+// confronto (determinado deterministicamente em main.js) corre o motor de
+// partida de verdade e transmite cada evento aqui; o outro jogador só
+// escuta e reproduz os mesmos eventos, assistindo ao mesmo jogo ao vivo.
+function transmitirTick(matchKey, tick) {
+    if (!db || !matchKey) return;
+    db.ref(`liveMatches/${matchKey}/ticks`).push({ ...tick, ts: Date.now() });
+}
+
+function finalizarTransmissaoPartida(matchKey, resultado) {
+    if (!db || !matchKey) return;
+    db.ref(`liveMatches/${matchKey}/final`).set({ ...resultado, ts: Date.now() });
+}
+
+function assistirTransmissaoPartida(matchKey, handlers) {
+    if (!db || !matchKey) return;
+    const ticksRef = db.ref(`liveMatches/${matchKey}/ticks`);
+    const finalRef = db.ref(`liveMatches/${matchKey}/final`);
+
+    ticksRef.on('child_added', (snap) => {
+        const t = snap.val();
+        if (t && handlers.onTick) handlers.onTick(t.min, t.gc, t.gv, t.log);
+    });
+
+    finalRef.on('value', (snap) => {
+        if (snap.exists() && handlers.onFinal) {
+            ticksRef.off('child_added');
+            finalRef.off('value');
+            handlers.onFinal(snap.val());
+        }
+    });
+}
+
+function limparTransmissaoPartida(matchKey) {
+    if (!db || !matchKey) return;
+    db.ref(`liveMatches/${matchKey}`).remove();
+}
+
+// ==========================================
+// 🌐 FIM DE TEMPORADA (GALA) COMPARTILHADO
+// ==========================================
+// Igual ao estado mundial da rodada, mas para os resultados de fim de época
+// (tabelas finais, campeões, Bola de Ouro, envelhecimento/aposentadoria dos
+// jogadores da IA) — só o anfitrião do mundo calcula, o outro aplica.
+function transmitirFimDeTemporada(ano, estado) {
+    if (!db) return;
+    const worldKey = obterWorldKey();
+    if (!worldKey) return;
+    db.ref(`sharedWorlds/${worldKey}/seasonEnd/y${ano}`).set({ ...estado, ts: Date.now() });
+}
+
+function obterFimDeTemporada(ano) {
+    const worldKey = obterWorldKey();
+    if (!db || !worldKey) return Promise.resolve(null);
+    const ref = db.ref(`sharedWorlds/${worldKey}/seasonEnd/y${ano}`);
+    return new Promise((resolve) => {
+        let resolvido = false;
+        const listener = ref.on('value', (snap) => {
+            if (snap.exists() && !resolvido) {
+                resolvido = true;
+                ref.off('value', listener);
+                resolve(snap.val());
+            }
+        });
+        setTimeout(() => {
+            if (!resolvido) { resolvido = true; ref.off('value', listener); resolve(null); }
+        }, 25000);
+    });
+}
+
+// Envia uma conquista para o feed de notícias de QUALQUER jogador (não só o
+// local) — usado quando o anfitrião do mundo descobre, no seu próprio
+// cálculo de fim de temporada, que o amigo ganhou algo.
+function pushAchievementForPlayerToFirebase(targetPlayerId, trophy, competition) {
+    if (!db || !targetPlayerId) return;
+    db.ref(`events/${targetPlayerId}/achievements`).push({
+        type: "TROPHY",
+        trophy: trophy,
+        year: (typeof window.obterEstadoTemporadaAtual === 'function') ? window.obterEstadoTemporadaAtual().ano : (window.anoAtual || 2026),
+        timestamp: Date.now(),
+        playerName: "" // preenchido no feed a partir do próprio evento, se necessário
+    });
+}
+
+// ==========================================
 // ACHIEVEMENT SYNC
 // ==========================================
 
@@ -1927,6 +2155,12 @@ function setupPregameRoomListener(roomCode, playerId) {
                 window.sincronizarTemporadaOnline(anoSincronizado, 1);
             }
 
+            // Guarda o id do outro jogador da sala — usado para ligar o mundo
+            // compartilhado (pesquisa, elenco, notícias) assim que a criação
+            // de personagem terminar.
+            const idsNaSala = Object.keys(roomData.players || {});
+            window.onlinePartnerId = idsNaSala.find(id => id !== playerId) || null;
+
             mudarTela("telaCriacao");
             return;
         }
@@ -1981,5 +2215,21 @@ window.firebaseIntegration = {
     toggleLobbyReady,
     startCareerFromLobby,
     isHost: () => isHost,
-    getRoomId: () => roomId
+    getRoomId: () => roomId,
+    // 🌐 Mundo compartilhado
+    activateSharedWorld,
+    podeAvancarRodada,
+    aguardarProntoRodada,
+    souHostDoMundo,
+    transmitirEstadoMundial,
+    obterEstadoMundial,
+    // 🌐 Confronto direto ao vivo
+    transmitirTick,
+    finalizarTransmissaoPartida,
+    assistirTransmissaoPartida,
+    limparTransmissaoPartida,
+    // 🌐 Fim de temporada (Gala) compartilhado
+    transmitirFimDeTemporada,
+    obterFimDeTemporada,
+    pushAchievementForPlayerToFirebase
 };

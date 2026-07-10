@@ -636,6 +636,35 @@ window.sincronizarTemporadaOnline = function(ano = 2026, rodada = 1) {
     console.log(`🌐 Carreira online sincronizada — Temporada ${ano}, Rodada ${rodada}`);
 };
 
+// Bridge "ao vivo": como anoAtual/rodadaAtual são variáveis locais do módulo
+// (não ficam sincronizadas automaticamente em window.*), o firebase-integration.js
+// (script clássico) usa esta função para ler sempre o valor atual, e não uma
+// cópia potencialmente desatualizada.
+window.obterEstadoTemporadaAtual = function() {
+    return { ano: anoAtual, rodada: rodadaAtual };
+};
+
+// ==========================================
+// 🌐 SISTEMA DE "PRONTO" POR RODADA
+// ==========================================
+// Marca-me como pronto para a rodada atual e só deixa continuar quando o
+// amigo também estiver. Se ele ainda não estiver pronto, avisa e retoma
+// automaticamente (reclicando o botão indicado) assim que ele ficar.
+window.aguardarSincronizacaoRodada = function(idBotaoParaRetomar) {
+    if (window.connectionMode !== 'online' || !window.firebaseIntegration || !window.firebaseIntegration.aguardarProntoRodada) {
+        return Promise.resolve(true);
+    }
+    return window.firebaseIntegration.aguardarProntoRodada(rodadaAtual, () => {
+        mostrarToast("Mundo Compartilhado", "O teu amigo ficou pronto! A continuar a rodada...", "success");
+        document.getElementById(idBotaoParaRetomar)?.click();
+    }).then(pronto => {
+        if (!pronto) {
+            mostrarToast("Mundo Compartilhado", "Ficaste pronto! A aguardar o teu amigo terminar a rodada dele...", "info");
+        }
+        return pronto;
+    });
+};
+
 let agendaTemporada = [];
 let propostasPendentes = [];
 let negociacaoAtual = null;
@@ -676,6 +705,11 @@ function getElencoClube(clubeId, incluirAposentados = false) {
 // 💾 SISTEMA DE GRAVAÇÃO (GLOBAL)
 // ==========================================
 window.salvarJogo = function() { 
+    // 🛡️ FIX: nunca persistir os jogadores online sincronizados (Firebase) no
+    // save — eles são temporários e devem ser sempre recarregados ao vivo pelo
+    // listener, senão ficam "presos" como NPCs fantasmas em sessões futuras.
+    const npcsParaGuardar = jogadoresIA.filter(j => !j.isFirebasePlayer && !j.isOnlinePlayer);
+
     localStorage.setItem("rumo_estrelato_pro_vivo", JSON.stringify({ 
         jogador, ano: anoAtual, rodada: rodadaAtual, agenda: agendaTemporada, 
         tabelas: tabelasLigas, copas: copasEstado, vagasContinentais: window.vagasContinentais, 
@@ -684,7 +718,7 @@ window.salvarJogo = function() {
         selecoesEstado: selecoesEstado,
         managerEstado: managerEstado,
         introsExibidas: introsExibidas,
-        clubesSave: clubes, npcsSave: jogadoresIA 
+        clubesSave: clubes, npcsSave: npcsParaGuardar 
     })); 
     
     // Sync to Firebase if online mode is active
@@ -698,6 +732,7 @@ function carregarJogo() {
     if (save) {
         let dados = JSON.parse(save);
         jogador = dados.jogador; anoAtual = dados.ano; rodadaAtual = dados.rodada; agendaTemporada = dados.agenda || []; copasEstado = dados.copas || {};
+        window.jogador = jogador; // 🛡️ FIX: mantém window.jogador (usado pelo firebase-integration.js) na mesma referência
         // Backwards compatibility: initialize training flag for existing saves
         if(typeof jogador.jogouPartidaDesdeUltimoTreino === 'undefined') jogador.jogouPartidaDesdeUltimoTreino = false;
         inicializarEstadoCarreiraJogador();
@@ -720,7 +755,13 @@ function carregarJogo() {
         }
         if(typeof dados.janelaMeioAnoProcessada !== 'undefined') janelaMeioAnoProcessada = dados.janelaMeioAnoProcessada;
         if(dados.clubesSave) { clubes.length = 0; dados.clubesSave.forEach(cs => clubes.push(cs)); }
-        if(dados.npcsSave) { jogadoresIA.length = 0; dados.npcsSave.forEach(n => jogadoresIA.push(n)); }
+        if(dados.npcsSave) {
+            jogadoresIA.length = 0;
+            // 🛡️ FIX: descarta qualquer jogador online sincronizado que tenha
+            // ficado preso num save antigo (de testes anteriores) — eles são
+            // recarregados ao vivo pelo Firebase quando necessário.
+            dados.npcsSave.filter(n => !n.isFirebasePlayer && !n.isOnlinePlayer).forEach(n => jogadoresIA.push(n));
+        }
         normalizarElencosEPosicoes();
         aplicarHistoricosReaisIniciais();
         for (let key in tabelasLigas) delete tabelasLigas[key]; Object.assign(tabelasLigas, dados.tabelas);
@@ -5463,7 +5504,11 @@ function gerarAgenda() {
         if (byeWeekSlots.includes(jogoLigaIdx)) {
             adicionarEventoCalendario({ tipo: "Folga (Recuperação)", compId: "folga", adversarioId: null, isMataMata: false, fase: "Folga", isFolga: true }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, "Folga", "europeu");
         } else if(adv.id !== "folga_temp") {
-            adicionarEventoCalendario({ tipo: `${nomeLiga} (J${jogoLigaIdx + 1})`, compId: meuClube.ligaId, adversarioId: adv.id, isMataMata: false, fase: "Liga" }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, nomeLiga, perfilPais.modelo);
+            // 🌐 MUNDO COMPARTILHADO: se o adversário desta rodada de liga é
+            // exatamente o clube do amigo online, marca como confronto direto —
+            // o jogo vai sincronizar essa partida em tempo real para os dois.
+            const isConfrontoDireto = !!(window.connectionMode === 'online' && window.onlinePartnerClubeId && adv.id === window.onlinePartnerClubeId);
+            adicionarEventoCalendario({ tipo: `${nomeLiga} (J${jogoLigaIdx + 1})`, compId: meuClube.ligaId, adversarioId: adv.id, isMataMata: false, fase: "Liga", isConfrontoDireto }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, nomeLiga, perfilPais.modelo);
         }
         jogoLigaIdx++;
     }
@@ -5617,6 +5662,42 @@ function simularRodadaMundial() {
         }
     }
 }
+
+// ==========================================
+// 🌐 MUNDO REALMENTE COMPARTILHADO — SIMULAÇÃO ÚNICA
+// ==========================================
+// No modo online, a rodada mundial (tabelas de todas as ligas + copas) só
+// pode ser calculada por UM dos dois jogadores (o "anfitrião do mundo",
+// decidido automaticamente) e depois partilhada — senão cada um vê ligas
+// diferentes (ex: "no meu Bayern lidera, no teu é o Borussia"). Esta função
+// substitui as chamadas diretas a simularRodadaMundial() nos pontos em que
+// a rodada avança.
+window.simularRodadaMundialOnline = async function() {
+    if (window.connectionMode !== 'online' || !window.firebaseIntegration) {
+        simularRodadaMundial();
+        return;
+    }
+
+    const souHost = window.firebaseIntegration.souHostDoMundo();
+    if (souHost) {
+        simularRodadaMundial();
+        window.firebaseIntegration.transmitirEstadoMundial(rodadaAtual, anoAtual, {
+            tabelasLigas: JSON.parse(JSON.stringify(tabelasLigas)),
+            copasEstado: JSON.parse(JSON.stringify(copasEstado))
+        });
+    } else {
+        const estado = await window.firebaseIntegration.obterEstadoMundial(rodadaAtual, anoAtual);
+        if (estado && estado.tabelasLigas) {
+            for (let key in tabelasLigas) delete tabelasLigas[key];
+            Object.assign(tabelasLigas, estado.tabelasLigas);
+            for (let key in copasEstado) delete copasEstado[key];
+            Object.assign(copasEstado, estado.copasEstado || {});
+        } else {
+            // Falha de rede/timeout: melhor simular localmente do que travar o jogador para sempre.
+            simularRodadaMundial();
+        }
+    }
+};
 
 // ==========================================
 // 🚨 VIRADA DE TEMPORADA E FIM DE COPAS
@@ -5970,6 +6051,72 @@ function processarFimTemporada() {
         
     } catch (e) { console.error(e); mostrarToast("Erro", "Falha na Gala.", "danger"); }
 }
+
+// ==========================================
+// 🌐 FIM DE TEMPORADA COMPARTILHADO (GALA IGUAL PARA OS DOIS)
+// ==========================================
+// No modo online, só o anfitrião do mundo calcula a Gala de verdade (Bola de
+// Ouro, campeões, envelhecimento da IA) — já considerando as estatísticas
+// reais do amigo, que estão sincronizadas dentro de jogadoresIA. O resultado
+// inteiro é transmitido para o amigo aplicar, para que os dois vejam
+// exatamente os mesmos campeões e prémios.
+window.processarFimTemporadaOnline = async function() {
+    if (window.connectionMode !== 'online' || !window.firebaseIntegration) {
+        processarFimTemporada();
+        return;
+    }
+
+    const souHost = window.firebaseIntegration.souHostDoMundo();
+    if (souHost) {
+        processarFimTemporada();
+
+        // Se o amigo ganhou algo nesta Gala, avisa-o (ele não corre este código).
+        const meuParceiro = jogadoresIA.find(j => j.id === window.onlinePartnerId);
+        if (meuParceiro?.historicoCarreira?.[0]?.trofeus && meuParceiro.historicoCarreira[0].trofeus !== "-") {
+            window.firebaseIntegration.pushAchievementForPlayerToFirebase(window.onlinePartnerId, meuParceiro.historicoCarreira[0].trofeus, "Fim de Temporada");
+        }
+
+        window.firebaseIntegration.transmitirFimDeTemporada(anoAtual, {
+            tabelasLigas: JSON.parse(JSON.stringify(tabelasLigas)),
+            copasEstado: JSON.parse(JSON.stringify(copasEstado)),
+            campeoesAnoAnterior: JSON.parse(JSON.stringify(campeoesAnoAnterior)),
+            jogadoresIA: JSON.parse(JSON.stringify(jogadoresIA.filter(j => !j.isFirebasePlayer && !j.isOnlinePlayer))),
+            parceiroResultado: meuParceiro ? JSON.parse(JSON.stringify({ historicoCarreira: meuParceiro.historicoCarreira, pontosPremio: meuParceiro.pontosPremio, titulosSelecao: meuParceiro.titulosSelecao })) : null
+        });
+    } else {
+        const estado = await window.firebaseIntegration.obterFimDeTemporada(anoAtual);
+        if (estado) {
+            for (let key in tabelasLigas) delete tabelasLigas[key];
+            Object.assign(tabelasLigas, estado.tabelasLigas || {});
+            for (let key in copasEstado) delete copasEstado[key];
+            Object.assign(copasEstado, estado.copasEstado || {});
+            campeoesAnoAnterior = estado.campeoesAnoAnterior || campeoesAnoAnterior;
+            if (estado.jogadoresIA) { jogadoresIA.length = 0; estado.jogadoresIA.forEach(n => jogadoresIA.push(n)); }
+
+            // Aplica o MEU próprio troféu/prémio (o anfitrião já apurou isto no cálculo dele).
+            if (estado.parceiroResultado) {
+                if (estado.parceiroResultado.historicoCarreira?.[0] && jogador.historicoCarreira?.[0]) {
+                    jogador.historicoCarreira[0].trofeus = estado.parceiroResultado.historicoCarreira[0].trofeus;
+                }
+                if (typeof estado.parceiroResultado.pontosPremio === 'number') jogador.pontosPremio = estado.parceiroResultado.pontosPremio;
+                if (estado.parceiroResultado.titulosSelecao) jogador.titulosSelecao = estado.parceiroResultado.titulosSelecao;
+            }
+
+            // Aplica o meu próprio bónus de OVR/valor de mercado de fim de temporada
+            // (o anfitrião só ajustou o dele próprio).
+            let bonusUser = 0;
+            if (jogador.estatisticasAtuais.gols + jogador.estatisticasAtuais.assistencias > 20) bonusUser += 2;
+            if (jogador.idade < 24) bonusUser += 2; if (jogador.idade > 31) bonusUser -= 2;
+            jogador.geral = Math.max(40, Math.min(99, jogador.geral + bonusUser));
+            jogador.valorMercadoNum = calcularValorMercadoJogador(jogador);
+
+            registrarNoticia("Fim de temporada", "A grande janela de transferências vai abrir junto com a nova época.", "Mercado");
+        } else {
+            // Rede de segurança em caso de falha de rede/timeout.
+            processarFimTemporada();
+        }
+    }
+};
 
 // Monta o "Melhor 11 do Mundo" da temporada: escolhe o melhor jogador disponível para
 // cada posição de uma formação 4-3-3, sem repetir jogador em mais de uma vaga.
@@ -6396,9 +6543,21 @@ window.managerPromoverJovem = function(baseId) {
     renderizarManager();
 };
 
-window.managerSimularPartida = function() {
+window.managerSimularPartida = async function() {
     const clube = clubeManagerAtual();
     if(!clube) return;
+
+    // 🌐 MUNDO COMPARTILHADO: sistema de "pronto" — só avança quando o amigo também estiver pronto para esta rodada.
+    if (window.connectionMode === 'online' && window.firebaseIntegration && window.firebaseIntegration.aguardarProntoRodada) {
+        const pronto = await window.firebaseIntegration.aguardarProntoRodada(rodadaAtual, () => {
+            mostrarToast("Mundo Compartilhado", "O teu amigo ficou pronto! A continuar a rodada...", "success");
+            window.managerSimularPartida();
+        });
+        if (!pronto) {
+            mostrarToast("Mundo Compartilhado", "Ficaste pronto! A aguardar o teu amigo terminar a rodada dele...", "info");
+            return;
+        }
+    }
 
     // The global football calendar is shared by every mode. If the player-mode
     // season has already run out of scheduled weeks, point the manager at the
@@ -6431,7 +6590,7 @@ window.managerSimularPartida = function() {
     // until the global season rolls over to the Gala.
     if(mt.jogos >= maxJogos) {
         mostrarToast("Diretoria", "O teu clube já disputou todos os jogos da liga esta época. A avançar o resto do mundo...", "info");
-        simularRodadaMundial();
+        await window.simularRodadaMundialOnline();
         rodadaAtual++;
         window.salvarJogo();
         if(typeof atualizarHub === 'function') atualizarHub();
@@ -6443,7 +6602,7 @@ window.managerSimularPartida = function() {
     const advEntry = rivaisElegiveis[Math.floor(Math.random() * rivaisElegiveis.length)];
     if(!advEntry) {
         mostrarToast("Diretoria", "Nenhum adversário disponível esta semana. A avançar a semana...", "info");
-        simularRodadaMundial();
+        await window.simularRodadaMundialOnline();
         rodadaAtual++;
         window.salvarJogo();
         if(typeof atualizarHub === 'function') atualizarHub();
@@ -6492,7 +6651,7 @@ window.managerSimularPartida = function() {
     // Keep the rest of the footballing world moving in the same tick, so cups,
     // internationals and every other league stay in sync with the manager's club
     // instead of freezing while only the manager's own score changes.
-    simularRodadaMundial();
+    await window.simularRodadaMundialOnline();
     rodadaAtual++;
     window.salvarJogo();
     if(typeof atualizarHub === 'function') atualizarHub();
@@ -7486,17 +7645,25 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
 });
 
 // Botão "Entrar em Relvado" do hub do jogo - simulação de partida
-document.getElementById("btnJogarHub")?.addEventListener("click", () => {
+document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
     try {
         // In-game hub - proceed with match simulation
         inicializarEstadoCarreiraJogador();
+
+        // 🌐 MUNDO COMPARTILHADO: sistema de "pronto" — ambos começam a rodada
+        // exatamente ao mesmo tempo. Só avança quando o amigo também estiver pronto.
+        if (window.connectionMode === 'online') {
+            const pronto = await window.aguardarSincronizacaoRodada('btnJogarHub');
+            if (!pronto) return;
+        }
+
         let comp = agendaTemporada[rodadaAtual - 1];
         let textoBtn = document.getElementById("btnJogarHub").innerText.toLowerCase();
 
         // Check if in online room mode and handle ready state
         if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
             if (textoBtn.includes("gala")) {
-                processarFimTemporada();
+                await window.processarFimTemporadaOnline();
                 return;
             }
 
@@ -7511,18 +7678,18 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
         }
 
         if (textoBtn.includes("avançar semana")) {
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            await window.simularRodadaMundialOnline(); rodadaAtual++; window.salvarJogo(); atualizarHub();
             mostrarToast("Simulação", "Semana global avançada com sucesso.", "info");
             return;
         } else if (textoBtn.includes("gala")) {
-            processarFimTemporada();
+            await window.processarFimTemporadaOnline();
             return;
         } else if (textoBtn.includes("descanso") && comp.isFolga) {
             // Handle bye week - give bonus energy recovery
             jogador.energia = Math.min(100, jogador.energia + 30);
             if(jogador.lesaoRodadas > 0) jogador.lesaoRodadas = Math.max(0, jogador.lesaoRodadas - 1);
             jogador.moral = Math.min(100, jogador.moral + 5);
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            await window.simularRodadaMundialOnline(); rodadaAtual++; window.salvarJogo(); atualizarHub();
             mostrarToast("Recuperação", "Recuperaste energia e moral durante a semana de folga!", "success");
             return;
         }
@@ -7536,7 +7703,7 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
 
         if(jogador.lesaoRodadas > 0) {
             mostrarToast("Departamento Médico", `Estás lesionado por ${jogador.lesaoRodadas} semana(s). A equipa jogou sem ti.`, "warning");
-            simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+            await window.simularRodadaMundialOnline(); rodadaAtual++; window.salvarJogo(); atualizarHub();
             return;
         }
 
@@ -7648,7 +7815,58 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
         function iniciarSimulacaoAoVivoReal() {
             let mP = document.getElementById("modalPartida"); if(mP) mP.classList.remove("oculto");
             const minutoEntradaJogador = escalacao.statusAtual === "titular" ? null : (escalacao.entra ? escalacao.minutoEntrada : 999);
-            let engine = new MatchEngine(jogador, mandanteId, visitanteId, minutoEntradaJogador);
+
+            // 🌐 CONFRONTO DIRETO ONLINE: quando o adversário desta partida é
+            // exatamente o clube do amigo online, os dois assistem ao MESMO
+            // jogo em tempo real. Um dos dois (determinado de forma
+            // determinística, sem negociação) corre o motor de verdade e
+            // transmite cada evento; o outro só reproduz o que chega.
+            // Cobre dois casos: (a) os clubes são rivais e se enfrentam esta rodada,
+            // ou (b) vocês estão no MESMO clube — nesse caso, toda partida do
+            // clube é vivida pelos dois ao mesmo tempo (um joga, o outro assiste).
+            const mesmoClubeQueAmigo = !isSel && window.connectionMode === 'online' && window.onlinePartnerClubeId && jogador.clubeId === window.onlinePartnerClubeId;
+            const enfrentandoAmigo = !isSel && window.connectionMode === 'online' && window.onlinePartnerClubeId && visitanteId === window.onlinePartnerClubeId;
+            const ehConfrontoDiretoOnline = (mesmoClubeQueAmigo || enfrentandoAmigo) && !!window.onlinePartnerId;
+            const souHostConfronto = ehConfrontoDiretoOnline && window.lobbyPlayerId < window.onlinePartnerId;
+            const matchKeyConfronto = ehConfrontoDiretoOnline ? `${[window.lobbyPlayerId, window.onlinePartnerId].sort().join('_')}_r${rodadaAtual}_${anoAtual}` : null;
+
+            let engine;
+            if (ehConfrontoDiretoOnline && !souHostConfronto) {
+                // Sou o "convidado" deste confronto — não simulo nada, só assisto
+                // em tempo real ao que o meu amigo está a jogar.
+                const meuClubeObj = clubes.find(c => c.id === mandanteId);
+                const advClubeObj = clubes.find(c => c.id === visitanteId);
+                engine = {
+                    isSelecao: false,
+                    clubeMandanteId: mandanteId,
+                    clubeVisitanteId: visitanteId,
+                    nomeMandante: meuClubeObj?.nome || "Mandante",
+                    nomeVisitante: advClubeObj?.nome || "Visitante",
+                    simularPartidaAoVivo(onTick, onComplete) {
+                        window.firebaseIntegration.assistirTransmissaoPartida(matchKeyConfronto, {
+                            // Se somos rivais, o anfitrião trata-se como "mandante" no motor
+                            // dele, então o MEU placar é o dele invertido. Se somos do MESMO
+                            // clube, é exatamente o mesmo jogo — nada a inverter.
+                            onTick: (min, gcHost, gvHost, log) => {
+                                if (mesmoClubeQueAmigo) onTick(min, gcHost, gvHost, log);
+                                else onTick(min, gvHost, gcHost, log);
+                            },
+                            onFinal: (dados) => {
+                                const minhasGc = mesmoClubeQueAmigo ? dados.gc : dados.gv;
+                                const minhasGv = mesmoClubeQueAmigo ? dados.gv : dados.gc;
+                                const minutosJogadosMeus = escalacao.statusAtual === "titular" ? 90 : (escalacao.entra ? Math.max(0, 90 - escalacao.minutoEntrada) : 0);
+                                onComplete(minhasGc, minhasGv, [], minutosJogadosMeus > 0, minutosJogadosMeus);
+                            }
+                        });
+                    }
+                };
+            } else {
+                engine = new MatchEngine(jogador, mandanteId, visitanteId, minutoEntradaJogador);
+                if (ehConfrontoDiretoOnline && souHostConfronto) {
+                    window.firebaseIntegration.limparTransmissaoPartida?.(matchKeyConfronto);
+                }
+            }
+
             if(isSel) {
                 engine.isSelecao = true;
                 const selM = SELECOES.find(s => s.id === mandanteId);
@@ -7663,11 +7881,16 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
             let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
             setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
             setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
-            const avisoEscalacao = escalacao.statusAtual === "titular" ? "⚽ O árbitro apita para o início do jogo!"
-                : (escalacao.statusAtual === "banco" ? "🪑 Começas no banco. Aguarda a tua oportunidade..." : "🪑 Não estás nos relacionados de hoje para entrar em campo.");
+            const avisoEscalacao = ehConfrontoDiretoOnline
+                ? "🌐 Confronto direto! Tu e o teu amigo estão a assistir a este jogo ao mesmo tempo."
+                : (escalacao.statusAtual === "titular" ? "⚽ O árbitro apita para o início do jogo!"
+                : (escalacao.statusAtual === "banco" ? "🪑 Começas no banco. Aguarda a tua oportunidade..." : "🪑 Não estás nos relacionados de hoje para entrar em campo."));
             setText("uiConsolePartida", `<div style='color:#00ff88; text-align:center;'>${avisoEscalacao}</div>`);
 
             engine.simularPartidaAoVivo((min, gc, gv, log) => {
+                if (ehConfrontoDiretoOnline && souHostConfronto) {
+                    window.firebaseIntegration.transmitirTick(matchKeyConfronto, { min, gc, gv, log: log || "" });
+                }
                 setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
                 if(log) {
                     let c = document.getElementById("uiConsolePartida");
@@ -7681,6 +7904,9 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
                 }
             }, (gc, gv, marcadores, entrouEmCampo, minutosJogados) => {
                 try {
+                    if (ehConfrontoDiretoOnline && souHostConfronto) {
+                        window.firebaseIntegration.finalizarTransmissaoPartida(matchKeyConfronto, { gc, gv });
+                    }
                     const fatorParticipacao = Math.max(0, Math.min(1, (minutosJogados ?? 90) / 90));
                     jogador.energia = Math.max(0, jogador.energia - Math.max(3, Math.round(25 * fatorParticipacao)));
                     const meuTimeId = isSel ? jogador.selecaoId : jogador.clubeId;
@@ -7757,8 +7983,8 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
                                 else if(meusGols - golsSofridos >= 3 && contextoJogo.jogoGrande) { tipoPos = "pos_vitoria_grande"; chancePos = 0.6; }
                                 else if(contextoJogo.jogoGrande) { chancePos = 0.4; }
 
-                                const finalizarRodada = () => {
-                                    simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub();
+                                const finalizarRodada = async () => {
+                                    await window.simularRodadaMundialOnline(); rodadaAtual++; window.salvarJogo(); atualizarHub();
                                     if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode() && window.firebaseIntegration.getRoomId()) {
                                         window.firebaseIntegration.setReadyForMatch(false);
                                     }
@@ -7798,13 +8024,20 @@ document.getElementById("btnJogarHub")?.addEventListener("click", () => {
     }
 });
 
-document.getElementById("btnDescansar")?.addEventListener("click", () => {
+document.getElementById("btnDescansar")?.addEventListener("click", async () => {
     inicializarEstadoCarreiraJogador();
+
+    // 🌐 MUNDO COMPARTILHADO: mesmo sistema de "pronto" do botão principal.
+    if (window.connectionMode === 'online') {
+        const pronto = await window.aguardarSincronizacaoRodada('btnDescansar');
+        if (!pronto) return;
+    }
+
     let comp = agendaTemporada[rodadaAtual - 1]; 
     let textoBtn = document.getElementById("btnJogarHub").innerText.toLowerCase();
     
-    if (textoBtn.includes("avançar semana")) { simularRodadaMundial(); rodadaAtual++; window.salvarJogo(); atualizarHub(); return; }
-    if (textoBtn.includes("gala")) { processarFimTemporada(); return; }
+    if (textoBtn.includes("avançar semana")) { await window.simularRodadaMundialOnline(); rodadaAtual++; window.salvarJogo(); atualizarHub(); return; }
+    if (textoBtn.includes("gala")) { await window.processarFimTemporadaOnline(); return; }
     if (!comp) return;
 
     let energyRecovery = 40;
@@ -7821,7 +8054,7 @@ document.getElementById("btnDescansar")?.addEventListener("click", () => {
     let gc = pCasa > 0.5 ? (pCasa > 1.2 ? 3 : (pCasa > 0.8 ? 2 : 1)) : 0; let gv = pVisita > 0.6 ? (pVisita > 1.2 ? 3 : (pVisita > 0.9 ? 2 : 1)) : 0;
     
     resolverLogicaPosPartida(comp, gc, gv);
-    simularRodadaMundial(); 
+    await window.simularRodadaMundialOnline(); 
     rodadaAtual++; 
     window.salvarJogo(); 
     atualizarHub();
@@ -8234,6 +8467,7 @@ document.getElementById("btnStartCareer")?.addEventListener("click", startCareer
 
 document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     jogador = JSON.parse(JSON.stringify(jogadorModelo));
+    window.jogador = jogador; // 🛡️ FIX: mantém window.jogador (usado pelo firebase-integration.js) na mesma referência
     jogador.nome = document.getElementById("inputNome")?.value || "Craque";
     jogador.nacionalidade = document.getElementById("selectNacionalidade")?.value || "Brasil"; 
     jogador.posicao = document.getElementById("selectPosicao")?.value || "Atacante";
@@ -8312,6 +8546,14 @@ document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     
     selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} };
     preencherLigasVazias(); inicializarTabelas(); inicializarOrcamentosEContratos(); inicializarCopasNacionaisEContinentais(); gerarAgenda(); preencherDropdowns(); atualizarOVRClubes(); 
+
+    // 🌐 MUNDO COMPARTILHADO: se esta carreira nasceu do lobby online, liga a
+    // sincronização com o Firebase — perfil, pesquisa, elenco do clube e feed
+    // de notícias passam a incluir o amigo a partir daqui.
+    if (window.connectionMode === 'online' && window.firebaseIntegration && window.firebaseIntegration.activateSharedWorld) {
+        window.firebaseIntegration.activateSharedWorld(window.lobbyPlayerId, window.onlinePartnerId || null);
+    }
+
     mudarTela("telaIntroducao");
     let intro = document.getElementById("textoIntroducao");
     if(intro) intro.innerHTML = `
