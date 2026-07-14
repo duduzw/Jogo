@@ -1,5 +1,5 @@
 ﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
-import { MatchEngine } from './engine/match.js';
+import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
 // Make jogadoresIA available globally for Firebase integration
@@ -687,6 +687,80 @@ let introsExibidas = {};
 // 🔍 CLUB ROSTER FETCHING (WITH FRIENDS)
 // ==========================================
 
+// ==========================================
+// 🧢 TITULARES E CAPITÃO (clubes)
+// ==========================================
+// Antes, TODO o elenco (até 60 jogadores) recebia "jogos++" em toda partida
+// simulada — um reserva do sub-20 acumulava a mesma quantidade de jogos que o
+// titular absoluto. Agora cada clube define os seus 11 titulares (melhor
+// jogador por posição, respeitando uma formação básica 4-2-3-1) mais um banco
+// rotativo, e só esse grupo (titulares + banco daquele jogo) conta partida —
+// o resto do elenco (jovens, reservas profundas) fica de fora da rotação real,
+// como num time de verdade.
+const FORMACAO_BASE_TITULARES = [["Goleiro", 1], ["Zagueiro", 2], ["Lateral", 2], ["Volante", 2], ["Meio-Campista", 1], ["Meia Ofensivo", 1], ["Ponta", 1], ["Atacante", 1]];
+
+function definirTitularesECapitao(elenco) {
+    const porPos = {};
+    elenco.forEach(j => { if(!porPos[j.posicao]) porPos[j.posicao] = []; porPos[j.posicao].push(j); });
+    Object.values(porPos).forEach(lista => lista.sort((a,b) => (b.geral||60) - (a.geral||60)));
+
+    let titulares = [];
+    FORMACAO_BASE_TITULARES.forEach(([pos, qtd]) => { titulares.push(...(porPos[pos] || []).slice(0, qtd)); });
+    if (titulares.length < 11) {
+        const idsJa = new Set(titulares.map(j => j.id));
+        const restantes = elenco.filter(j => !idsJa.has(j.id)).sort((a,b) => (b.geral||60) - (a.geral||60));
+        titulares.push(...restantes.slice(0, 11 - titulares.length));
+    }
+
+    // Capitão: entre os titulares, prioriza quem tem mais "peso" de liderança
+    // (geral alto + veterania), com leve preferência por zagueiros/volantes
+    // (perfil clássico de braçadeira).
+    const pesoLideranca = (j) => (j.geral||60) + (j.idade||24) * 0.35 + (["Zagueiro","Volante","Goleiro"].includes(j.posicao) ? 3 : 0);
+    const capitao = [...titulares].sort((a,b) => pesoLideranca(b) - pesoLideranca(a))[0] || null;
+
+    return { titularesIds: titulares.map(j => j.id), capitaoId: capitao?.id || null };
+}
+
+function obterTitularesClube(clubeId) {
+    const clube = clubes.find(c => c.id === clubeId);
+    if (!clube) return null;
+    const elenco = jogadoresIA.filter(j => j.clubeId === clubeId && !j.aposentado);
+    if (elenco.length === 0) return null;
+    if (clube._titularesCacheTam === elenco.length && clube.titularesIds) return clube;
+
+    const { titularesIds, capitaoId } = definirTitularesECapitao(elenco);
+    clube.titularesIds = titularesIds;
+    clube.capitaoId = capitaoId;
+    clube._titularesCacheTam = elenco.length;
+    return clube;
+}
+
+// Monta a escalação real de UM jogo: os 11 titulares + um banco de até 7
+// jogadores sorteados (com preferência aos melhores) entre os reservas de
+// maior nível — em vez do elenco inteiro. É essa lista (não o elenco inteiro)
+// que deve receber estatísticas/minutos daquele jogo específico.
+function montarEscalacaoJogo(clubeId) {
+    const elenco = jogadoresIA.filter(j => j.clubeId === clubeId && !j.aposentado);
+    if (elenco.length === 0) return elenco;
+    const clube = obterTitularesClube(clubeId);
+    if (!clube || !clube.titularesIds) return elenco; // elenco pequeno/incomum: mantém comportamento antigo como fallback seguro
+
+    const idsTitulares = new Set(clube.titularesIds);
+    const titulares = elenco.filter(j => idsTitulares.has(j.id));
+    let reservas = elenco.filter(j => !idsTitulares.has(j.id)).sort((a,b) => (b.geral||60) - (a.geral||60));
+    if (reservas.length === 0) return titulares;
+
+    const poolBanco = reservas.slice(0, Math.min(reservas.length, 14)); // banco real sai só dos 14 melhores reservas
+    const tamanhoBanco = Math.min(7, poolBanco.length);
+    const banco = [];
+    const poolCopia = [...poolBanco];
+    while (banco.length < tamanhoBanco && poolCopia.length > 0) {
+        const idx = Math.floor(Math.random() * poolCopia.length);
+        banco.push(poolCopia.splice(idx, 1)[0]);
+    }
+    return [...titulares, ...banco];
+}
+
 function getElencoClube(clubeId, incluirAposentados = false) {
     // Use Firebase integration if online mode is active
     if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
@@ -718,7 +792,15 @@ window.salvarJogo = function() {
         selecoesEstado: selecoesEstado,
         managerEstado: managerEstado,
         introsExibidas: introsExibidas,
-        clubesSave: clubes, npcsSave: npcsParaGuardar 
+        clubesSave: clubes, npcsSave: npcsParaGuardar,
+        // 🛡️ FIX: guarda a identidade online (quem sou eu, quem é o meu amigo,
+        // em que clube ele está) — sem isto, recarregar a página a meio de uma
+        // carreira online perdia a ligação com o amigo silenciosamente, e o
+        // jogo "voltava a ser offline" sem avisar ninguém.
+        connectionMode: window.connectionMode || null,
+        lobbyPlayerId: window.lobbyPlayerId || null,
+        onlinePartnerId: window.onlinePartnerId || null,
+        onlinePartnerClubeId: window.onlinePartnerClubeId || null
     })); 
     
     // Sync to Firebase if online mode is active
@@ -762,6 +844,17 @@ function carregarJogo() {
             // recarregados ao vivo pelo Firebase quando necessário.
             dados.npcsSave.filter(n => !n.isFirebasePlayer && !n.isOnlinePlayer).forEach(n => jogadoresIA.push(n));
         }
+
+        // 🛡️ FIX: reconecta ao mundo partilhado se esta carreira era online —
+        // sem isto, um simples F5/recarregar a meio de uma carreira online
+        // perdia a ligação com o amigo (voltava tudo a offline, em silêncio).
+        if (dados.connectionMode === 'online' && dados.lobbyPlayerId && window.firebaseIntegration) {
+            window.connectionMode = 'online';
+            window.lobbyPlayerId = dados.lobbyPlayerId;
+            window.onlinePartnerId = dados.onlinePartnerId || null;
+            window.onlinePartnerClubeId = dados.onlinePartnerClubeId || null;
+            window.firebaseIntegration.activateSharedWorld(dados.lobbyPlayerId, dados.onlinePartnerId || null);
+        }
         normalizarElencosEPosicoes();
         aplicarHistoricosReaisIniciais();
         for (let key in tabelasLigas) delete tabelasLigas[key]; Object.assign(tabelasLigas, dados.tabelas);
@@ -786,8 +879,9 @@ window.carregarJogo = carregarJogo;
 const CONFIG_VAGAS_CONTINENTAIS = {
     "eng_1": { cl: 4, el: 2, col: 1 }, "esp_1": { cl: 4, el: 2, col: 1 }, "ita_1": { cl: 4, el: 2, col: 1 },
     "ger_1": { cl: 4, el: 2, col: 1 }, "fra_1": { cl: 3, el: 2, col: 1 }, "pt_1":  { cl: 2, el: 2, col: 1 },
-    "nl_1":  { cl: 2, el: 1, col: 2 }, "tr_1":  { cl: 2, el: 2, col: 1 }, "sco_1":  { cl: 1, el: 1, col: 1 }, 
-    "nor_1": { cl: 2, el: 2, col: 1 },
+    "nl_1":  { cl: 2, el: 2, col: 1 }, "tr_1":  { cl: 1, el: 1, col: 1 }, "sco_1":  { cl: 1, el: 1, col: 1 }, 
+    "nor_1": { cl: 1, el: 1, col: 1 }, "be_1": { cl: 1, el: 1, col: 1 }, "sui_1": { cl: 1, el: 1, col: 1 },
+    "gre_1": { cl: 1, el: 1, col: 1 }, "aut_1": { cl: 1, el: 1, col: 1 },
 
     "br_1":  { lib: 6, sul: 6 }, "arg_1": { lib: 5, sul: 6 },"uy_1":  { lib: 4, sul: 4 }, 
 
@@ -955,7 +1049,21 @@ function statsPonderadosTemporada(p, totalGolsFallback = 0, totalAssistFallback 
 // estes números são estimados a partir de dados reais da temporada (gols sofridos
 // pelo clube, jogos disputados e o nível geral do jogador) — o suficiente para dar
 // a zagueiros, laterais e goleiros critérios próprios na disputa da Bola de Ouro.
+// 🛡️ FIX: agora que desarmes/interceptações/defesas/jogosSemSofrerGol são
+// acumulados de VERDADE a cada partida (ver atribuirEstatisticaNPC), esta
+// função só entra como reserva para quem ainda não tem esses dados reais
+// (ex: jogador muito jovem que ainda não completou uma temporada inteira).
 function estimarPerfilDefensivo(p, ligaId, jogosNaLiga) {
+    const st = p === jogador ? p.estatisticasAtuais : p.statsTemporada;
+    if (st && (st.desarmes || st.interceptacoes || st.defesas || st.jogosSemSofrerGol)) {
+        return {
+            jogosSemSofrerGol: st.jogosSemSofrerGol || 0,
+            desarmes: st.desarmes || 0,
+            interceptacoes: st.interceptacoes || 0,
+            defesas: st.defesas || 0,
+            penaltisDefendidos: st.penaltisDefendidos || 0
+        };
+    }
     const ovr = p.geral || 60;
     const tabela = ligaId ? tabelasLigas[ligaId] : null;
     const clube = tabela ? tabela.find(t => t.id === p.clubeId) : null;
@@ -1069,6 +1177,29 @@ const COMPETICOES_SELECOES = [
     { id:"nations_d", nome:"Nations League — Divisão D", conf:"UEFA", ciclo:"nations", jogos:4, div:"D" }
 ];
 
+// ==========================================
+// 🧒 SELEÇÕES DE BASE (Sub-17 e Sub-21)
+// ==========================================
+// Lista separada da lista de seleções principais (COMPETICOES_SELECOES).
+// idadeMax define o limite de idade para ser convocável nesta competição —
+// aplicado em gerarConvocacaoSelecaoBase().
+const COMPETICOES_SELECOES_BASE = [
+    { id:"mundial_sub17", nome:"Mundial Sub-17", conf:"GLOBAL", ciclo:"base", jogos:5, idadeMax:17 },
+    { id:"mundial_sub21", nome:"Mundial Sub-21", conf:"GLOBAL", ciclo:"base", jogos:5, idadeMax:21 }
+];
+
+// Descobre se há um torneio de BASE (Sub-17/Sub-21) ativo para a seleção do
+// jogador nesta janela — completamente independente da seleção principal,
+// para que um jogador que não tem nível para a seleção adulta ainda possa
+// disputar estes torneios de base normalmente.
+function obterCompeticaoSelecaoBase(ano = anoAtual, rodada = rodadaAtual) {
+    const slotAtual = Math.floor(obterSlotCalendarioAtual());
+    const janelaFinalTemporada = slotAtual >= 44;
+    if (ano % 2 === 1 && janelaFinalTemporada) return COMPETICOES_SELECOES_BASE.find(c => c.id === "mundial_sub17");
+    if (ano % 2 === 0 && ano % 4 !== 2 && ano % 4 !== 0 && janelaFinalTemporada) return COMPETICOES_SELECOES_BASE.find(c => c.id === "mundial_sub21");
+    return null;
+}
+
 const CALENDARIO_MODELOS = {
     europeu: [
         { de: 1, ate: 1, mes: "Julho", periodo: "Pre-temporada" },
@@ -1129,9 +1260,9 @@ const CALENDARIO_COMPETICOES_REALISTAS = {
     copa_br: { modelo: "ano", slots: [12, 22, 34, 42], janela: "Copa do Brasil" },
     copa_arg: { modelo: "ano", slots: [13, 23, 35, 43], janela: "Copa Argentina" },
     copa_usa: { modelo: "ano", slots: [14, 22, 31, 36], janela: "Open Cup" },
-    uefa_cl: { modelo: "europeu", grupos: [7, 10, 13, 16, 19, 22], mata: { "Oitavos de Final": [30, 31], "Quartas de Final": [34, 35], "Semifinal": [38, 39], "Final": [43] }, janela: "Champions League" },
-    uefa_el: { modelo: "europeu", grupos: [7, 10, 13, 16, 19, 22], mata: { "Oitavos de Final": [29, 30], "Quartas de Final": [34, 35], "Semifinal": [38, 39], "Final": [42] }, janela: "Europa League" },
-    uefa_col: { modelo: "europeu", grupos: [7, 10, 13, 16, 19, 22], mata: { "Oitavos de Final": [29, 30], "Quartas de Final": [33, 34], "Semifinal": [37, 38], "Final": [41] }, janela: "Conference League" },
+    uefa_cl: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [30, 31], "Oitavos de Final": [34, 35], "Quartas de Final": [37, 38], "Semifinal": [40, 41], "Final": [44] }, janela: "Champions League" },
+    uefa_el: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [29, 30], "Oitavos de Final": [33, 34], "Quartas de Final": [36, 37], "Semifinal": [39, 40], "Final": [43] }, janela: "Europa League" },
+    uefa_col: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [28, 29], "Oitavos de Final": [32, 33], "Quartas de Final": [35, 36], "Semifinal": [38, 39], "Final": [42] }, janela: "Conference League" },
     conmebol_lib: { modelo: "ano", grupos: [12, 16, 20, 24, 28, 32], mata: { "Oitavos de Final": [35, 36], "Quartas de Final": [38, 39], "Semifinal": [41, 42], "Final": [43] }, janela: "Libertadores" },
     conmebol_sul: { modelo: "ano", grupos: [12, 16, 20, 24, 28, 32], mata: { "Oitavos de Final": [34, 35], "Quartas de Final": [37, 38], "Semifinal": [40, 41], "Final": [42] }, janela: "Sul-Americana" },
     concacaf_clc: { modelo: "ano", grupos: [8, 11, 14, 17, 20, 23], mata: { "Semifinal": [28, 29], "Final": [33] }, janela: "Concacaf Champions Cup" },
@@ -1217,6 +1348,10 @@ function obterSlotCopaCalendario(compId, fase = "", perna = 1) {
 
 function obterSlotContinentalCalendario(compId, fase = "", perna = 1, rodadaGrupo = 1) {
     const cfg = CALENDARIO_COMPETICOES_REALISTAS[compId] || {};
+    if (fase === "Fase de Liga") {
+        const liga = cfg.liga || cfg.grupos || [6, 9, 12, 15, 18, 21, 24, 27];
+        return liga[Math.min(Math.max(rodadaGrupo - 1, 0), liga.length - 1)];
+    }
     if (fase === "Grupos" || String(fase).includes("Grupo")) {
         const grupos = cfg.grupos || [7, 10, 13, 16, 19, 22];
         return grupos[Math.min(Math.max(rodadaGrupo - 1, 0), grupos.length - 1)];
@@ -1229,7 +1364,7 @@ function obterSlotContinentalCalendario(compId, fase = "", perna = 1, rodadaGrup
 
 function obterSlotCompeticaoCalendario(compId, fase = "", perna = 1, rodadaGrupo = 1) {
     const comp = competicoes.find(c => c.id === compId);
-    if (comp?.tipo === "continental" || CALENDARIO_COMPETICOES_REALISTAS[compId]?.grupos) {
+    if (comp?.tipo === "continental" || CALENDARIO_COMPETICOES_REALISTAS[compId]?.grupos || CALENDARIO_COMPETICOES_REALISTAS[compId]?.liga) {
         return obterSlotContinentalCalendario(compId, fase, perna, rodadaGrupo);
     }
     if (comp?.tipo === "supercopa") {
@@ -1446,7 +1581,20 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
     if(!selecoesEstado.campeoes[selecaoId]) selecoesEstado.campeoes[selecaoId] = [];
     selecoesEstado.campeoes[selecaoId].unshift({ ano: anoAtual, nome: nomeComp, torneioKey });
     const pontosTitulo = pontosTituloSelecao(compId);
-    const plantel = selecoesEstado.planteisTorneio[torneioKey]?.[selecaoId] || [];
+    let plantel = selecoesEstado.planteisTorneio[torneioKey]?.[selecaoId] || [];
+    // 🛡️ FIX: o plantel só era registado para a MINHA própria seleção (e só
+    // se eu tivesse sido convocado nessa janela específica) — para qualquer
+    // outra seleção campeã (ex: a do "Bruno" nesse exemplo), o plantel ficava
+    // vazio e NINGUÉM recebia o troféu nem as estatísticas. Se estiver vazio,
+    // reconstrói um plantel plausível na hora, usando o mesmo critério de
+    // convocação normal.
+    if (plantel.length === 0) {
+        const selFallback = SELECOES.find(s => s.id === selecaoId);
+        if (selFallback) {
+            const compFallback = COMPETICOES_SELECOES.find(c => c.nome === nomeComp) || { id: compId };
+            plantel = gerarConvocacaoSelecao(selFallback, compFallback).convocados.map(p => p.id);
+        }
+    }
     plantel.forEach(pid => {
         const p = pid === "player" ? jogador : jogadoresIA.find(j => j.id === pid);
         if(!p) return;
@@ -1457,10 +1605,17 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
         }
         p.pontosPremio = (p.pontosPremio || 0) + pontosTitulo;
         p.pontosPremioTemporada = (p.pontosPremioTemporada || 0) + pontosTitulo;
+        if (pid === "player") window.tocarSom('trofeu'); // 🔊 som de troféu quando é o jogador humano
         
         // Push achievement to Firebase if this is the human player and online mode is active
         if (pid === "player" && window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
             window.firebaseIntegration.pushAchievementToFirebase(nomeComp, nomeComp);
+        }
+        // 🌐 Se quem ganhou foi o AMIGO online (o seu perfil sincronizado está
+        // dentro de jogadoresIA com isFirebasePlayer), avisa-o também — mesmo
+        // mecanismo usado para os troféus de clube/Bola de Ouro na Gala.
+        if (p.isFirebasePlayer && window.firebaseIntegration && window.firebaseIntegration.pushAchievementForPlayerToFirebase) {
+            window.firebaseIntegration.pushAchievementForPlayerToFirebase(p.id, nomeComp, nomeComp);
         }
     });
     const sel = SELECOES.find(s => s.id === selecaoId);
@@ -1519,7 +1674,12 @@ function inicializarTorneioInternacional(compConfig) {
 }
 
 function obterCompeticoesAtivasTemporada(ano = anoAtual) {
-    return idsCompeticoesAtivas(ano).map(id => COMPETICOES_SELECOES.find(c => c.id === id)).filter(Boolean);
+    // 🛡️ FIX: as competições de BASE (Sub-17/Sub-21) vivem numa lista à parte
+    // (COMPETICOES_SELECOES_BASE) — sem juntar as duas listas aqui, elas nunca
+    // apareciam no dashboard de Competições Internacionais, mesmo já estando
+    // ativas no calendário (idsCompeticoesAtivas).
+    const todasAsCompeticoes = [...COMPETICOES_SELECOES, ...COMPETICOES_SELECOES_BASE];
+    return idsCompeticoesAtivas(ano).map(id => todasAsCompeticoes.find(c => c.id === id)).filter(Boolean);
 }
 
 function atualizarRankingFIFA() {
@@ -1710,6 +1870,8 @@ function simularRodadaGruposInt(estado) {
             eq[i].j++; eq[i + 1].j++;
             eq[i].gf += gA; eq[i].gs += gB; eq[i + 1].gf += gB; eq[i + 1].gs += gA;
             if (gA > gB) eq[i].pts += 3; else if (gB > gA) eq[i + 1].pts += 3; else { eq[i].pts++; eq[i + 1].pts++; }
+            // 🛡️ FIX: atribui o jogo/gols/assistências a jogadores reais de cada seleção.
+            atribuirStatsPartidaSelecaoIA(eq[i].id, eq[i + 1].id, gA, gB);
         }
     });
 }
@@ -1725,6 +1887,8 @@ function simularConfrontoMataMataInt(conf, sub23 = false) {
     conf.golsA = gA; conf.golsB = gB;
     const res = resolverVencedorMataMata(conf.timeA.id, conf.timeB.id, gA, gB, fA, fB);
     conf.vencedorId = res.vencedorId; conf.penaltis = res.penaltis; conf.placarPen = res.placarPen;
+    // 🛡️ FIX: atribui o jogo/gols/assistências a jogadores reais de cada seleção.
+    atribuirStatsPartidaSelecaoIA(conf.timeA.id, conf.timeB.id, gA, gB);
 }
 
 function processarRebaixamentoNations(estado, key) {
@@ -1814,6 +1978,8 @@ function simularTorneiosInternacionais() {
                 tab[i].j++; tab[i + 1].j++;
                 tab[i].gf += gA; tab[i].gs += gB; tab[i + 1].gf += gB; tab[i + 1].gs += gA;
                 if (gA > gB) tab[i].pts += 3; else if (gB > gA) tab[i + 1].pts += 3; else { tab[i].pts++; tab[i + 1].pts++; }
+                // 🛡️ FIX: atribui o jogo/gols/assistências a jogadores reais de cada seleção.
+                atribuirStatsPartidaSelecaoIA(tab[i].id, tab[i + 1].id, gA, gB);
             }
             estado.rodadaAtual = (estado.rodadaAtual || 1) + 1;
             
@@ -2007,9 +2173,14 @@ window.abrirPerfilSelecao = function(selecaoId) {
     const titulos = selecoesEstado.campeoes?.[sel.id] || [];
     const rankPos = selecoesEstado.ranking?.find(r => r.id === sel.id)?.pos || "—";
     const forca = Math.round(calcularForcaSelecao(sel.id));
-    const elenco = obterJogadoresNacionalidade(sel.pais).sort((a,b) => b.geral - a.geral).slice(0, 15);
-    const htmlTitulos = titulos.length ? titulos.map(t => `
-        <div class="card-conquista"><img src="${obterUrlImagem(t.nome, 'trofeu')}" class="trofeu-icon" style="width:50px;height:50px;"><div><strong style="color:var(--gold);">${t.nome}</strong><br><span style="color:#aaa;">${t.ano}</span></div></div>`).join("")
+    // 🛡️ FIX: antes só mostrava os 15 primeiros — não dava para ver o elenco
+    // completo da seleção. Agora mostra todos os jogadores elegíveis (com
+    // scroll interno na lista, para não estourar o modal).
+    const elenco = obterJogadoresNacionalidade(sel.pais).sort((a,b) => b.geral - a.geral);
+    // 🛡️ FIX: troféus da seleção estavam pequenos demais (50x50) e sem
+    // destaque nenhum — aumentado e com cartão maior/mais vistoso.
+    const htmlTitulos = titulos.length ? `<div class="selecao-titulos-grid">${titulos.map(t => `
+        <div class="card-conquista card-conquista-grande"><img src="${obterUrlImagem(t.nome, 'trofeu')}" class="trofeu-icon" style="width:92px;height:92px;"><div><strong style="color:var(--gold); font-size:1.15rem;">${t.nome}</strong><br><span style="color:#ccc; font-size:1rem;">${t.ano}</span></div></div>`).join("")}</div>`
         : `<p style="color:#aaa; padding:20px; text-align:center;">Nenhum título internacional registrado ainda.</p>`;
     const htmlElenco = elenco.map(p => `
         <div class="convocado-row" onclick="abrirPerfilJogador('${p.id}')">
@@ -2026,7 +2197,8 @@ window.abrirPerfilSelecao = function(selecaoId) {
             <button class="close-btn" onclick="document.getElementById('modalPerfilJogador').classList.add('oculto')">✖</button>
         </div>
         <h3 style="color:var(--gold);">🏆 Palmarés</h3>${htmlTitulos}
-        <h3 style="color:var(--theme-primary); margin-top:24px;">Elenco destacado</h3>${htmlElenco}`;
+        <h3 style="color:var(--theme-primary); margin-top:24px;">Elenco completo (${elenco.length})</h3>
+        <div style="max-height:420px; overflow-y:auto; padding-right:6px;">${htmlElenco}</div>`;
     modal.classList.remove("oculto");
 };
 
@@ -2153,7 +2325,8 @@ function renderizarCompeticoesInternacionais() {
         { id: "eliminatorias", label: " Eliminatórias" },
         { id: "continental", label: " Continentais" },
         { id: "mundial", label: " Mundial / Olimpíadas" },
-        { id: "nations", label: " Nations League" }
+        { id: "nations", label: " Nations League" },
+        { id: "base", label: "🧒 Seleções de Base" }
     ];
 
     // Callout pessoal: contextualiza o dashboard em torno da campanha do
@@ -2272,8 +2445,13 @@ styleOverrides.innerHTML = `
     .foto-perfil-gigante { width: 180px; height: 180px; border-radius: 50%; object-fit: cover !important; border: 4px solid var(--theme-primary); box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); margin-right: 25px; }
     .status-texto-grande { font-size: 1.2rem; margin: 8px 0; color: #ccc; }
     .trofeu-icon { width: 35px; height: 35px; vertical-align: middle; margin-right: 12px; filter: drop-shadow(0 0 5px rgba(255,215,0,0.6)); }
-    .card-conquista { display: flex; align-items: center; background: rgba(255,215,0,0.05); padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(255,215,0,0.3); transition: 0.3s; }
+    .card-conquista { display: flex; align-items: center; gap:14px; background: rgba(255,215,0,0.05); padding: 12px; border-radius: 8px; margin-bottom: 10px; border: 1px solid rgba(255,215,0,0.3); transition: 0.3s; }
     .card-conquista:hover { background: rgba(255,215,0,0.1); transform: translateX(5px); }
+    /* 🛡️ FIX: troféus da seleção tinham pouco destaque — versão maior usada
+       no palmarés de seleções (abrirPerfilSelecao) e no perfil do jogador. */
+    .selecao-titulos-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; }
+    .card-conquista-grande { padding:18px; border-radius:14px; background:linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,215,0,0.03)); border:1px solid rgba(255,215,0,0.4); box-shadow:0 10px 24px rgba(0,0,0,0.3); }
+    .card-conquista-grande:hover { transform:translateY(-3px) scale(1.02); box-shadow:0 14px 30px rgba(255,215,0,0.15); }
     
     .bracket-container { display: flex; flex-direction: column; gap: 40px; padding: 20px 0; }
     .fase-bloco { background: rgba(0,0,0,0.5); border-radius: 16px; padding: 25px; border: 1px solid #333; }
@@ -2312,6 +2490,9 @@ styleOverrides.innerHTML = `
     .btn-divisao.ativo small { color:rgba(0,0,0,0.65); }
     .btn-divisao:hover { color:#fff; border-color:rgba(255,255,255,0.28); transform:translateY(-1px); }
     .btn-divisao.ativo { color:#000; background:var(--theme-primary); border-color:var(--theme-primary); box-shadow:0 10px 22px rgba(0,255,136,0.18); }
+    /* 🛡️ Variante "só logo" das abas de competição (Bundesliga, Bundesliga 2, DFB-Pokal...) */
+    .btn-divisao-logo { width:56px; height:56px; padding:8px; display:flex; align-items:center; justify-content:center; }
+    .btn-divisao-logo.ativo { background:rgba(0,255,136,0.14); }
     .liga-header-card { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:15px; background:linear-gradient(135deg, rgba(0,0,0,0.65), rgba(24,24,27,0.92)); padding:18px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); }
     .liga-title-wrap { display:flex; align-items:center; gap:14px; min-width:0; }
     .liga-title-wrap h2 { margin:0; color:#fff; font-size:1.55rem; }
@@ -2461,15 +2642,31 @@ styleOverrides.innerHTML = `
     .fase-bloco { border-radius:14px !important; background:linear-gradient(145deg, rgba(24,24,27,0.92), rgba(0,0,0,0.58)) !important; border:1px solid rgba(255,255,255,0.12) !important; }
     .match-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
     .selecao-shell { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(280px,0.8fr); gap:18px; align-items:start; }
-    .selecao-hero { border:1px solid rgba(255,255,255,0.12); border-radius:16px; padding:22px; background:radial-gradient(circle at 18% 0%, rgba(0,255,136,0.16), transparent 36%), linear-gradient(145deg, rgba(24,24,27,0.96), rgba(0,0,0,0.76)); display:flex; justify-content:space-between; gap:16px; align-items:center; }
-    .selecao-hero img { width:82px; height:58px; border-radius:10px; object-fit:cover !important; box-shadow:0 12px 26px rgba(0,0,0,0.35); }
+    .selecao-hero { position:relative; overflow:hidden; border:1px solid rgba(255,255,255,0.12); border-radius:18px; padding:24px; background:radial-gradient(circle at 18% 0%, rgba(0,255,136,0.18), transparent 40%), linear-gradient(145deg, rgba(24,24,27,0.97), rgba(0,0,0,0.8)); display:flex; justify-content:space-between; gap:16px; align-items:center; box-shadow:0 20px 50px rgba(0,0,0,0.4); }
+    .selecao-hero::before { content:""; position:absolute; inset:0; background:linear-gradient(120deg, transparent 60%, rgba(255,255,255,0.035) 100%); pointer-events:none; }
+    .selecao-hero img { width:86px; height:60px; border-radius:10px; object-fit:cover !important; box-shadow:0 12px 30px rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); }
     .selecao-card { border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.32); border-radius:14px; padding:16px; }
-    .convocacao-grupo { margin-top:14px; }
-    .convocacao-grupo h4 { margin:0 0 10px; color:var(--theme-primary); text-transform:uppercase; font-size:0.82rem; }
-    .convocado-row { display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; padding:9px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04); margin-bottom:8px; }
+    .convocacao-resumo { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 4px; }
+    .convocacao-resumo span { font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; color:#a1a1aa; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:999px; padding:5px 12px; }
+    .convocacao-grupo { margin-top:16px; }
+    .convocacao-grupo h4 { display:flex; align-items:center; gap:8px; margin:0 0 10px; color:var(--theme-primary); text-transform:uppercase; font-size:0.82rem; letter-spacing:0.04em; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.08); }
+    .convocacao-grupo-count { margin-left:auto; font-size:0.68rem; color:#888; background:rgba(255,255,255,0.06); border-radius:999px; padding:2px 9px; letter-spacing:0; }
+    .convocado-row { display:grid; grid-template-columns:44px 1fr 26px auto auto; gap:10px; align-items:center; padding:9px 10px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.035); margin-bottom:7px; cursor:pointer; transition:background 0.15s ease, transform 0.15s ease, border-color 0.15s ease; }
+    .convocado-row:hover { background:rgba(255,255,255,0.07); transform:translateX(2px); border-color:rgba(255,255,255,0.2); }
     .convocado-row.eu { border-color:#facc15; background:rgba(250,204,21,0.12); box-shadow:0 0 20px rgba(250,204,21,0.12); }
-    .convocado-row img { width:42px; height:42px; border-radius:50%; object-fit:cover !important; }
-    .convocado-row small { color:#aaa; font-weight:800; }
+    .convocado-row.titular { border-left:3px solid var(--theme-primary); }
+    .convocado-row.reserva { opacity:0.82; }
+    .convocado-row img { width:44px; height:44px; border-radius:50%; object-fit:cover !important; border:1px solid rgba(255,255,255,0.12); }
+    .convocado-row div strong { display:block; font-size:0.9rem; }
+    .convocado-row small { color:#999; font-weight:700; font-size:0.74rem; }
+    .convocado-escudo { width:24px; height:24px; object-fit:contain !important; background:#fff; border-radius:5px; padding:2px; }
+    .convocado-status-tag { font-size:0.62rem; font-weight:800; text-transform:uppercase; letter-spacing:0.03em; padding:4px 8px; border-radius:999px; white-space:nowrap; }
+    .convocado-status-tag.titular { color:var(--theme-primary); background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); }
+    .convocado-status-tag.reserva { color:#999; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); }
+    @media (max-width: 640px) {
+        .convocado-row { grid-template-columns:38px 1fr auto; }
+        .convocado-escudo, .convocado-status-tag { display:none; }
+    }
     .selecao-stats-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
     .selecao-stat { padding:14px; border-radius:12px; background:rgba(255,255,255,0.055); text-align:center; border:1px solid rgba(255,255,255,0.08); }
     .selecao-stat strong { display:block; font-size:2rem; color:#fff; }
@@ -2499,10 +2696,6 @@ styleOverrides.innerHTML = `
     .bracket-round-label { text-align:center; font-size:0.72rem; font-weight:900; text-transform:uppercase; color:var(--comp-cor, var(--theme-primary)); letter-spacing:1px; margin-bottom:4px; }
     .bracket-slot { background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.12); border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:6px; position:relative; transition:0.25s; }
     .bracket-slot.meu-jogo { border-color:var(--theme-primary); box-shadow:0 0 18px rgba(0,255,136,0.2); }
-    .bracket-slot-team { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; cursor:pointer; font-weight:700; font-size:0.88rem; transition:0.25s; }
-    .bracket-slot-team img { width:24px; height:16px; object-fit:cover; border-radius:3px; }
-    .bracket-slot-team.winner { color:var(--success); background:rgba(16,185,129,0.15); box-shadow:0 0 12px rgba(16,185,129,0.25); }
-    .bracket-slot-team.eliminated { opacity:0.38; filter:grayscale(0.6); }
     .bracket-slot-score { text-align:center; font-weight:900; font-size:1.1rem; color:#fff; padding:4px 0; border-top:1px dashed rgba(255,255,255,0.1); border-bottom:1px dashed rgba(255,255,255,0.1); }
     .comp-int-shell { padding:4px 0; }
     .comp-int-card { background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:20px; margin-bottom:16px; border-left:4px solid var(--comp-cor, var(--theme-primary)); }
@@ -2681,7 +2874,7 @@ styleOverrides.innerHTML = `
 
     .bracket-row-me { background:color-mix(in srgb, var(--comp-cor, var(--theme-primary)) 14%, transparent) !important; }
     .bracket-row-me td { color:var(--comp-cor, var(--theme-primary)) !important; font-weight:800 !important; }
-    .bracket-flag { width:24px !important; height:17px !important; object-fit:cover !important; border-radius:3px !important; margin-right:9px !important; vertical-align:middle !important; box-shadow:0 2px 6px rgba(0,0,0,0.3) !important; flex-shrink:0; }
+    .bracket-flag { width:24px !important; height:17px !important; object-fit:contain !important; border-radius:3px !important; margin-right:9px !important; vertical-align:middle !important; box-shadow:0 2px 6px rgba(0,0,0,0.3) !important; flex-shrink:0; background:rgba(255,255,255,0.06) !important; }
 
     .comp-table-premium { padding:16px !important; }
 
@@ -2690,17 +2883,21 @@ styleOverrides.innerHTML = `
     .bracket-round { min-width:0 !important; flex:1 1 100% !important; position:static !important; }
     .bracket-round::after { display:none !important; }
     .bracket-round-label { text-align:left !important; font-size:0.7rem !important; font-weight:900 !important; text-transform:uppercase !important; color:var(--comp-cor, var(--theme-primary)) !important; letter-spacing:1.5px !important; margin:0 0 12px !important; }
-    .bracket-round-slots { display:grid; grid-template-columns:repeat(auto-fit, minmax(270px, 1fr)); gap:14px; }
+    .bracket-round-slots { display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:14px; }
 
     .bracket-slot { background:linear-gradient(160deg, rgba(255,255,255,0.05), rgba(0,0,0,0.55)) !important; border:1px solid rgba(255,255,255,0.09) !important; border-left:3px solid var(--comp-cor, #00ff88) !important; border-radius:14px !important; padding:5px !important; display:block !important; gap:0 !important; position:relative !important; box-shadow:0 12px 26px rgba(0,0,0,0.25) !important; transition:0.2s !important; }
     .bracket-slot:hover { transform:translateY(-2px); border-color:var(--comp-cor, #00ff88) !important; }
     .bracket-slot.meu-jogo { box-shadow:0 0 0 1px var(--comp-cor, #00ff88), 0 16px 30px rgba(0,0,0,0.35) !important; }
     .bracket-slot.pendente .bracket-slot-goals { opacity:0.35; }
 
-    .bracket-slot-team { display:grid; grid-template-columns:26px 1fr auto 16px; align-items:center; gap:9px; padding:8px 9px; border-radius:9px; cursor:pointer; font-weight:700; font-size:0.86rem; }
+    .bracket-slot-team { display:grid; grid-template-columns:30px minmax(0,1fr) auto 16px; align-items:center; gap:9px; padding:8px 9px; border-radius:9px; cursor:pointer; font-weight:700; font-size:0.86rem; }
     .bracket-slot-team:hover { background:rgba(255,255,255,0.05); }
-    .bracket-slot-crest { width:26px !important; height:18px !important; object-fit:cover; border-radius:4px; background:rgba(255,255,255,0.08); }
-    .bracket-slot-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e4e4e7; }
+    /* 🛡️ FIX: o escudo era um retângulo 26x18 com object-fit:cover (herdado do
+       estilo das bandeirinhas de país) — isso CORTAVA o topo/base dos escudos
+       dos clubes, que são quadrados/circulares. Agora é quadrado com contain,
+       mostrando o escudo inteiro sem cortar nada. */
+    .bracket-slot-crest { width:28px !important; height:28px !important; object-fit:contain; border-radius:6px; background:rgba(255,255,255,0.06); flex-shrink:0; }
+    .bracket-slot-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e4e4e7; min-width:0; }
     .bracket-slot-goals { font-variant-numeric:tabular-nums; font-weight:900; font-size:1.05rem; color:#fff; min-width:16px; text-align:center; }
     .bracket-slot-check { color:var(--success); font-weight:900; font-size:0.8rem; }
     .bracket-slot-team.winner { background:linear-gradient(90deg, rgba(16,185,129,0.16), rgba(16,185,129,0.02)); }
@@ -2711,6 +2908,72 @@ styleOverrides.innerHTML = `
 
     .bracket-slot-mid { display:flex; align-items:center; justify-content:center; gap:8px; padding:1px 9px 3px; }
     .bracket-slot-vs { font-size:0.6rem; font-weight:900; letter-spacing:1.5px; color:rgba(255,255,255,0.3); }
+
+    /* 🛡️ FIX: a árvore horizontal de mata-mata (renderArvoreHorizontalMataMata)
+       calcula um "top" em pixels para posicionar cada confronto e alinhá-lo
+       com o par correspondente na rodada seguinte — mas essa CSS nunca tinha
+       sido escrita! Sem "position:relative" no contentor e "position:absolute"
+       no card, o "top" inline não tem NENHUM efeito (é ignorado em elementos
+       com position:static), e os cards ficavam em fluxo normal, empilhando e
+       cortando-se uns aos outros — exatamente o bug relatado ("só dá para ver
+       1 time"). */
+    .bracket-tree-scroll { overflow-x:auto; overflow-y:visible; padding:10px 4px 28px; }
+    .bracket-tree-round { display:flex; flex-direction:column; flex-shrink:0; }
+    .bracket-tree-round-title { text-align:center; font-weight:900; text-transform:uppercase; font-size:0.72rem; letter-spacing:1.2px; color:var(--comp-cor, var(--theme-primary)); margin-bottom:12px; }
+    .bracket-tree-round-body { position:relative; }
+    .bracket-tree-match { position:absolute; left:0; overflow:visible; }
+    .bracket-tree-connector { flex-shrink:0; align-self:center; }
+    .bracket-tree-bloco-sep { text-align:center; color:var(--theme-primary,#00ff88); font-size:0.8rem; font-weight:600; letter-spacing:0.3px; padding:6px 0 12px; opacity:0.85; }
+
+    /* ==========================================
+       🎬 OVERLAY DE INTRODUÇÃO DE COMPETIÇÃO
+       🛡️ FIX: esta classe nunca teve CSS nenhum — o overlay devia aparecer
+       em tela cheia como uma cinemática, mas sem esta regra ele só existia
+       "solto" no HTML, sem posição nem tamanho.
+       ========================================== */
+    .intro-comp-overlay { position:fixed; inset:0; z-index:99999; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .intro-comp-video { width:100%; height:100%; object-fit:cover; }
+    .intro-comp-fallback { position:relative; width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+    .intro-comp-rays { position:absolute; inset:-20%; background:conic-gradient(from 0deg, transparent, var(--intro-cor, #facc15) 8%, transparent 16%); opacity:0.25; animation:girarRays 12s linear infinite; }
+    @keyframes girarRays { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    .intro-comp-logo { width:140px; height:140px; object-fit:contain; margin-bottom:24px; position:relative; z-index:1; filter:drop-shadow(0 0 30px rgba(255,255,255,0.3)); animation:pulsarLogo 2.2s ease-in-out infinite; }
+    @keyframes pulsarLogo { 0%,100% { transform:scale(1); } 50% { transform:scale(1.06); } }
+    .intro-comp-title { position:relative; z-index:1; font-size:2.6rem; font-weight:900; text-transform:uppercase; letter-spacing:2px; color:#fff; text-shadow:0 0 24px var(--intro-cor, #facc15); margin:0; }
+    .intro-comp-sub { position:relative; z-index:1; color:#ccc; font-size:1rem; margin-top:10px; letter-spacing:3px; text-transform:uppercase; }
+    .intro-comp-skip { position:fixed; bottom:24px; right:24px; z-index:2; padding:10px 20px; border-radius:24px; border:1px solid rgba(255,255,255,0.25); background:rgba(0,0,0,0.5); color:#fff; font-weight:700; cursor:pointer; backdrop-filter:blur(6px); }
+    .intro-comp-skip:hover { background:rgba(255,255,255,0.15); }
+
+    /* ==========================================
+       🎮 MINI-JOGO DE PÊNALTI INTERATIVO
+       ========================================== */
+    .penalti-overlay { position:fixed; inset:0; z-index:99998; background:rgba(0,0,0,0.88); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+    .penalti-modal { text-align:center; padding:20px; max-width:480px; width:92%; }
+    .penalti-titulo { font-size:1.8rem; font-weight:900; color:var(--theme-primary); margin:0 0 6px; text-transform:uppercase; letter-spacing:1px; }
+    .penalti-sub { color:#ccc; margin:0 0 24px; }
+    .penalti-baliza { position:relative; background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01)); border:4px solid #fff; border-bottom:none; border-radius:6px 6px 0 0; display:grid; grid-template-columns:repeat(3, 1fr); height:180px; box-shadow:0 0 60px rgba(255,255,255,0.08) inset; }
+    .penalti-zona { display:flex; align-items:center; justify-content:center; font-size:2.4rem; cursor:pointer; border-right:2px dashed rgba(255,255,255,0.15); transition:0.15s; user-select:none; }
+    .penalti-zona:last-child { border-right:none; }
+    .penalti-zona:hover { background:rgba(0,255,136,0.15); transform:scale(1.05); }
+    .penalti-zona.escolhida { background:rgba(0,255,136,0.3); animation:pulsarZonaEscolhida 0.5s ease-in-out infinite alternate; }
+    @keyframes pulsarZonaEscolhida { from { background:rgba(0,255,136,0.25); } to { background:rgba(0,255,136,0.45); } }
+    .penalti-resultado { margin-top:22px; font-size:1.1rem; font-weight:800; color:#fff; min-height:1.4em; }
+
+    /* ==========================================
+       🎯 DISPUTA DE PÊNALTIS (mata-mata de clube empatado)
+       ========================================== */
+    .shootout-overlay { position:fixed; inset:0; z-index:99997; background:rgba(0,0,0,0.92); display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+    .shootout-modal { text-align:center; padding:24px; max-width:520px; width:92%; }
+    .shootout-titulo { font-size:1.6rem; font-weight:900; color:var(--gold); margin:0 0 20px; text-transform:uppercase; letter-spacing:1px; }
+    .shootout-placar { display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:16px; }
+    .shootout-time { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:110px; }
+    .shootout-time img { width:44px; height:44px; object-fit:contain; }
+    .shootout-time span { font-size:0.85rem; font-weight:700; color:#ccc; }
+    .shootout-time strong { font-size:2.2rem; font-weight:900; color:#fff; }
+    .shootout-vs { font-size:1.4rem; color:#666; font-weight:900; }
+    .shootout-bolas { display:flex; gap:6px; justify-content:center; min-height:24px; margin-bottom:4px; }
+    .shootout-bola { font-size:1.1rem; }
+    .shootout-bola.falhou { filter:grayscale(1); opacity:0.6; }
+    .shootout-status { margin-top:18px; font-size:1.05rem; font-weight:700; color:var(--theme-primary); min-height:1.4em; }
     .penalty-badge { display:inline-block !important; margin:0 !important; font-size:0.62rem !important; padding:2px 7px !important; border-radius:999px !important; background:rgba(250,204,21,0.18) !important; color:#facc15 !important; font-weight:800 !important; text-transform:uppercase !important; }
 
     @media (max-width: 640px) {
@@ -2743,6 +3006,10 @@ function normalizarTexto(texto) { return texto ? texto.normalize("NFD").replace(
 function obterPaisCompeticaoId(compId) {
     const partes = String(compId || "").split("_");
     if (partes[0] === "copa" || partes[0] === "supercopa" || partes[0] === "carabao") return partes[1] || partes[0];
+    // 🛡️ FIX: campeonatos estaduais (estadual_sp, estadual_rj, ...) são todos
+    // brasileiros — sem isto, o jogo tentava (erradamente) tratá-los como um
+    // "país" chamado "estadual", quebrando o calendário e o agrupamento por país.
+    if (partes[0] === "estadual") return "br";
     return partes[0];
 }
 
@@ -2753,7 +3020,9 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Golden Boy")) return "https://i.ibb.co/b5Sd7xcQ/9643960f-eb44-407e-bbaf-bf60218a4c6b.png";
         if(entidade.includes("Chuteira de Ouro")) return "https://i.ibb.co/ch87vZpv/41f6515d-fe2a-4628-9d9d-15fa1a8fe84f.png";
         if(entidade.includes("Assist") || entidade.includes("Maestro") || entidade.includes("Rei das Assistencias")) return "https://cdn-icons-png.flaticon.com/512/1004/1004314.png";
-        if(entidade.includes("Melhor Goleiro")) return "https://i.ibb.co/Kj8b22RW/3c80b476-f71c-4436-90f5-a0e16a48e56d.png";
+        if(entidade.includes("Luva de Ouro")) return "https://i.ibb.co/Kj8b22RW/3c80b476-f71c-4436-90f5-a0e16a48e56d.png";
+        if(entidade.includes("UEFA Best Player")) return "https://tmssl.akamaized.net//images/titel/medium/152.png?lm=1396275124";
+        if(entidade.includes("FIFA The Best")) return "https://tmssl.akamaized.net//images/titel/medium/195.png?lm=1575286754";
 
         if(entidade.includes("Champions League") || entidade.includes("uefa_cl")) return "https://i.ibb.co/4nKhHSYv/5491af57-2610-4491-8266-979218ed4fb0.png";
         if(entidade.includes("Europa League") || entidade.includes("uefa_el")) return "https://i.ibb.co/bRsmDFBX/bdf3a3e3-0934-46d3-b907-7677c066f624.png";
@@ -2781,16 +3050,35 @@ function obterUrlImagem(entidade, tipo) {
     
     
     
-        //AMERICA SUL
+       
+                //AMERICA SUL
         if(entidade.includes("Brasileirão Série A") || entidade.includes("br_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/262.png?lm=1466586549";
         if(entidade.includes("Brasileirão Série B") || entidade.includes("br_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/462.png?lm=1466588515";
         if(entidade.includes("Brasileirão Série C") || entidade.includes("br_3")) return "https://i.ibb.co/1J8Mxb0y/ec693812-f11f-4a50-9424-4a319cfb05c6.png";
         if(entidade.includes("Brasileirão Série D") || entidade.includes("br_4")) return "https://i.ibb.co/LXC52Z2K/445d2bf5-5565-4bfa-b870-d8f08a0d7005.png";
         if(entidade.includes("Copa do Brasil") || entidade.includes("copa_br")) return "https://tmssl.akamaized.net//images/erfolge/medium/263.png?lm=1461847499";
         if(entidade.includes("Supercopa do Brasil") || entidade.includes("supercopa_br")) return "https://tmssl.akamaized.net//images/erfolge/medium/648.png?lm=1654593971";
+        if (entidade.includes("Campeonato Paulista") || entidade.includes("estadual_sp")) return "https://tmssl.akamaized.net//images/erfolge/medium/1107.png?lm=1739982163";
+        if (entidade.includes("Campeonato Carioca") || entidade.includes("estadual_rj")) return "https://tmssl.akamaized.net//images/erfolge/medium/1108.png?lm=1739982183";
+        if (entidade.includes("Campeonato Mineiro") || entidade.includes("estadual_mg")) return "https://tmssl.akamaized.net/images/erfolge/medium/1112.png";
+        if (entidade.includes("Campeonato Gaúcho") || entidade.includes("estadual_rs")) return "https://tmssl.akamaized.net/images/erfolge/medium/1110.png";
+        if (entidade.includes("Campeonato Paranaense") || entidade.includes("estadual_pr")) return "https://i.ibb.co/m5tCHN5v/0fcd6b58-a07f-44c9-9ac1-ec52b308a46d.png";
+        if (entidade.includes("Campeonato Catarinense") || entidade.includes("estadual_sc")) return "https://i.ibb.co/wZzFgB4r/image.png";
+        if (entidade.includes("Campeonato Goiano") || entidade.includes("estadual_go")) return "https://i.ibb.co/LXhYc3DP/bd935139-1fe4-4b76-9020-c3b7e1489b41.png";
+        if (entidade.includes("Campeonato Pernambucano") || entidade.includes("estadual_pe")) return "https://i.ibb.co/m5tCHN5v/0fcd6b58-a07f-44c9-9ac1-ec52b308a46d.png";
+        if (entidade.includes("Campeonato Baiano") || entidade.includes("estadual_ba")) return "https://tmssl.akamaized.net//images/erfolge/medium/1113.png?lm=1739982048";
+        if (entidade.includes("Campeonato Cearense") || entidade.includes("estadual_ce")) return "https://i.ibb.co/JFwg8KcQ/image.png";
+
+        if (entidade.includes("Liga Profesional Argentina") || entidade.includes("arg_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/297.png?lm=1704400701";
+        if (entidade.includes("Copa Argentina") || entidade.includes("copa_arg")) return "https://tmssl.akamaized.net//images/erfolge/medium/843.png?lm=1647532051";
+        if (entidade.includes("Supercopa Argentina") || entidade.includes("supercopa_arg")) return "https://tmssl.akamaized.net//images/erfolge/medium/970.png?lm=1686235805";
+
+        if (entidade == ("Primera División Uruguaya") || entidade.includes("uy_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/251.png?lm=1767143424";
+
+
         
         //EUROPA
-        if(entidade.includes("Premier") || entidade.includes("eng_1")) return "https://i.ibb.co/cSZyLnqP/bff12c7f-4c7a-4313-a4d8-7d67d1e68cb0.png";
+        if(entidade == ("Premier League") || entidade.includes("eng_1")) return "https://i.ibb.co/cSZyLnqP/bff12c7f-4c7a-4313-a4d8-7d67d1e68cb0.png";
         if(entidade.includes("Championship") || entidade.includes("eng_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/869.png?lm=1646225519";
         if(entidade.includes("Carabao Cup") || entidade.includes("carabao_eng")) return "https://tmssl.akamaized.net//images/erfolge/medium/47.png?lm=1520606999";
         if(entidade.includes("FA Cup") || entidade.includes("copa_eng")) return "https://tmssl.akamaized.net//images/erfolge/medium/29.png?lm=1520606999";
@@ -2801,20 +3089,23 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("DFB-Pokal") || entidade.includes("copa_ger")) return "https://tmssl.akamaized.net//images/erfolge/medium/27.png?lm=1520606999";
         if(entidade.includes("DFL-Supercup") || entidade.includes("supercopa_ge")) return "https://tmssl.akamaized.net//images/erfolge/medium/312.png?lm=1520606999";
 
-        if(entidade.includes("La Liga") || entidade.includes("esp_1")) return "https://i.ibb.co/v6QhJQFn/bfa85829-8d60-4816-a4c8-453fba80dd94.png";
+        if(entidade == ("La Liga") || entidade.includes("esp_1")) return "https://i.ibb.co/v6QhJQFn/bfa85829-8d60-4816-a4c8-453fba80dd94.png";
+        if (entidade == ("La Liga 2") || entidade.includes("esp_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/878.png?lm=1647419746";
         if(entidade.includes("Copa del Rey") || entidade.includes("copa_esp")) return "https://tmssl.akamaized.net//images/erfolge/medium/94.png?lm=1520606999";
         if(entidade.includes("Supercopa da Espanha") || entidade.includes("supercopa_esp")) return "https://tmssl.akamaized.net//images/erfolge/medium/93.png?lm=1520606999";
 
         if(entidade.includes("Serie A") || entidade.includes("ita_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/13.png?lm=1520606997";
+        if (entidade.includes("Serie B") || entidade.includes("ita_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/436.png?lm=1651745299";
         if(entidade.includes("Coppa Italia") || entidade.includes("copa_ita")) return "https://tmssl.akamaized.net//images/erfolge/medium/96.png?lm=1520606999";
         if(entidade.includes("Supercoppa Italiana") || entidade.includes("supercopa_ita")) return "https://tmssl.akamaized.net//images/erfolge/medium/97.png?lm=1520606999";
 
-        if(entidade.includes("Liga Portugal") || entidade.includes("por_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/15.png?lm=1520606999";
-        if(entidade.includes("Liga Portugal 2") || entidade.includes("por_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/458.png?lm=1511173307";
+        if(entidade.includes("Liga Portugal") || entidade.includes("pt_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/15.png?lm=1520606999";
+        if(entidade.includes("Liga Portugal 2") || entidade.includes("pt_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/458.png?lm=1511173307";
         if(entidade.includes("Taca de Portugal") || entidade.includes("copa_pt")) return "https://tmssl.akamaized.net//images/erfolge/medium/100.png?lm=1520606996";
         if(entidade.includes("Supertaca de Portugal") || entidade.includes("supercopa_pt")) return "https://tmssl.akamaized.net//images/erfolge/medium/337.png?lm=1520606999";
 
-        if(entidade.includes("Ligue 1") || entidade.includes("fra_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/14.png?lm=1729163534";
+        if(entidade.includes("Ligue 1") || entidade.includes("fra_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/14.png?lm=1729163534";  
+        if (entidade == ("Ligue 2") || entidade.includes("fra_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/981.png?lm=1734352209";
         if(entidade.includes("Coupe de France") || entidade.includes("copa_fra")) return "https://tmssl.akamaized.net//images/erfolge/medium/35.png?lm=1520606999";
         if(entidade.includes("Trophee des Champions") || entidade.includes("supercopa_fra")) return "https://tmssl.akamaized.net//images/erfolge/medium/321.png?lm=1704485193";
 
@@ -2823,10 +3114,21 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Johan Cruyff Shield") || entidade.includes("supercopa_nl")) return "https://tmssl.akamaized.net//images/erfolge/medium/288.png?lm=1511173147";
 
         if(entidade.includes("Süper Lig") || entidade.includes("tr_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/20.png?lm=1780043166";
+         if (entidade.includes("1.Lig") || entidade.includes("tr_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/947.png?lm=1780043224";
         if(entidade.includes("Turkish Cup") || entidade.includes("copa_tr")) return "https://tmssl.akamaized.net//images/erfolge/medium/148.png?lm=1780049586";
         if(entidade.includes("Turkish Super Cup") || entidade.includes("Süpercopa_tr")) return "https://tmssl.akamaized.net//images/erfolge/medium/149.png?lm=1780055873";
 
         if(entidade.includes("Eliteserien") || entidade.includes("nor_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/295.png?lm=1461847499";
+        if (entidade.includes("Taça NM") || entidade.includes("copa_nor")) return "https://tmssl.akamaized.net//images/erfolge/medium/294.png?lm=1461847499";
+        if (entidade.includes("Mesterfinalen") || entidade.includes("supercopa_nor")) return "";
+
+        if (entidade.includes("Jupiler Pro League") || entidade.includes("be_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/18.png?lm=1461847499";
+        if (entidade.includes("Croky Cup") || entidade.includes("copa_be")) return "https://tmssl.akamaized.net//images/erfolge/medium/150.png?lm=1520606999";
+        if (entidade.includes("Pro League Super Cup") || entidade.includes("supercopa_be")) return "https://tmssl.akamaized.net//images/erfolge/medium/488.png?lm=1511178751";
+
+        if (entidade == ("Scottish Premiership") || entidade.includes("sco_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/19.png?lm=1461847499";
+        if (entidade.includes("Scottish Challenge Cup") || entidade.includes("copa_sco")) return "https://tmssl.akamaized.net//images/erfolge/medium/87.png?lm=1461847499";
+        if (entidade.includes("Scottish Super Cup") || entidade.includes("supercopa_sco")) return "https://tmssl.akamaized.net//images/erfolge/medium/88.png?lm=1461847499";
 
          //ASIA
         if(entidade.includes("Saudi Pro") || entidade.includes("ara_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/271.png?lm=1748099013";
@@ -2834,6 +3136,7 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Saudi Super Cup") || entidade.includes("Supercopa_ara")) return "https://tmssl.akamaized.net//images/erfolge/medium/457.png?lm=1616407405";
 
          if(entidade.includes("Nigeria Professional Football League") || entidade.includes("nga_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/516.png?lm=1780133279";
+         if (entidade ==("Ligue 1 Côte d'Ivoire") || entidade.includes("civ_1")) return "https://i.ibb.co/B592MmYZ/image.png";
   
         
          //AMERICA NORTE
@@ -2841,11 +3144,8 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Open Cup") || entidade.includes("copa_usa")) return "https://tmssl.akamaized.net//images/erfolge/medium/244.png?lm=1466586047";
         if(entidade.includes("Leagues Cup") || entidade.includes("Supercopa_usa")) return "https://tmssl.akamaized.net//images/erfolge/medium/604.png?lm=1606063811";
 
-        if(entidade.includes("Liga MX Apertura") || entidade.includes("mx_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/153.png?lm=1461847499";
-        if(entidade.includes("Copa Mexico") || entidade.includes("copa_mx")) return "https://tmssl.akamaized.net//images/erfolge/medium/392.png?lm=1654154831";
-        if(entidade.includes("Campeón de Campeones") || entidade.includes("Supercopa_mx")) return "https://tmssl.akamaized.net//images/erfolge/medium/577.png?lm=1653896973";
-   
-       
+        if(entidade == ("Liga MX Apertura") || entidade.includes("mx_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/153.png?lm=1461847499";
+        if(entidade == ("Copa Mexico") || entidade.includes("copa_mx")) return 
 
     }
     let entidadex = entidade;
@@ -2903,17 +3203,27 @@ function calcularValorMercadoJogador(j) {
 // pagam salários bem acima do valor de mercado "puro"; clubes pequenos
 // pagam abaixo. Serve de referência para ofertas iniciais em negociações
 // e como salário-base fora de qualquer negociação ativa.
-function calcularSalarioSemanalJogador(clubeRef = null) {
-    if (!jogador) return 20000;
-    const clube = clubeRef || clubes.find(c => c.id === jogador.clubeId);
-    const valorMercado = jogador.valorMercadoNum || calcularValorMercadoJogador(jogador);
+function calcularSalarioSemanalJogador(clubeRef = null, jogadorRef = null) {
+    const alvo = jogadorRef || jogador;
+    if (!alvo) return 20000;
+    const clube = clubeRef || clubes.find(c => c.id === alvo.clubeId);
+    const valorMercado = alvo.valorMercadoNum || calcularValorMercadoJogador(alvo);
     let base = Math.max(8000, valorMercado * 0.019);
     const reputacao = clube?.reputacao || 65;
     // ~0.75x para clubes modestos (rep. baixa) até ~1.75x para gigantes (rep. alta)
     const fatorClube = 0.55 + (reputacao / 100) * 1.2;
     base *= fatorClube;
-    if ((jogador.idade || 24) >= 32) base *= 0.92; // veteranos custam um pouco menos em folha
-    if ((jogador.idade || 24) <= 21 && (jogador.geral || 60) >= 75) base *= 1.1; // jovens-promessa custam mais
+    // 🆕 Clubes árabes (Saudi Pro League) pagam bem acima do que a reputação
+    // esportiva sugeriria — igual à realidade (Al-Hilal, Al-Nassr etc. pagando
+    // salários de topo mundial mesmo sendo uma liga competitivamente mediana).
+    // O "prêmio" cresce com o nível do jogador: craques (85+ de geral) são o
+    // alvo dessas propostas turbinadas, não qualquer reserva.
+    if (clube?.ligaId?.startsWith("ara")) {
+        const nivel = alvo.geral || 65;
+        base *= 1.5 + Math.max(0, nivel - 65) * 0.045;
+    }
+    if ((alvo.idade || 24) >= 32) base *= 0.92; // veteranos custam um pouco menos em folha
+    if ((alvo.idade || 24) <= 21 && (alvo.geral || 60) >= 75) base *= 1.1; // jovens-promessa custam mais
     return Math.max(8000, Math.floor(base));
 }
 
@@ -3221,16 +3531,107 @@ function mudarTela(id) { document.querySelectorAll(".tela").forEach(t => t.class
 // mudarTela(...) diretamente e sem isto o lobby online travava em silêncio.
 window.mudarTela = mudarTela;
 
+// ==========================================
+// 🔊 EFEITOS SONOROS
+// ==========================================
+// Sistema leve de som: cada efeito é um ficheiro .mp3 opcional na pasta
+// assets/sfx/ (o jogador coloca os próprios ficheiros, mesmo esquema já
+// usado para os vídeos de abertura em assets/intros/). Se o ficheiro não
+// existir, falha em silêncio — nunca quebra o jogo por falta de um som.
+const SONS_JOGO = {
+    gol: "assets/sfx/gol.mp3",
+    apito_inicio: "assets/sfx/apito_inicio.mp3",
+    apito_fim: "assets/sfx/apito_fim.mp3",
+    vitoria: "assets/sfx/vitoria.mp3",
+    derrota: "assets/sfx/derrota.mp3",
+    sucesso: "assets/sfx/sucesso.mp3",
+    erro: "assets/sfx/erro.mp3",
+    notificacao: "assets/sfx/notificacao.mp3",
+    clique: "assets/sfx/clique.mp3",
+    convocacao: "assets/sfx/convocacao.mp3",
+    trofeu: "assets/sfx/trofeu.mp3",
+    cartao: "assets/sfx/cartao.mp3"
+};
+// Cache de instâncias <audio> por som, para não recriar o elemento a cada chamada.
+const _cacheAudioSons = {};
+// Preferência do jogador (guardada no localStorage, independente do save da carreira).
+function somAtivado() { return localStorage.getItem("rumo_estrelato_pro_sons") !== "off"; }
+window.alternarSons = function() {
+    const ativo = somAtivado();
+    localStorage.setItem("rumo_estrelato_pro_sons", ativo ? "off" : "on");
+    mostrarToast("Sons", ativo ? "Efeitos sonoros desativados." : "Efeitos sonoros ativados.", "info");
+};
+// Toca um efeito sonoro pelo nome (ver SONS_JOGO). Nunca lança erro — se o
+// ficheiro não existir ou o navegador bloquear o autoplay, simplesmente
+// não toca nada, sem afetar o resto do jogo.
+window.tocarSom = function(nome, volume = 0.55) {
+    try {
+        if (!somAtivado() || !SONS_JOGO[nome]) return;
+        let audio = _cacheAudioSons[nome];
+        if (!audio) { audio = new Audio(SONS_JOGO[nome]); audio.volume = volume; _cacheAudioSons[nome] = audio; }
+        audio.currentTime = 0;
+        audio.volume = volume;
+        audio.play().catch(() => {}); // silencioso se o navegador bloquear ou o ficheiro não existir
+    } catch (e) { /* nunca deixar um som quebrar o jogo */ }
+};
+
 function mostrarToast(titulo, mensagem, tipo = 'info') {
     const container = document.getElementById('toastContainer'); if(!container) return;
     const toast = document.createElement('div'); toast.className = `toast ${tipo === 'gold' ? 'gold-anim' : ''}`;
     toast.innerHTML = `<h4>${titulo}</h4><p>${mensagem}</p>`; container.appendChild(toast);
+    // 🔊 som leve conforme o tipo de toast (sucesso/erro/aviso/info)
+    window.tocarSom(tipo === 'success' || tipo === 'gold' ? 'sucesso' : (tipo === 'danger' ? 'erro' : 'notificacao'), 0.35);
     setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 4000);
 }
 // 🛡️ FIX: expõe no window — firebase-integration.js chama mostrarToast(...)
 // diretamente (ex: erros de sala cheia/inexistente); sem isto, essas
 // mensagens de erro do modo online nunca apareciam.
 window.mostrarToast = mostrarToast;
+
+// ==========================================
+// 🎮 MINI-JOGO DE PÊNALTI INTERATIVO
+// ==========================================
+// Chamado pelo motor de partida (match.js) quando ÉS TU quem bate ou quem
+// defende um pênalti. Mostra uma baliza com 3 zonas (esquerda/centro/
+// direita); escolhes uma, e o resultado depende de coincidir ou não com a
+// zona escolhida pelo "adversário" (goleiro ou cobrador controlado pelo
+// motor) — exatamente como um pênalti real: um duelo de leitura de lado.
+window.abrirMiniJogoPenalti = function(tipo, resolverCallback) {
+    let overlay = document.getElementById("miniJogoPenaltiOverlay");
+    if (!overlay) { overlay = document.createElement("div"); overlay.id = "miniJogoPenaltiOverlay"; document.body.appendChild(overlay); }
+    overlay.className = "penalti-overlay";
+    const titulo = tipo === "cobrar" ? "🎯 A TUA VEZ DE COBRAR!" : "🧤 DEFENDE O PÊNALTI!";
+    const sub = tipo === "cobrar" ? "Escolhe o lado para chutar" : "Escolhe para que lado vais mergulhar";
+    overlay.innerHTML = `
+        <div class="penalti-modal">
+            <h2 class="penalti-titulo">${titulo}</h2>
+            <p class="penalti-sub">${sub}</p>
+            <div class="penalti-baliza">
+                <div class="penalti-zona" data-zona="esquerda">⬅️</div>
+                <div class="penalti-zona" data-zona="centro">⬆️</div>
+                <div class="penalti-zona" data-zona="direita">➡️</div>
+            </div>
+            <p class="penalti-resultado" id="penaltiResultadoTexto"></p>
+        </div>`;
+    overlay.classList.remove("oculto");
+    window.tocarSom('notificacao', 0.4);
+
+    overlay.querySelectorAll(".penalti-zona").forEach(btn => {
+        btn.onclick = () => {
+            if (overlay.dataset.resolvido) return; // 🛡️ evita cliques duplos escolhendo duas zonas
+            overlay.dataset.resolvido = "1";
+            overlay.querySelectorAll(".penalti-zona").forEach(b => { b.style.pointerEvents = "none"; b.style.opacity = "0.5"; });
+            btn.classList.add("escolhida"); btn.style.opacity = "1";
+            const resultadoEl = document.getElementById("penaltiResultadoTexto");
+            resultadoEl.textContent = tipo === "cobrar" ? "A chutar..." : "A mergulhar...";
+            window.tocarSom('clique');
+            setTimeout(() => {
+                overlay.remove();
+                resolverCallback(btn.dataset.zona);
+            }, 900);
+        };
+    });
+};
 
 const FORMATOS_NOTICIA_FIXOS = {
     "Entrevista": "post", "Mídia": "post", "Torcida": "post", "Rumor": "post", "Bastidores": "post", "Treino": "post",
@@ -3371,6 +3772,72 @@ function reconstruirConvocacaoDeEstado(ultima, selecao, competicao) {
     return { selecao, competicao: COMPETICOES_SELECOES.find(c => c.nome === ultima.competicao) || competicao, convocados, grupos: agruparConvocados(convocados), convocado: ultima.convocado };
 }
 
+// ==========================================
+// 🧒 CONVOCAÇÃO PARA SELEÇÕES DE BASE (Sub-17 / Sub-21)
+// ==========================================
+// Praticamente idêntica a gerarConvocacaoSelecao(), mas o "elenco do país"
+// considerado é filtrado por idade PRIMEIRO (idadeMax do torneio). Como a
+// pontuação (pontuarJogadorSelecao) é sempre relativa aos outros jogadores
+// elegíveis, um jovem de 17 anos só compete com outros jovens de até 17 anos
+// — não precisa ser "nível seleção principal" para ser convocado aqui.
+function gerarConvocacaoSelecaoBase(selecao, competicaoBase) {
+    const idadeMax = competicaoBase.idadeMax;
+    const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)];
+    const elegiveis = todos
+        .filter(p => (p.idade || 99) <= idadeMax)
+        .filter(p => normalizarNacionalidade(p.nacionalidade) === normalizarNacionalidade(selecao.pais))
+        .map(p => ({ p, score: pontuarJogadorSelecao(p, null) })) // sem penalização "sub23", a idade já foi filtrada acima
+        .filter(x => x.score > 0);
+    const porPos = {
+        goleiros: elegiveis.filter(x => POSICOES_CONVOCACAO.goleiros.includes(x.p.posicao)).sort((a,b)=>b.score-a.score).slice(0,3),
+        laterais: elegiveis.filter(x => POSICOES_CONVOCACAO.laterais.includes(x.p.posicao)).sort((a,b)=>b.score-a.score).slice(0,4),
+        defensores: elegiveis.filter(x => POSICOES_CONVOCACAO.defensores.includes(x.p.posicao)).sort((a,b)=>b.score-a.score).slice(0,5),
+        meio: elegiveis.filter(x => POSICOES_CONVOCACAO.meio.includes(x.p.posicao)).sort((a,b)=>b.score-a.score).slice(0,7),
+        ataque: elegiveis.filter(x => POSICOES_CONVOCACAO.ataque.includes(x.p.posicao)).sort((a,b)=>b.score-a.score).slice(0,6)
+    };
+    let convocados = Object.values(porPos).flat().map(x => x.p);
+    const ids = new Set(convocados.map(p => p.id));
+    elegiveis.sort((a,b)=>b.score-a.score).forEach(x => {
+        if(convocados.length < 23 && !ids.has(x.p.id)) { convocados.push(x.p); ids.add(x.p.id); }
+    });
+    convocados = convocados.slice(0, 23);
+    return { selecao, competicao: competicaoBase, convocados, grupos: agruparConvocados(convocados), convocado: convocados.some(p => p.id === "player") };
+}
+
+// Processa a janela de convocação de BASE (Sub-17/Sub-21) para o jogador
+// local — irmã de processarJanelaSelecoes(), mas totalmente independente da
+// seleção principal (um jogador pode estar fora da seleção principal e ainda
+// assim ser convocado para o Sub-17/Sub-21, ou vice-versa).
+function processarJanelaSelecoesBase() {
+    if(!jogador || jogador.idade > 21) return; // acima do limite do escalão mais velho (Sub-21): nada a fazer aqui
+    const chave = `base-${anoAtual}-${rodadaAtual}`;
+    const competicaoBase = obterCompeticaoSelecaoBase();
+    if(!competicaoBase) return;
+    if(jogador.idade > competicaoBase.idadeMax) return; // ex: tem 19 anos mas é janela do Sub-17
+    if(selecoesEstado.ultimaChaveBase === chave) return;
+    selecoesEstado.ultimaChaveBase = chave;
+
+    const selecao = obterSelecaoPorNacionalidade(jogador.nacionalidade);
+    const convocacao = gerarConvocacaoSelecaoBase(selecao, competicaoBase);
+
+    if(!selecoesEstado.convocacoesBase) selecoesEstado.convocacoesBase = [];
+    selecoesEstado.convocacoesBase.unshift({
+        ano:anoAtual, rodada:rodadaAtual, selecao:selecao.nome, selecaoId:selecao.id, competicao:competicaoBase.nome,
+        convocado:convocacao.convocado, ids:convocacao.convocados.map(p=>p.id)
+    });
+    selecoesEstado.convocacoesBase = selecoesEstado.convocacoesBase.slice(0, 8);
+
+    if(convocacao.convocado) {
+        if(!jogador.statsSelecaoBase) jogador.statsSelecaoBase = { jogos:0, gols:0, assistencias:0, convocacoes:0 };
+        jogador.statsSelecaoBase.convocacoes++;
+        registrarNoticia(`Convocado para o ${competicaoBase.nome}!`, `${jogador.nome} foi chamado para representar ${selecao.nome} no ${competicaoBase.nome} ${anoAtual}.`, "Seleções");
+        mostrarToast("Seleção de Base", `Convocado para o ${competicaoBase.nome}! 🧒⚽`, "success");
+        inicializarTorneioInternacional({ ...competicaoBase, sub23: false, isBase: true });
+        agendarJogosInternacionais();
+    }
+    renderizarSelecoes();
+}
+
 function atualizarStatsSelecao(p, jogos, gols, assistencias) {
     if(!p.statsSelecao) p.statsSelecao = { jogos:0, gols:0, assistencias:0, convocacoes:0 };
     p.statsSelecao.jogos += jogos;
@@ -3379,13 +3846,88 @@ function atualizarStatsSelecao(p, jogos, gols, assistencias) {
     p.statsSelecao.selecao = normalizarNacionalidade(p.nacionalidade);
 }
 
+// ==========================================
+// 🌍 ESTATÍSTICAS DE SELEÇÃO PARA QUALQUER PAÍS (não só o do jogador)
+// ==========================================
+// simularTorneiosInternacionais() simula centenas de jogos entre seleções
+// (ex: Alemanha 2x1 França) mas SÓ ao nível do placar agregado do país —
+// nunca atribuía o jogo/gol/assistência a jogadores específicos. Por isso,
+// qualquer jogador que não fosse convocado junto do jogador humano (ex: um
+// "Bruno" que joga por outra seleção) ficava sempre com estatísticas em 0,
+// mesmo sendo campeão. Esta cache+função corrige isso na raiz.
+const _cachePlantelSelecaoIA = {};
+function obterPlantelSelecaoParaStatsIA(selecaoId) {
+    const chaveCache = `${selecaoId}_${anoAtual}`;
+    if (_cachePlantelSelecaoIA[chaveCache]) return _cachePlantelSelecaoIA[chaveCache];
+    const sel = SELECOES.find(s => s.id === selecaoId);
+    if (!sel) return [];
+    const pool = obterJogadoresNacionalidade(sel.pais).filter(p => !p.aposentado).sort((a,b) => (b.geral||0) - (a.geral||0)).slice(0, 18);
+    // 🆕 Define titulares (11) e capitão desta seleção junto com o plantel, para
+    // que nem todo o grupo de 18 receba minutos/estatísticas por igual.
+    if (pool.length > 0) { const { titularesIds, capitaoId } = definirTitularesECapitao(pool); pool.titularesIds = titularesIds; pool.capitaoId = capitaoId; }
+    _cachePlantelSelecaoIA[chaveCache] = pool;
+    return pool;
+}
+
+// Reduz um plantel de seleção (18 ou o convocados de uma convocação) aos 11
+// titulares + um banco rotativo pequeno (até 4), em vez do grupo inteiro —
+// mesmo princípio do montarEscalacaoJogo() usado nos clubes.
+function montarEscalacaoSelecao(pool, titularesIds) {
+    if (!titularesIds || !titularesIds.length) return pool;
+    const idsTit = new Set(titularesIds);
+    const titulares = pool.filter(p => idsTit.has(p.id));
+    const bancoTotal = pool.filter(p => !idsTit.has(p.id));
+    const nEntram = Math.min(4, bancoTotal.length);
+    const poolCopia = [...bancoTotal]; const entram = [];
+    while (entram.length < nEntram && poolCopia.length > 0) {
+        const idx = Math.floor(Math.random() * poolCopia.length);
+        entram.push(poolCopia.splice(idx, 1)[0]);
+    }
+    return [...titulares, ...entram];
+}
+
+// Atribui o resultado de UM jogo entre duas seleções (gA gols para o país A,
+// gB para o país B) a jogadores específicos de cada plantel — mesma lógica
+// de pesos por posição usada em simularPartidasSelecao, só que aplicada a
+// qualquer confronto simulado pelo motor de torneios internacionais.
+function atribuirStatsPartidaSelecaoIA(paisAId, paisBId, gA, gB) {
+    const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.36, "Volante":0.18, "Lateral":0.14, "Zagueiro":0.08, "Goleiro":0.01 };
+    const pesosAst = { "Atacante":0.36, "Ponta":0.70, "Meia Ofensivo":0.86, "Meio-Campista":0.70, "Volante":0.42, "Lateral":0.48, "Zagueiro":0.10, "Goleiro":0.02 };
+    const sortear = (pool, campo) => {
+        const pesos = campo === "gols" ? pesosGol : pesosAst;
+        const total = pool.reduce((acc,p) => acc + Math.pow((p.geral||60)/100, 4.6) * (pesos[p.posicao]||0.22), 0);
+        if (total <= 0) return null;
+        let alvo = Math.random() * total;
+        for (const p of pool) {
+            alvo -= Math.pow((p.geral||60)/100, 4.6) * (pesos[p.posicao]||0.22);
+            if (alvo <= 0) return p;
+        }
+        return pool[0];
+    };
+    const processarLado = (paisId, gols) => {
+        const plantel = obterPlantelSelecaoParaStatsIA(paisId);
+        if (!plantel.length) return;
+        const pool = montarEscalacaoSelecao(plantel, plantel.titularesIds);
+        pool.forEach(p => atualizarStatsSelecao(p, 1, 0, 0));
+        for (let g = 0; g < gols; g++) {
+            const autor = sortear(pool, "gols");
+            const assist = Math.random() < 0.78 ? sortear(pool, "assistencias") : null;
+            if (autor) atualizarStatsSelecao(autor, 0, 1, 0);
+            if (assist && assist.id !== autor?.id) atualizarStatsSelecao(assist, 0, 0, 1);
+        }
+    };
+    processarLado(paisAId, gA);
+    processarLado(paisBId, gB);
+}
+
 function simularPartidasSelecao(convocacao) {
     const jogos = Math.max(1, convocacao.competicao?.jogos || 1);
     const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.36, "Volante":0.18, "Lateral":0.14, "Zagueiro":0.08, "Goleiro":0.01 };
     const pesosAst = { "Atacante":0.36, "Ponta":0.70, "Meia Ofensivo":0.86, "Meio-Campista":0.70, "Volante":0.42, "Lateral":0.48, "Zagueiro":0.10, "Goleiro":0.02 };
-    const pool = convocacao.convocados;
-    if(pool.length === 0) return;
-    const sortear = (campo) => {
+    const poolTotal = convocacao.convocados;
+    if(poolTotal.length === 0) return;
+    const { titularesIds } = definirTitularesECapitao(poolTotal);
+    const sortear = (pool, campo) => {
         const pesos = campo === "gols" ? pesosGol : pesosAst;
         const total = pool.reduce((acc,p) => acc + Math.pow((p.geral || 60) / 100, 4.6) * (pesos[p.posicao] || 0.22), 0);
         let alvo = Math.random() * total;
@@ -3395,30 +3937,35 @@ function simularPartidasSelecao(convocacao) {
         }
         return pool[0];
     };
-    pool.forEach(p => {
+    // Convocação conta pra todo o grupo (foi convocado, independente de jogar).
+    poolTotal.forEach(p => {
         if(!p.statsSelecao) p.statsSelecao = { jogos:0, gols:0, assistencias:0, convocacoes:0 };
         p.statsSelecao.convocacoes++;
-        atualizarStatsSelecao(p, jogos, 0, 0);
     });
+    // 🆕 "Jogos" (minutos reais) só para quem entra em campo naquela partida
+    // específica: os titulares + um banco rotativo pequeno — não o grupo
+    // convocado inteiro, que antes recebia jogo por igual mesmo sem jogar.
     for(let j=0; j<jogos; j++) {
+        const pool = montarEscalacaoSelecao(poolTotal, titularesIds);
+        pool.forEach(p => atualizarStatsSelecao(p, 1, 0, 0));
         const golsTime = Math.max(0, Math.floor(Math.random()*3) + (pool.some(p=>p.geral>=88) ? 1 : 0));
         for(let g=0; g<golsTime; g++) {
-            const autor = sortear("gols");
-            const assist = Math.random() < 0.78 ? sortear("assistencias") : null;
+            const autor = sortear(pool, "gols");
+            const assist = Math.random() < 0.78 ? sortear(pool, "assistencias") : null;
             if(autor) atualizarStatsSelecao(autor, 0, 1, 0);
             if(assist && assist.id !== autor?.id) atualizarStatsSelecao(assist, 0, 0, 1);
         }
     }
 }
 
-function cardConvocadoAnimado(p, delay) {
+function cardConvocadoAnimado(p, delay, ehTitular = false, ehCapitao = false) {
     const clube = obterClubeJogador(p);
     const logoClube = clube ? obterUrlImagem(clube, 'clube') : "";
-    return `<div class="convocado-card convocado-anim ${p.id === "player" ? "eu" : ""}" style="animation-delay:${delay}s;">
+    return `<div class="convocado-card convocado-anim ${p.id === "player" ? "eu" : ""} ${ehTitular ? "titular" : "reserva"}" style="animation-delay:${delay}s;">
         <img class="convocado-foto" src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
         <div style="flex:1; min-width:0;">
-            <strong>${p.nome}${p.id === "player" ? " ⭐" : ""}</strong><br>
-            <small style="color:#aaa; font-weight:700;">${p.posicao}</small>
+            <strong>${p.nome}${p.id === "player" ? " ⭐" : ""}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong><br>
+            <small style="color:#aaa; font-weight:700;">${p.posicao}${ehTitular ? " • Titular" : ""}</small>
         </div>
         ${logoClube ? `<img class="convocado-clube" src="${logoClube}" alt="${clube?.nome || ''}" title="${clube?.nome || ''}">` : ""}
         <span class="meta-pill">OVR ${p.geral}</span>
@@ -3446,6 +3993,7 @@ window.alternarPularConvocacaoAutomatico = function() {
 };
 
 function mostrarAnimacaoConvocacao(convocacao, forcarExibicao = false) {
+    if (convocacao.convocado) window.tocarSom('convocacao'); // 🔊 som ao ser convocado
     // Se o jogador ativou "pular quando não for convocado" e esta não é uma consulta manual,
     // mostra apenas um toast rápido em vez de abrir o modal com a animação completa.
     if (!forcarExibicao && !convocacao.convocado && pularConvocacaoAutomatico) {
@@ -3469,6 +4017,11 @@ function mostrarAnimacaoConvocacao(convocacao, forcarExibicao = false) {
     const labels = { goleiros:"Goleiros", laterais:"Laterais", defensores:"Defensores", meio:"Meio-campistas", ataque:"Ataque" };
     let delay = 0;
     const euConvocado = convocacao.convocado;
+    // 🆕 Mesmo cálculo de titulares/capitão usado na aba Seleções, aplicado
+    // aqui pra já aparecer na animação de revelação da lista.
+    const todosConvocadosModal = Object.values(convocacao.grupos).flat();
+    const { titularesIds: titularesModalIds, capitaoId: capitaoModalId } = todosConvocadosModal.length ? definirTitularesECapitao(todosConvocadosModal) : { titularesIds: [], capitaoId: null };
+    const setTitularesModal = new Set(titularesModalIds);
     const banner = euConvocado
         ? `<div class="convocacao-convocado-banner">⭐ ${jogador.nome} FOI CONVOCADO pela Seleção ${convocacao.selecao.nome}!</div>`
         : `<div class="convocacao-nao-convocado">❌ ${jogador.nome} não atingiu o nível exigido e ficou DE FORA da convocação.</div>`;
@@ -3476,7 +4029,7 @@ function mostrarAnimacaoConvocacao(convocacao, forcarExibicao = false) {
         <div class="convocacao-grupo">
             <h4>${labels[key]}</h4>
             <div class="convocacao-modal-grid">
-                ${(convocacao.grupos[key] || []).map(p => { delay += 0.05; return cardConvocadoAnimado(p, delay); }).join("")}
+                ${(convocacao.grupos[key] || []).map(p => { delay += 0.05; return cardConvocadoAnimado(p, delay, setTitularesModal.has(p.id), p.id === capitaoModalId); }).join("")}
             </div>
         </div>`;
     const modal = document.createElement("div");
@@ -3567,6 +4120,15 @@ function processarJanelaSelecoes(forcar = false) {
         registrarNoticia("Fora da lista", `${jogador.nome} não atingiu o corte da Seleção ${selecao.nome}: desempenho e concorrência pesaram na decisão.`, "Seleções");
     }
     mostrarAnimacaoConvocacao(convocacao);
+    if (convocacao.convocado) {
+        // 🛡️ FIX: os companheiros de seleção (jogadores da IA convocados junto
+        // contigo) nunca acumulavam jogos/gols/assistências pela seleção —
+        // a função que faz isso (simularPartidasSelecao) existia no código mas
+        // nunca era chamada por ninguém. As TUAS estatísticas continuam a vir
+        // do jogo ao vivo (mais precisas: minutos reais, etc.), por isso aqui
+        // simulo só para os teus companheiros de seleção.
+        simularPartidasSelecao({ ...convocacao, convocados: convocacao.convocados.filter(p => p.id !== "player") });
+    }
     if(convocacao.convocado && FORMATOS_INT[competicao.id]?.formato !== "amistoso") inicializarTorneioInternacional(competicao);
     if(convocacao.convocado) agendarJogosInternacionais();
     renderizarSelecoes();
@@ -3577,22 +4139,56 @@ window.renderizarCompeticoesInternacionais = renderizarCompeticoesInternacionais
 function renderizarSelecoes() {
     const el = document.getElementById("view-selecoes");
     if(!el || !jogador) return;
+    // 🌐 RIVALIDADE ONLINE: card exclusivo do modo online — compara, lado a
+    // lado, as tuas estatísticas com as do teu amigo (usa o perfil dele já
+    // sincronizado em jogadoresIA). Não existe no modo offline porque não há
+    // ninguém para comparar.
+    const cardRivalidade = (() => {
+        if (window.connectionMode !== 'online' || !window.onlinePartnerId) return "";
+        const amigo = jogadoresIA.find(j => j.id === window.onlinePartnerId);
+        if (!amigo) return "";
+        const linha = (label, meu, dele) => `
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px dashed rgba(255,255,255,0.08);">
+                <strong style="color:${meu >= dele ? 'var(--success)' : '#fff'};">${meu}</strong>
+                <span style="color:#aaa; font-size:0.85rem;">${label}</span>
+                <strong style="color:${dele >= meu ? 'var(--success)' : '#fff'};">${dele}</strong>
+            </div>`;
+        return `<div class="selecao-card" style="margin-bottom:18px; grid-column:1/-1; border:1px solid var(--theme-primary);">
+            <h3 style="margin-top:0; text-align:center;">🌐 Rivalidade — Tu vs ${amigo.nome}</h3>
+            ${linha("Overall (OVR)", jogador.geral, amigo.geral || 0)}
+            ${linha("Gols na época", jogador.estatisticasAtuais.gols, amigo.statsTemporada?.gols || 0)}
+            ${linha("Assistências na época", jogador.estatisticasAtuais.assistencias, amigo.statsTemporada?.assistencias || 0)}
+            ${linha("Troféus pela seleção", jogador.titulosSelecao?.length || 0, amigo.titulosSelecao?.length || 0)}
+        </div>`;
+    })();
     const selecao = obterSelecaoPorNacionalidade(jogador.nacionalidade);
     const proxima = obterCompeticaoSelecao(selecao);
     const ultima = selecoesEstado.convocacoes?.find(c => c.selecaoId === selecao.id);
     const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)];
     const resolver = (id) => id === "player" ? jogador : jogadoresIA.find(j => j.id === id);
     const grupos = ultima?.grupos ? Object.fromEntries(Object.entries(ultima.grupos).map(([k, ids]) => [k, ids.map(resolver).filter(Boolean)])) : gerarConvocacaoSelecao(selecao, proxima).grupos;
+    // 🆕 Titulares + capitão desta convocação — assim dá pra ver não só quem
+    // foi chamado, mas quem realmente começa jogando e quem usa a braçadeira.
+    const todosConvocados = Object.values(grupos).flat();
+    const { titularesIds: titularesConvocacaoIds, capitaoId: capitaoConvocacaoId } = todosConvocados.length ? definirTitularesECapitao(todosConvocados) : { titularesIds: [], capitaoId: null };
+    const setTitularesConvocacao = new Set(titularesConvocacaoIds);
     const labels = { goleiros:"Goleiros", laterais:"Laterais", defensores:"Defensores", meio:"Meio-campistas", ataque:"Ataque" };
+    const iconesPos = { goleiros:"🧤", laterais:"↔️", defensores:"🛡️", meio:"⚙️", ataque:"⚔️" };
     const bloco = (key) => `
         <div class="convocacao-grupo">
-            <h4>${labels[key]}</h4>
+            <h4>${iconesPos[key] || ""} ${labels[key]} <span class="convocacao-grupo-count">${(grupos[key] || []).length}</span></h4>
             ${(grupos[key] || []).map(p => {
                 const clube = obterClubeJogador(p);
-                return `<div class="convocado-row ${p.id === "player" ? "eu" : ""}" onclick="abrirPerfilJogador('${p.id}')">
+                const ehCapitao = p.id === capitaoConvocacaoId;
+                const ehTitular = setTitularesConvocacao.has(p.id);
+                return `<div class="convocado-row ${p.id === "player" ? "eu" : ""} ${ehTitular ? "titular" : "reserva"}" onclick="abrirPerfilJogador('${p.id}')">
                     <img src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
-                    <div><strong>${p.nome}</strong><br><small>${clube?.nome || "Livre"} • ${p.posicao} • ${p.statsSelecao?.jogos || 0}J ${p.statsSelecao?.gols || 0}G ${p.statsSelecao?.assistencias || 0}A</small></div>
-                    ${clube ? `<img src="${obterUrlImagem(clube,'clube')}" style="width:24px;height:24px;object-fit:contain;background:#fff;border-radius:4px;padding:2px;">` : ""}
+                    <div>
+                        <strong>${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong>
+                        <small>${clube?.nome || "Livre"} • ${p.posicao} • ${p.statsSelecao?.jogos || 0}J ${p.statsSelecao?.gols || 0}G ${p.statsSelecao?.assistencias || 0}A</small>
+                    </div>
+                    ${clube ? `<img class="convocado-escudo" src="${obterUrlImagem(clube,'clube')}">` : `<span></span>`}
+                    <span class="convocado-status-tag ${ehTitular ? "titular" : "reserva"}">${ehTitular ? "Titular" : "Banco"}</span>
                     <span class="meta-pill">OVR ${p.geral}</span>
                 </div>`;
             }).join("") || `<p style="color:#aaa;">Sem nomes suficientes.</p>`}
@@ -3602,6 +4198,7 @@ function renderizarSelecoes() {
         .sort((a,b) => (b.statsSelecao?.gols || 0) - (a.statsSelecao?.gols || 0) || (b.geral || 0) - (a.geral || 0))
         .slice(0, 8);
     el.innerHTML = `
+        ${cardRivalidade}
         <div class="selecao-shell">
             <section>
                 <div class="selecao-hero">
@@ -3619,6 +4216,12 @@ function renderizarSelecoes() {
                 </div>
                 <div class="selecao-card" style="margin-top:16px;">
                     <h3 style="margin-top:0;">Lista ${ultima ? `${ultima.competicao} ${ultima.ano}` : "prévia"}</h3>
+                    <div class="convocacao-resumo">
+                        <span>👥 ${todosConvocados.length} convocados</span>
+                        <span>🧢 Capitão: ${resolver(capitaoConvocacaoId)?.nome || "—"}</span>
+                        <span>🏟️ ${new Set(todosConvocados.map(p => obterClubeJogador(p)?.id).filter(Boolean)).size} clubes representados</span>
+                        <span>⭐ ${jogador?.naSelecao ? "Você está na lista" : "Você está fora da lista"}</span>
+                    </div>
                     ${["goleiros","laterais","defensores","meio","ataque"].map(bloco).join("")}
                 </div>
             </section>
@@ -3656,6 +4259,38 @@ function renderizarSelecoes() {
                 html += `<p style="text-align:center; color:var(--gold); font-weight:900; font-size:1.2rem;">👑 Campeão: ${camp?.nome || tor.campeaoId}</p>`;
             }
             return html + `</div></div>`;
+        })()}
+        ${(() => {
+            // 🧒 Bloco da seleção de BASE — só aparece se o jogador ainda está
+            // dentro do limite de idade (≤21) de algum escalão de base.
+            if (jogador.idade > 21) return "";
+            const competicaoBase = obterCompeticaoSelecaoBase();
+            const ultimaBase = selecoesEstado.convocacoesBase?.find(c => c.selecaoId === selecao.id);
+            const statsBase = jogador.statsSelecaoBase || { jogos:0, gols:0, assistencias:0, convocacoes:0 };
+            let html = `<div class="selecao-card" style="margin-top:18px; grid-column:1/-1; border:1px dashed var(--theme-primary);">
+                <h3 style="margin-top:0;">🧒 Seleção de Base ${jogador.idade <= 17 ? "(Sub-17 e Sub-21)" : "(Sub-21)"}</h3>
+                <p style="color:#aaa;">Mesmo fora do nível da seleção principal, jogadores até 21 anos podem disputar os torneios de base do seu país.</p>
+                <div class="selecao-stats-grid">
+                    <div class="selecao-stat"><strong>${statsBase.jogos}</strong><span>Jogos</span></div>
+                    <div class="selecao-stat"><strong>${statsBase.gols}</strong><span>Gols</span></div>
+                    <div class="selecao-stat"><strong>${statsBase.assistencias}</strong><span>Assistências</span></div>
+                    <div class="selecao-stat"><strong>${statsBase.convocacoes}</strong><span>Convocações</span></div>
+                </div>`;
+            if (competicaoBase && jogador.idade <= competicaoBase.idadeMax) {
+                const keyBase = chaveTorneio(competicaoBase.id, anoAtual);
+                const torBase = selecoesEstado.torneios?.[keyBase];
+                html += `<p style="color:var(--theme-primary); font-weight:700;">📅 Janela ativa: ${competicaoBase.nome} ${anoAtual}${ultimaBase ? ` — ${ultimaBase.convocado ? "Convocado! 🎉" : "Não convocado desta vez."}` : ""}</p>`;
+                if (torBase) {
+                    html += `<div class="bracket-container">${renderBlocoFaseInternacional(torBase)}</div>`;
+                    if (torBase.fase === "Campeão Definido") {
+                        const camp = SELECOES.find(s => s.id === torBase.campeaoId);
+                        html += `<p style="text-align:center; color:var(--gold); font-weight:900;">👑 Campeão: ${camp?.nome || torBase.campeaoId}</p>`;
+                    }
+                }
+            } else {
+                html += `<p style="color:#aaa;">Nenhuma janela de base ativa nesta temporada para a tua idade.</p>`;
+            }
+            return html + `</div>`;
         })()}`;
 }
 
@@ -3695,13 +4330,22 @@ function gerarJovensGenericos(qtd = 34) {
 
 const TEMAS_COMPETICOES = {
     hub: { cor: "#00ff88", img: "" },
-    eng: { cor: "#00d8ff", img: "https://i.ibb.co/5h5QGVXb/Texture-Theme-EPL.png" },
+    eng_1: { cor: "#00d8ff", img: "https://i.ibb.co/5h5QGVXb/Texture-Theme-EPL.png" },
+    carabao_eng: { cor: "#0b8600", img: "https://i.ibb.co/6J0nTwZy/fab2128c-e881-42c9-8881-579531cfb3f6.png" },
+    copa_eng: { cor: "#ca2b16", img: "https://i.ibb.co/XrChpJRJ/896acbef-567b-4032-8b47-95da84007ff8.png" },
+    eng_2: { cor: "#ffffff", img: "https://i.ibb.co/FbYZqHZK/240a1554-0b80-40a4-b171-8abbbb8717f0.png" },
+    supercopa_eng: { cor: "#ca2b16", img: "https://i.ibb.co/xSP6ykD6/image.png" },
     esp: { cor: "#ff4d4d", img: "https://i.ibb.co/8nhCpHTN/Texture-Theme-La-Liga.png" },
     ita: { cor: "#4ade80", img: "https://i.ibb.co/Cpmcn1Mp/d3565473-9dd0-4955-928b-64e68b18b129.png" },
     ger: { cor: "#ef4444", img: "https://i.ibb.co/8Wn88Pg/Texture-Theme-Bundesliga.png" },
     fra: { cor: "#60a5fa", img: "https://i.ibb.co/Q7nv3KTN/Texture-Theme-Ligue-One.png" },
     pt: { cor: "#22c55e", img: "https://i.ibb.co/Zz0q8HSy/6ddcbece-af8f-4889-b9aa-d720c01a6771.png" },
-    br: { cor: "#facc15", img: "https://images.unsplash.com/photo-1518605368461-1ee7116838a1?q=80&w=2000&auto=format&fit=crop" },
+    br_1: { cor: "#facc15", img: "https://i.ibb.co/pjvQT62J/0c3b5a89-2f6d-48fb-b787-86c1e2e3f0ba.png" },
+    br_2: { cor: "#facc15", img: "https://i.ibb.co/DHxF4wF8/402a4527-80cb-47d1-8837-d224b722ceaa.png" },
+    br_3: { cor: "#facc15", img: "https://i.ibb.co/NdD2BHBm/b7017d32-e1cc-489c-be49-c3c52d7285be.png" },
+    br_4: { cor: "#facc15", img: "https://i.ibb.co/xtBMDR8k/5a320c73-d40c-462e-87ec-1d2efdfef13e.png" },
+    copa_br: { cor: "#facc15", img: "https://i.ibb.co/DXDc6GD/65ee9eff-8305-4340-af28-8d5e0435cbca.png" },
+    supercopa_br: { cor: "#facc15", img: "https://i.ibb.co/07cm20F/c0b21d32-8b09-443b-a972-2c427b4da9c4.png" },
     arg: { cor: "#7dd3fc", img: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2000&auto=format&fit=crop" },
     usa: { cor: "#60a5fa", img: "https://i.ibb.co/p631bhjv/Texture-Theme-MLS.png" },
     ara: { cor: "#045712", img: "https://i.ibb.co/XkywSZ5T/8b754c3d-8759-47ac-9bc7-1921110aac8e.png" },
@@ -3711,8 +4355,8 @@ const TEMAS_COMPETICOES = {
     uefa_col: { cor: "#22c55e", img: "https://i.ibb.co/Rx14dxQ/Texture-Theme-UECL.png" },
     conmebol_lib: { cor: "#f59e0b", img: "https://i.ibb.co/8LCFn0Df/6a6deb85-920a-4b42-8beb-2bf148aef7e7.png" },
     conmebol_sul: { cor: "#22c55e", img: "https://i.ibb.co/Fk6C2qTQ/Texture-Theme-Sudamericana.png" },
-    copa_mundo: { cor: "#facc15", img: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?q=80&w=2000&auto=format&fit=crop" },
-    euro: { cor: "#3b82f6", img: "https://images.unsplash.com/photo-1527871252447-4ce32da643c2?q=80&w=2000&auto=format&fit=crop" },
+    copa_mundo: { cor: "#facc15", img: "https://wallpapercave.com/wp/wp16426287.webp" },
+    euro: { cor: "#3b82f6", img: "https://static.vecteezy.com/system/resources/thumbnails/041/933/077/small_2x/background-of-euro-2024-in-germany-with-the-tournament-logo-free-vector.jpg" },
     copa_america: { cor: "#22c55e", img: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2000&auto=format&fit=crop" },
     amistoso: { cor: "#a7f3d0", img: "https://i.ibb.co/MxX9NRZM/b2268041-c169-4da2-80e1-1eb51ccc2802.png" }
 };
@@ -4247,9 +4891,15 @@ function conversarComTecnico(escalacao, contexto, onFechar) {
     };
 }
 
+// 🛡️ FIX: exposta no window porque é chamada a partir de botões com
+// onclick="abrirEntrevista(...)" no HTML (que resolvem no escopo global, não
+// no escopo deste módulo) — sem isto, o botão de "Conversa Coletiva" (e
+// qualquer outro onclick que a chame diretamente) não fazia absolutamente
+// nada ao clicar, sem nenhum erro visível para o jogador.
 function abrirEntrevista(tipo, contexto = {}, aoFechar = null) {
     inicializarEstadoCarreiraJogador();
     if(document.getElementById("modalEntrevista")) { if(aoFechar) aoFechar(); return; }
+    const nomeTecnicoAtual = contexto.tecnico || clubes.find(c => c.id === jogador.clubeId)?.tecnico || "O treinador";
     const perguntas = {
         pre: [{
             titulo: "Entrevista pré-jogo",
@@ -4459,6 +5109,25 @@ function abrirEntrevista(tipo, contexto = {}, aoFechar = null) {
                 { texto: "Dói muito, mas vamos reagir.", moral: 5, titularidade: 3, noticia: "Resiliência após derrota na decisão" },
                 { texto: "Não foi o nosso dia, mas a cabeça erguida.", moral: 4, titularidade: 2, noticia: "Dignidade na derrota chama atenção" }
             ]
+        }],
+        // 🗣️ Conversa coletiva com o grupo/técnico — acessível a qualquer
+        // momento pelo botão "Falar com o Técnico" (não depende de haver jogo).
+        coletiva_time: [{
+            titulo: "Reunião coletiva com o elenco",
+            pergunta: `${nomeTecnicoAtual} reúne o grupo antes do treino: "Preciso que este grupo puxe uns pelos outros. Alguém quer dizer alguma coisa?"`,
+            opcoes: [
+                { texto: "Levanto a voz e cobro mais entrega do grupo.", moral: 6, titularidade: 3, noticia: "Discurso de liderança agita o vestiário" },
+                { texto: "Prefiro liderar pelo exemplo, sem grandes discursos.", moral: 3, titularidade: 1, noticia: "Atitude discreta é elogiada nos bastidores" },
+                { texto: "Fico de fora. Não é a minha praia falar em público.", moral: -1, titularidade: -1, noticia: "Ausência em momento de união do grupo chama atenção" }
+            ]
+        }, {
+            titulo: "Balanço com o técnico",
+            pergunta: `${nomeTecnicoAtual} chama-te à parte: "Como sentes que está a correr a tua temporada até agora?"`,
+            opcoes: [
+                { texto: "Sinto que posso dar muito mais. Quero mais responsabilidade.", moral: 5, titularidade: 4, noticia: "Jogador pede mais protagonismo em conversa reservada" },
+                { texto: "Estou satisfeito com a minha evolução, mas focado no grupo.", moral: 4, titularidade: 2, noticia: "Equilíbrio marca conversa com o técnico" },
+                { texto: "Sinceramente, esperava estar a jogar mais.", moral: 2, titularidade: 3, noticia: "Jogador expressa insatisfação em conversa privada" }
+            ]
         }]
     };
     const lista = perguntas[tipo] || perguntas.pre;
@@ -4494,6 +5163,10 @@ window.fecharEntrevista = function() {
     modal.remove();
     if(cb) cb();
 };
+
+// 🛡️ FIX: expõe abrirEntrevista no window (ver nota acima da função) —
+// necessário para botões com onclick="abrirEntrevista(...)" no HTML.
+window.abrirEntrevista = abrirEntrevista;
 
 window.responderEntrevista = function(tipo, idx) {
     const modal = document.getElementById("modalEntrevista");
@@ -4636,6 +5309,16 @@ window.abrirPerfilJogador = function(id) {
             <div><div style="font-size:3rem; color:var(--success); font-weight:900; margin-bottom:10px;">${st.gols || 0}</div><div style="font-size:1.1rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Golos</div></div>
             <div><div style="font-size:3rem; color:var(--theme-primary); font-weight:900; margin-bottom:10px;">${st.assistencias || 0}</div><div style="font-size:1.1rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Assistências</div></div>
         </div>
+        ${["Zagueiro","Lateral","Goleiro"].includes(j.posicao) ? `
+        <div style="display:flex; justify-content:space-around; text-align:center; background:rgba(0,0,0,0.32); padding:22px; border-radius:12px; border:1px solid rgba(168,85,247,0.3); margin-top:14px;">
+            ${j.posicao === "Goleiro" ? `
+            <div><div style="font-size:2.2rem; color:#a855f7; font-weight:900;">${st.defesas || 0}</div><div style="font-size:0.95rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Defesas</div></div>
+            ` : `
+            <div><div style="font-size:2.2rem; color:#a855f7; font-weight:900;">${st.desarmes || 0}</div><div style="font-size:0.95rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Desarmes</div></div>
+            <div><div style="font-size:2.2rem; color:#a855f7; font-weight:900;">${st.interceptacoes || 0}</div><div style="font-size:0.95rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Interceptações</div></div>
+            `}
+            <div><div style="font-size:2.2rem; color:var(--gold); font-weight:900;">${st.jogosSemSofrerGol || 0}</div><div style="font-size:0.95rem; color:#aaa; text-transform:uppercase; font-weight:bold;">Jogos sem Sofrer Gol</div></div>
+        </div>` : ""}
         <div style="margin-top:18px; background:rgba(0,0,0,0.32); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px;">
             <h3 style="margin:0 0 12px; color:var(--gold);">Estatísticas de Carreira</h3>
             <div style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -4771,6 +5454,55 @@ function atualizarOVRClubes() {
     });
 }
 
+// Conta quantos jogadores de uma posição um clube já tem — usado para saber
+// se ele realmente "precisa" de mais um daquela posição ou já está com o
+// elenco empilhado ali (o que antes não era considerado: um clube podia
+// comprar 5 atacantes e zero zagueiro sem problema nenhum).
+// 🆕 Cache de contagem por posição/tamanho de elenco, construído uma vez por
+// janela de mercado (não a cada candidato) — sem isto, a checagem de
+// necessidade posicional escanearia o jogadoresIA inteiro para cada clube
+// candidato de cada jogador avaliado, o que fica pesado com muitos clubes.
+let _cachePosClube = null;
+let _cacheTamanhoClube = null;
+
+function inicializarCachesElencoMercado() {
+    _cachePosClube = new Map();
+    _cacheTamanhoClube = new Map();
+    jogadoresIA.forEach(j => {
+        if (j.aposentado) return;
+        const chavePos = `${j.clubeId}|${j.posicao}`;
+        _cachePosClube.set(chavePos, (_cachePosClube.get(chavePos) || 0) + 1);
+        _cacheTamanhoClube.set(j.clubeId, (_cacheTamanhoClube.get(j.clubeId) || 0) + 1);
+    });
+}
+
+// Mantém o cache em dia sempre que um jogador muda de clube durante a janela
+// (empréstimo ou transferência), sem precisar reconstruir tudo de novo.
+function moverJogadorCacheMercado(origemId, destinoId, posicao) {
+    if (!_cachePosClube) return;
+    if (origemId) {
+        const chaveOrig = `${origemId}|${posicao}`;
+        _cachePosClube.set(chaveOrig, Math.max(0, (_cachePosClube.get(chaveOrig) || 0) - 1));
+        _cacheTamanhoClube.set(origemId, Math.max(0, (_cacheTamanhoClube.get(origemId) || 0) - 1));
+    }
+    if (destinoId) {
+        const chaveDest = `${destinoId}|${posicao}`;
+        _cachePosClube.set(chaveDest, (_cachePosClube.get(chaveDest) || 0) + 1);
+        _cacheTamanhoClube.set(destinoId, (_cacheTamanhoClube.get(destinoId) || 0) + 1);
+    }
+}
+
+function contarPosicaoNoElenco(clube, posicao) {
+    if (_cachePosClube) return _cachePosClube.get(`${clube.id}|${posicao}`) || 0;
+    return jogadoresIA.filter(j => j.clubeId === clube.id && !j.aposentado && j.posicao === posicao).length;
+}
+function tamanhoElencoClube(clubeId) {
+    if (_cacheTamanhoClube) return _cacheTamanhoClube.get(clubeId) || 0;
+    return jogadoresIA.filter(j => j.clubeId === clubeId && !j.aposentado).length;
+}
+const PROFUNDIDADE_IDEAL_POSICAO = { "Goleiro": 3, "Zagueiro": 5, "Lateral": 4, "Volante": 4, "Meio-Campista": 4, "Meia Ofensivo": 3, "Ponta": 4, "Atacante": 4 };
+const TAMANHO_ELENCO_CONFORTAVEL = 30;
+
 function escolherClubeComprador(j, clubeAtual, modoJanela) {
     const valor = calcularValorMercadoJogador(j);
     const promessa = j.idade <= 22 && j.geral >= 68;
@@ -4789,12 +5521,29 @@ function escolherClubeComprador(j, clubeAtual, modoJanela) {
                 const destinoForaEuropa = !["eng", "esp", "ita", "ger", "fra", "pt", "nl", "tr", "be"].includes(paisDestino);
                 if(j.geral >= 80 && europa && destinoForaEuropa && j.idade < 32) return false;
             }
+            // 🆕 NECESSIDADE POSICIONAL: um clube só compra um reforço numa posição
+            // onde já está bem "empilhado" (bem acima do ideal) se o jogador for
+            // uma melhora clara sobre o pior titular que já tem ali — senão passa.
+            const ideal = PROFUNDIDADE_IDEAL_POSICAO[j.posicao] || 4;
+            const jaTem = contarPosicaoNoElenco(c, j.posicao);
+            if (jaTem >= ideal + 2) {
+                const piorNaPosicao = jogadoresIA.filter(x => x.clubeId === c.id && !x.aposentado && x.posicao === j.posicao).sort((a,b) => a.geral - b.geral)[0];
+                if (piorNaPosicao && j.geral <= (piorNaPosicao.geral || 60) + 3) return false;
+            }
+            // 🆕 TAMANHO DO ELENCO: clubes já "cheios" (30+ jogadores sêniores) só
+            // reforçam se for mesmo necessidade posicional real, não qualquer nome.
+            const tamanhoElenco = tamanhoElencoClube(c.id);
+            if (tamanhoElenco >= TAMANHO_ELENCO_CONFORTAVEL && jaTem >= ideal) return false;
             return true;
         })
         .sort((a,b) => {
             const encaixeA = Math.abs((a.reputacao + (promessa ? 7 : 0)) - j.geral);
             const encaixeB = Math.abs((b.reputacao + (promessa ? 7 : 0)) - j.geral);
-            return encaixeA - encaixeB || (b.inteligenciaMercado || 60) - (a.inteligenciaMercado || 60) || b.orcamento - a.orcamento;
+            // 🆕 Entre clubes com encaixe parecido, prioriza quem tem mais buraco
+            // real naquela posição (necessidade), não só orçamento/inteligência.
+            const necessidadeA = Math.max(0, (PROFUNDIDADE_IDEAL_POSICAO[j.posicao] || 4) - contarPosicaoNoElenco(a, j.posicao));
+            const necessidadeB = Math.max(0, (PROFUNDIDADE_IDEAL_POSICAO[j.posicao] || 4) - contarPosicaoNoElenco(b, j.posicao));
+            return encaixeA - encaixeB || necessidadeB - necessidadeA || (b.inteligenciaMercado || 60) - (a.inteligenciaMercado || 60) || b.orcamento - a.orcamento;
         });
 }
 
@@ -4806,6 +5555,7 @@ function escolherClubeEmprestimo(j) {
 
 function processarMercadoTransferencias(modoJanela = "principal") {
     propostasPendentes = [];
+    inicializarCachesElencoMercado();
     const janela = modoJanela === "meio" ? "Janela de Meio de Ano" : "Janela Principal";
     const focoEmprestimo = modoJanela === "meio";
     if(modoJanela === "principal") jogador.contrato--;
@@ -4855,8 +5605,15 @@ function processarMercadoTransferencias(modoJanela = "principal") {
         }
 
         const valorNum = calcularValorMercadoJogador(j);
-        const querEmprestimo = focoEmprestimo && j.idade <= 23 && j.geral < 78 && Math.random() < 0.55;
+        // 🆕 Jogador insatisfeito por falta de espaço: se não é titular do seu
+        // clube, tem nível pra jogar mais (geral 62+) e já tem idade pra cobrar
+        // isso (20+), fica bem mais propenso a sair — tanto pra empréstimo
+        // (jovens buscando minutos) quanto pra transferência definitiva.
+        const clubeInfo = clubeAtual ? obterTitularesClube(clubeAtual.id) : null;
+        const naoETitular = clubeInfo && j.idade >= 20 && j.geral >= 62 && !(clubeInfo.titularesIds || []).includes(j.id);
+        const querEmprestimo = focoEmprestimo && j.idade <= 23 && (j.geral < 78 || naoETitular) && Math.random() < (naoETitular ? 0.74 : 0.55);
         let chanceTransferir = j.clubeId === "livre" ? 0.9 : (focoEmprestimo ? 0.035 : (j.contrato <= 1 ? 0.18 : (j.contrato >= 2 ? 0.025 : 0.06))) + ((j.felicidade || 55) < 35 ? 0.12 : 0);
+        if(naoETitular) chanceTransferir += (j.idade <= 25 ? 0.16 : 0.10);
         if(clubeAtual?.reputacao >= 84 && j.geral >= 84) chanceTransferir *= j.contrato >= 3 ? 0.08 : (j.contrato >= 2 ? 0.14 : 0.45);
         if(clubeAtual?.reputacao >= 88 && j.geral >= 86) chanceTransferir *= 0.05;
 
@@ -4864,6 +5621,7 @@ function processarMercadoTransferencias(modoJanela = "principal") {
             let destino = escolherClubeEmprestimo(j)[0];
             if(destino) {
                 j.clubeOrigemEmprestimo = clubeAtual.id; j.emprestadoAte = anoAtual; j.clubeId = destino.id;
+                moverJogadorCacheMercado(clubeAtual.id, destino.id, j.posicao);
                 registrarMovimentacao({ jogadorNome: j.nome, jogadorId: j.id, tipo: "emprestimo", valor: Math.floor(valorNum * 0.06), origemId: clubeAtual.id, destinoId: destino.id, janela });
                 feitos++;
             }
@@ -4876,9 +5634,10 @@ function processarMercadoTransferencias(modoJanela = "principal") {
                 let preco = j.clubeId === "livre" ? 0 : Math.floor(valorNum * (0.82 + Math.random() * 0.36));
                 destino.orcamento -= preco; if(clubeAtual) clubeAtual.orcamento += preco;
                 registrarMovimentacao({ jogadorNome: j.nome, jogadorId: j.id, tipo: "transferencia", valor: preco, origemId: j.clubeId, destinoId: destino.id, janela });
+                moverJogadorCacheMercado(j.clubeId === "livre" ? null : j.clubeId, destino.id, j.posicao);
                 j.clubeId = destino.id; j.contrato = Math.floor(Math.random() * 4) + 2; delete j.clubeOrigemEmprestimo; delete j.emprestadoAte;
                 feitos++;
-            } else if(j.contrato <= 0) { j.clubeId = "livre"; j.contrato = 0; }
+            } else if(j.contrato <= 0) { moverJogadorCacheMercado(j.clubeId, null, j.posicao); j.clubeId = "livre"; j.contrato = 0; }
         }
     });
 
@@ -5243,10 +6002,35 @@ function verificarJanelaMeioAno() {
 // ==========================================
 // 🌍 MOTOR DE ESTATÍSTICAS E COPAS GLOBAIS
 // ==========================================
-function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null) {
-    let elenco = jogadoresIA.filter(j => j.clubeId === clubeId && !j.aposentado);
+function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null, golsSofridos = 0) {
+    let elenco = montarEscalacaoJogo(clubeId);
     if(elenco.length === 0) return;
     elenco.forEach(j => { if(!j.statsTemporada) j.statsTemporada = { jogos: 0, gols: 0, assistencias: 0 }; j.statsTemporada.jogos++; registrarEstatisticaCompeticao(j, compId, 1, 0, 0); });
+
+    // 🛡️ FIX (estatísticas defensivas REAIS): antes, "desarmes/interceptações/
+    // defesas" dos zagueiros/laterais/goleiros eram só uma FÓRMULA inventada a
+    // partir do OVR (nunca vinham de jogos de verdade). Agora, a cada partida
+    // simulada, jogadores defensivos acumulam essas estatísticas de verdade —
+    // mais quando o clube não sofre gol, mais para o goleiro quando sofre menos.
+    const defensivos = elenco.filter(j => ["Zagueiro","Lateral","Goleiro"].includes(j.posicao));
+    if (defensivos.length > 0) {
+        const jogoLimpo = golsSofridos === 0;
+        defensivos.forEach(j => {
+            if (!j.statsTemporada.desarmes) j.statsTemporada.desarmes = 0;
+            if (!j.statsTemporada.interceptacoes) j.statsTemporada.interceptacoes = 0;
+            if (!j.statsTemporada.defesas) j.statsTemporada.defesas = 0;
+            if (!j.statsTemporada.jogosSemSofrerGol) j.statsTemporada.jogosSemSofrerGol = 0;
+            const fatorOvr = Math.max(0, ((j.geral || 60) - 58)) / 100;
+            if (j.posicao === "Goleiro") {
+                // Defesas aproximadas a partir de quantos gols o adversário quase fez (proxy: golsSofridos + variação).
+                j.statsTemporada.defesas += Math.round(1.5 + fatorOvr * 3.2 + Math.random() * 2 - golsSofridos * 0.3);
+            } else {
+                j.statsTemporada.desarmes += Math.round(0.6 + fatorOvr * 2.0 + Math.random() * 1.4);
+                j.statsTemporada.interceptacoes += Math.round(0.5 + fatorOvr * 1.6 + Math.random() * 1.2);
+            }
+            if (jogoLimpo) j.statsTemporada.jogosSemSofrerGol++;
+        });
+    }
 
     const getPeso = (j) => {
         let peso = Math.pow((j.geral || 60) / 100, 4.8);
@@ -5291,6 +6075,165 @@ function inicializarTabelas() {
     });
 }
 
+// ==========================================
+// 🇪🇺 FORMATO SUÍÇO (Champions / Europa / Conference League)
+// ==========================================
+// Substitui a antiga fase de grupos (4 times x 6 jogos) pelo formato real
+// atual da UEFA: 36 times numa tabela única, 8 jogos por time (2 contra cada
+// um dos 4 potes, sendo 1 em casa e 1 fora), classificação em 3 faixas
+// (1º-8º direto às oitavas, 9º-24º disputam playoff de ida e volta pelas
+// outras 8 vagas, 25º-36º eliminados).
+const CLUBES_LIGA_SUICA = new Set(["uefa_cl", "uefa_el", "uefa_col"]);
+
+function sortearPotesLigaSuica(times) {
+    const ordenado = [...times].sort((a, b) => (b.reputacao || 60) - (a.reputacao || 60));
+    const potes = [[], [], [], []];
+    ordenado.forEach((t, i) => potes[Math.min(3, Math.floor(i / 9))].push(t));
+    return potes;
+}
+
+// Gera as 144 partidas (36 times x 8 jogos / 2) garantindo que cada time
+// enfrente exatamente 2 times de cada pote (1 em casa, 1 fora).
+function gerarPartidasLigaSuica(times) {
+    const potes = sortearPotesLigaSuica(times);
+    const partidas = [];
+
+    // Dentro do mesmo pote (9 times): ciclo de 9 -> cada time joga com os 2
+    // "vizinhos" do ciclo, um em casa e outro fora.
+    potes.forEach(pote => {
+        const p = [...pote].sort(() => Math.random() - 0.5);
+        const n = p.length;
+        for (let i = 0; i < n; i++) partidas.push({ home: p[i], away: p[(i + 1) % n] });
+    });
+
+    // Entre potes diferentes: dois "casamentos" (offset 0 e offset 1), que
+    // nunca coincidem -> cada time fica com exatamente 2 rivais do outro
+    // pote (1 em casa, 1 fora), e vice-versa.
+    for (let i = 0; i < potes.length; i++) {
+        for (let j = i + 1; j < potes.length; j++) {
+            const A = [...potes[i]].sort(() => Math.random() - 0.5);
+            const B = [...potes[j]].sort(() => Math.random() - 0.5);
+            const n = Math.min(A.length, B.length);
+            for (let k = 0; k < n; k++) {
+                partidas.push({ home: A[k], away: B[k] });
+                partidas.push({ home: B[k], away: A[(k + 1) % n] });
+            }
+        }
+    }
+    return partidas;
+}
+
+// Distribui as partidas em 8 rodadas sem repetir nenhum time na mesma
+// rodada. Usa busca com retrocesso (backtracking) + heurística MRV (sempre
+// tenta primeiro a partida com menos rodadas "livres" restantes) — isso
+// encontra um encaixe válido na esmagadora maioria dos casos, bem mais
+// confiável que sorteio aleatório puro. Tem uma rede de segurança final para
+// nunca travar o jogo, mesmo no caso raríssimo de não conseguir de jeito nenhum.
+function distribuirRodadasLigaSuicaTentativa(partidas) {
+    const NUM_RODADAS = 8;
+    const porTime = new Map();
+    partidas.forEach((jogo, idx) => {
+        if (!porTime.has(jogo.home.id)) porTime.set(jogo.home.id, []);
+        if (!porTime.has(jogo.away.id)) porTime.set(jogo.away.id, []);
+        porTime.get(jogo.home.id).push(idx);
+        porTime.get(jogo.away.id).push(idx);
+    });
+    const rodadaDe = new Array(partidas.length).fill(-1);
+
+    function possivel(idx, r) {
+        const { home, away } = partidas[idx];
+        for (const e of porTime.get(home.id)) if (rodadaDe[e] === r) return false;
+        for (const e of porTime.get(away.id)) if (rodadaDe[e] === r) return false;
+        return true;
+    }
+    function domainSize(idx) {
+        let c = 0;
+        for (let r = 0; r < NUM_RODADAS; r++) if (possivel(idx, r)) c++;
+        return c;
+    }
+    function escolherProximo(restantes) {
+        let melhor = -1, melhorTam = Infinity;
+        for (const idx of restantes) {
+            const d = domainSize(idx);
+            if (d < melhorTam) { melhorTam = d; melhor = idx; if (d <= 1) break; }
+        }
+        return melhor;
+    }
+
+    let ops = 0;
+    const LIMITE_OPS = 2000000;
+    function backtrack(restantes) {
+        ops++;
+        if (ops > LIMITE_OPS) return false;
+        if (restantes.length === 0) return true;
+        const idx = escolherProximo(restantes);
+        const novoRestantes = restantes.filter(i => i !== idx);
+        for (let r = 0; r < NUM_RODADAS; r++) {
+            if (possivel(idx, r)) {
+                rodadaDe[idx] = r;
+                if (backtrack(novoRestantes)) return true;
+                rodadaDe[idx] = -1;
+            }
+        }
+        return false;
+    }
+
+    const ok = backtrack(partidas.map((_, i) => i));
+    if (ok) return partidas.map((j, i) => ({ ...j, rodada: rodadaDe[i] + 1 }));
+    return null;
+}
+
+
+
+function gerarFaseLigaSuica(compId, times) {
+    // Tenta o sorteio + encaixe algumas vezes do zero (raríssimo precisar de
+    // mais de 1 tentativa) antes de aceitar a distribuição aproximada.
+    let partidas = null;
+    for (let tentativa = 0; tentativa < 5 && !partidas; tentativa++) {
+        partidas = distribuirRodadasLigaSuicaTentativa(gerarPartidasLigaSuica(times));
+    }
+    if (!partidas) {
+        console.warn(`Liga Suiça (${compId}): usando distribuicao aproximada apos varias tentativas.`);
+        partidas = gerarPartidasLigaSuica(times).map((jogo, idx) => ({ ...jogo, rodada: (idx % 8) + 1 }));
+    }
+    const tabela = times.map(t => ({ id: t.id, pts: 0, j: 0, gf: 0, gs: 0 }));
+    if (!copasEstado[compId]) copasEstado[compId] = { historicoFases: [] };
+    copasEstado[compId].tipo = "liga_unica";
+    copasEstado[compId].fase = "Fase de Liga";
+    copasEstado[compId].tabela = tabela;
+    copasEstado[compId].fixtures = partidas;
+    copasEstado[compId].rodadaAtual = 1;
+}
+
+// Fecha a fase de liga: 1º-8º avançam direto às oitavas; 9º-24º entram no
+// playoff (ida e volta, semeado 9ºx24º, 10ºx23º...); 25º-36º são eliminados.
+function processarFimLigaSuica(compId) {
+    const estado = copasEstado[compId];
+    if (!estado || estado.tipo !== "liga_unica") return;
+    arquivarFase(compId);
+
+    const tabOrd = [...estado.tabela].sort((a, b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs) || b.gf - a.gf);
+    const top8 = tabOrd.slice(0, 8).map(t => clubes.find(c => c.id === t.id)).filter(Boolean);
+    const poolPlayoff = tabOrd.slice(8, 24).map(t => clubes.find(c => c.id === t.id)).filter(Boolean);
+
+    const confrontosPlayoff = [];
+    for (let i = 0; i < 8; i++) {
+        const melhor = poolPlayoff[i];      // 9º..16º (melhor colocado do par)
+        const pior = poolPlayoff[15 - i];   // 24º..17º (pior colocado do par)
+        if (melhor && pior) confrontosPlayoff.push({ timeA: pior, timeB: melhor, golsAIda: null, golsBIda: null, golsAVolta: null, golsBVolta: null, vencedorId: null });
+    }
+
+    copasEstado[compId] = {
+        historicoFases: estado.historicoFases,
+        tipo: "mata-mata",
+        fase: "Playoff",
+        confrontos: confrontosPlayoff,
+        classificadosDiretos: top8
+    };
+    agendarConfrontoContinentalDoJogador(compId);
+}
+
+
 function gerarChaveamentoMataMata(compId, times, faseNome) {
     if(!copasEstado[compId]) copasEstado[compId] = { historicoFases: [] };
     let confrontos = []; times.sort(() => Math.random() - 0.5); 
@@ -5308,6 +6251,43 @@ function gerarFaseDeGrupos(compId, times) {
 function clubePorIdOuRepresentante(id, nome, reputacao = 76) {
     const repId = id || `rep_${normalizarTexto(nome).replace(/\s+/g, "_")}`;
     return clubes.find(c => c.id === repId) || clubes.find(c => c.id === id) || { id: repId, nome, reputacao, ligaId: "int_rep", generico: true };
+}
+
+// 🆕 CLUBES GENÉRICOS: enquanto o save não tiver clubes reais suficientes
+// classificados para uma competição continental, preenchemos as vagas que
+// faltam com clubes "genéricos" (nome/reputação neutros). Isso evita
+// chaveamentos incompletos ou capengos (ex: só 5-6 times reais formando um
+// mata-mata minúsculo com jogos 0-0 esquisitos). Assim que existirem clubes
+// reais suficientes classificados, eles automaticamente tomam essas vagas —
+// isso aqui é só um "preenchimento" (nunca substitui um clube real por um genérico).
+function criarClubeGenerico(compId, indice) {
+    const repBase = 58 + Math.floor(Math.random() * 14); // 58-71: nível modesto, mas variado
+    return {
+        id: `generico_${compId}_${indice}`,
+        nome: `Clube Genérico ${indice}`,
+        logo: "",
+        reputacao: repBase,
+        ligaId: `int_generico_${compId}`,
+        pais: "Genérico",
+        generico: true
+    };
+}
+
+// Completa uma lista de clubes até "alvo" times, usando clubes genéricos para
+// as vagas que faltarem (nunca remove clubes reais já presentes). Se a lista
+// já tiver mais que o alvo, apenas corta o excedente (mantendo os primeiros,
+// que já vêm ordenados por classificação/reputação de quem chamou).
+function completarComTimesGenericos(times, alvo, compId) {
+    let lista = [...times];
+    if (lista.length > alvo) return lista.slice(0, alvo);
+    let n = 1;
+    while (lista.length < alvo) {
+        const generico = criarClubeGenerico(compId, n);
+        if (!clubes.find(c => c.id === generico.id)) clubes.push(generico);
+        lista.push(generico);
+        n++;
+    }
+    return lista;
 }
 
 function registrarFinalEspecial(compId, times, fase = "Final", opcoes = {}) {
@@ -5380,15 +6360,52 @@ function inicializarCopasNacionaisEContinentais() {
 
     inicializarSupercopasContinentaisEIntercontinental();
 
+    // ==========================================
+    // 🏆 CAMPEONATOS ESTADUAIS (Brasil)
+    // ==========================================
+    // Os dados já existiam em competicoes.js (tipo:"estadual", campo estado)
+    // e em times.js (cada clube brasileiro tem o seu estado), mas nunca
+    // tinham sido ligados à lógica do jogo. Reaproveita o MESMO motor de
+    // mata-mata das copas nacionais — cada estadual é só um "mata-mata"
+    // cujo grupo de participantes são os clubes daquele estado específico.
+    // NOTA: por simplicidade, corre ao longo da temporada como a Copa do
+    // Brasil, em vez de ficar restrito a janeiro-abril como no futebol real.
+    competicoes.filter(c => c.tipo === "estadual").forEach(estadual => {
+        let timesEstado = clubes.filter(c => c.estado === estadual.estado);
+        if (timesEstado.length < 4) return; // não há clubes suficientes deste estado carregados
+        // Usa o maior "power of two" possível (16, 8 ou 4) para um chaveamento limpo.
+        let tamanho = timesEstado.length >= 16 ? 16 : timesEstado.length >= 8 ? 8 : 4;
+        timesEstado = [...timesEstado].sort((a, b) => b.reputacao - a.reputacao).slice(0, tamanho);
+        const faseInicial = tamanho === 16 ? "Oitavas de Final" : tamanho === 8 ? "Quartas de Final" : "Semifinal";
+        gerarChaveamentoMataMata(estadual.id, timesEstado, faseInicial);
+    });
+
     for (const [compId, vagasId] of Object.entries(window.vagasContinentais)) {
         if (vagasId && vagasId.length > 0) {
             let timesContinental = vagasId.map(id => clubes.find(c=>c.id===id)).filter(Boolean);
+
+            // 🆕 FORMATO SUÍÇO (Champions/Europa/Conference): precisa de 36 times
+            // numa tabela única. Enquanto o save não tiver 36 clubes reais
+            // classificados, completamos com clubes genéricos (ver
+            // completarComTimesGenericos) só para o campeonato rodar corretamente
+            // — assim que houver clubes reais suficientes, eles tomam as vagas.
+            if (CLUBES_LIGA_SUICA.has(compId)) {
+                timesContinental = completarComTimesGenericos(timesContinental, 36, compId);
+                gerarFaseLigaSuica(compId, timesContinental);
+                continue;
+            }
+
             if (timesContinental.length < 8 && timesContinental.length > 0) {
                 let prefix = compId.includes("afc") ? "ara" : (compId.includes("concacaf") ? "usa" : "br");
                 let extra = clubes.filter(c => c.ligaId.startsWith(prefix) && !vagasId.includes(c.id));
                 while(timesContinental.length < 8 && extra.length > 0) { timesContinental.push(extra.pop()); }
             }
-            timesContinental = timesContinental.slice(0, Math.floor(timesContinental.length/4)*4); 
+            // 🆕 Em vez de truncar clubes reais para o múltiplo de 4 mais próximo
+            // (o que descartava clubes já classificados), completa com clubes
+            // genéricos até o próximo tamanho "redondo" de chaveamento (8/16/32).
+            const alvoChaveamento = timesContinental.length > 16 ? 32 : timesContinental.length > 8 ? 16 : 8;
+            timesContinental = completarComTimesGenericos(timesContinental, alvoChaveamento, compId);
+
             if(timesContinental.length >= 8) gerarFaseDeGrupos(compId, timesContinental); 
             else if (timesContinental.length >= 4) gerarChaveamentoMataMata(compId, timesContinental, "Semifinal");
             else if (timesContinental.length >= 2) gerarChaveamentoMataMata(compId, timesContinental, "Final");
@@ -5399,6 +6416,7 @@ function inicializarCopasNacionaisEContinentais() {
 function arquivarFase(compId) {
     let estado = copasEstado[compId]; if(!estado.historicoFases) estado.historicoFases = [];
     if(estado.tipo === "grupos") estado.historicoFases.push({ tipo: "grupos", fase: estado.fase, grupos: JSON.parse(JSON.stringify(estado.grupos)) });
+    else if(estado.tipo === "liga_unica") estado.historicoFases.push({ tipo: "liga_unica", fase: estado.fase, tabela: JSON.parse(JSON.stringify(estado.tabela)) });
     else if(estado.tipo === "mata-mata") estado.historicoFases.push({ tipo: "mata-mata", fase: estado.fase, confrontos: JSON.parse(JSON.stringify(estado.confrontos)) });
 }
 
@@ -5440,6 +6458,29 @@ function avancarFaseMataMata(compId) {
         copasEstado[compId].jogoUnico = true;
         copasEstado[compId].neutro = true;
         copasEstado[compId].descricaoCalendario = estado.descricaoCalendario;
+        return;
+    }
+    // 🆕 FORMATO SUÍÇO: o Playoff (9º-24º da fase de liga) termina com 8
+    // vencedores que precisam se juntar aos 8 classificados diretos (1º-8º)
+    // para formar as Oitavas de Final com 16 times — sem isto, a lógica
+    // genérica abaixo (que decide a fase só pela quantidade de vencedores)
+    // interpretaria erroneamente 8 vencedores como "Quartos de Final",
+    // pulando a fase de Oitavas e embaralhando quem realmente avançou.
+    if (estado.fase === "Playoff" && estado.classificadosDiretos) {
+        const classificadosPlayoff = vencedores.map(id => clubes.find(c => c.id === id) || clubePorIdOuRepresentante(id, "Classificado Playoff", 74));
+        const times16 = [...estado.classificadosDiretos, ...classificadosPlayoff];
+        delete estado.classificadosDiretos;
+        gerarChaveamentoMataMata(compId, times16, "Oitavos de Final");
+
+        let confMeu16 = copasEstado[compId].confrontos.find(c => c.timeA.id === jogador.clubeId || c.timeB.id === jogador.clubeId);
+        if (confMeu16) {
+            let adv16 = confMeu16.timeA.id === jogador.clubeId ? confMeu16.timeB : confMeu16.timeA;
+            let nomeTorneio16 = competicoes.find(c => c.id === compId)?.nome || "Copa";
+            let pernas16 = numeroPernasConfronto(compId, copasEstado[compId], "Oitavos de Final");
+            const cfgCal16 = obterConfigCalendarioCompeticao(compId);
+            adicionarEventoCalendario({ tipo: `${nomeTorneio16} (Oitavos de Final - Ida)`, compId: compId, adversarioId: adv16.id, isMataMata: true, perna: 1, fase: "Oitavos de Final" }, obterSlotCompeticaoCalendario(compId, "Oitavos de Final", 1), cfgCal16.janela, cfgCal16.modelo);
+            if (pernas16 === 2) adicionarEventoCalendario({ tipo: `${nomeTorneio16} (Oitavos de Final - Volta)`, compId: compId, adversarioId: adv16.id, isMataMata: true, perna: 2, fase: "Oitavos de Final" }, obterSlotCompeticaoCalendario(compId, "Oitavos de Final", 2), cfgCal16.janela, cfgCal16.modelo);
+        }
         return;
     }
     let times = vencedores.map(id => clubePorIdOuRepresentante(id, "Representante Continental", 76));
@@ -5513,7 +6554,10 @@ function gerarAgenda() {
         jogoLigaIdx++;
     }
     
-    competicoes.filter(c => c.tipo.includes("copa") && obterPaisCompeticaoId(c.id) === pais && c.tipo !== "supercopa").forEach((copa, idx) => {
+    // 🏆 CAMPEONATOS ESTADUAIS (Brasil): usa o mesmo mecanismo genérico das
+    // copas nacionais — o .find() abaixo já garante que só entra no calendário
+    // a competição estadual em que o clube do jogador realmente está inscrito.
+    competicoes.filter(c => (c.tipo.includes("copa") || c.tipo === "estadual") && obterPaisCompeticaoId(c.id) === pais && c.tipo !== "supercopa").forEach((copa, idx) => {
         let state = copasEstado[copa.id];
         if(state && state.confrontos) {
             let conf = state.confrontos.find(c => c.timeA.id === meuClube.id || c.timeB.id === meuClube.id);
@@ -5529,7 +6573,16 @@ function gerarAgenda() {
     for (const [torneioId, estado] of Object.entries(copasEstado)) {
         const compTorneio = competicoes.find(c=>c.id===torneioId);
         if (compTorneio?.isContinental || ["continental", "supercopa_continental", "torneio_intercontinental"].includes(compTorneio?.tipo)) {
-            if(estado.tipo === "grupos") {
+            if (estado.tipo === "liga_unica" && estado.fixtures) {
+                let meusJogos = estado.fixtures.filter(f => f.home.id === meuClube.id || f.away.id === meuClube.id).sort((a,b) => a.rodada - b.rodada);
+                let nome = competicoes.find(c => c.id === torneioId)?.nome || "Fase de Liga";
+                meusJogos.forEach(f => {
+                    const souMandante = f.home.id === meuClube.id;
+                    const advId = souMandante ? f.away.id : f.home.id;
+                    const cfgCal = obterConfigCalendarioCompeticao(torneioId);
+                    adicionarEventoCalendario({ tipo: `${nome} (Fase de Liga J${f.rodada})`, compId: torneioId, fase: "Fase de Liga", adversarioId: advId, isMataMata: false, emCasa: souMandante, rodadaLigaSuica: f.rodada }, obterSlotContinentalCalendario(torneioId, "Fase de Liga", 1, f.rodada), cfgCal.janela, cfgCal.modelo);
+                });
+            } else if(estado.tipo === "grupos") {
                 estado.grupos.forEach(grp => {
                     if(grp.equipas.find(e => e.id === meuClube.id)) {
                         let advs = grp.equipas.filter(e => e.id !== meuClube.id);
@@ -5561,7 +6614,11 @@ function simularRodadaMundial() {
     verificarJanelaMeioAno();
     processarEventosAleatorios();
     if (jogador?.lifestyle && typeof window.awardWeeklyTrainingPoints === 'function') window.awardWeeklyTrainingPoints();
-    processarJanelaSelecoes();
+    // 🛡️ NOTA: processarJanelaSelecoes()/processarJanelaSelecoesBase() NÃO são
+    // chamadas aqui de propósito — no modo online, esta função só corre no
+    // "anfitrião do mundo" (ver simularRodadaMundialOnline), mas a convocação
+    // para a seleção é algo PESSOAL de cada jogador. Por isso são chamadas
+    // separadamente, sempre, por window.simularRodadaMundialOnline() abaixo.
     simularTorneiosInternacionais();
     
     for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
@@ -5583,7 +6640,7 @@ function simularRodadaMundial() {
             if(gC>gV){ tC.pontos+=3; tC.vitorias=(tC.vitorias||0)+1; tV.derrotas=(tV.derrotas||0)+1; } 
             else if(gV>gC){ tV.pontos+=3; tV.vitorias=(tV.vitorias||0)+1; tC.derrotas=(tC.derrotas||0)+1; } 
             else { tC.pontos+=1; tV.pontos+=1; tC.empates=(tC.empates||0)+1; tV.empates=(tV.empates||0)+1; }
-            atribuirEstatisticaNPC(tC.id, gC, ligaId); atribuirEstatisticaNPC(tV.id, gV, ligaId);
+            atribuirEstatisticaNPC(tC.id, gC, ligaId, gV); atribuirEstatisticaNPC(tV.id, gV, ligaId, gC);
         }
     }
 
@@ -5615,7 +6672,7 @@ function simularRodadaMundial() {
                         let gA = Math.random()+df+0.1>0.6?Math.floor(Math.random()*3)+1:0; let gB = Math.random()-df>0.6?Math.floor(Math.random()*3)+1:0;
                         tA.j++; tB.j++; tA.gf+=gA; tA.gs+=gB; tB.gf+=gB; tB.gs+=gA;
                         if(gA>gB) tA.pts+=3; else if(gB>gA) tB.pts+=3; else { tA.pts+=1; tB.pts+=1; }
-                        atribuirEstatisticaNPC(tA.id, gA, compId); atribuirEstatisticaNPC(tB.id, gB, compId);
+                        atribuirEstatisticaNPC(tA.id, gA, compId, gB); atribuirEstatisticaNPC(tB.id, gB, compId, gA);
                     }
                 });
                 estado.rodadaAtual++;
@@ -5629,8 +6686,48 @@ function simularRodadaMundial() {
                     agendarConfrontoContinentalDoJogador(compId);
                 }
             }
+        } else if (estado.tipo === "liga_unica" && estado.fixtures && estado.rodadaAtual <= 8) {
+            // Mesmo princípio da correção acima: só considera que "tenho jogo
+            // pendente" nesta rodada se o MEU jogo desta rodada específica ainda
+            // não foi resolvido — nunca trava esperando uma rodada que já passou.
+            const jogosRodada = estado.fixtures.filter(f => f.rodada === estado.rodadaAtual);
+            const meuJogoPendente = jogosRodada.some(f => (f.home.id === jogador.clubeId || f.away.id === jogador.clubeId) && f.golsHome === undefined);
+            const simularHoje = (!compAtual) || (compAtual.compId === compId) || (!meuJogoPendente && rodadaAtual % 3 === 0);
+
+            if (simularHoje) {
+                jogosRodada.forEach(f => {
+                    if (f.home.id === jogador.clubeId || f.away.id === jogador.clubeId) return; // meu jogo é resolvido quando eu jogo, na tela de partida
+                    if (f.golsHome !== undefined) return;
+                    const cA = clubes.find(c=>c.id===f.home.id); const cB = clubes.find(c=>c.id===f.away.id);
+                    let df = ((cA?.reputacao||60) - (cB?.reputacao||60))/20;
+                    let gA = Math.random()+df+0.1>0.5?Math.floor(Math.random()*3):0;
+                    let gB = Math.random()-df>0.5?Math.floor(Math.random()*3):0;
+                    f.golsHome = gA; f.golsAway = gB;
+                    const tH = estado.tabela.find(t=>t.id===f.home.id); const tA = estado.tabela.find(t=>t.id===f.away.id);
+                    if (tH) { tH.j++; tH.gf+=gA; tH.gs+=gB; if(gA>gB) tH.pts+=3; else if(gA===gB) tH.pts+=1; }
+                    if (tA) { tA.j++; tA.gf+=gB; tA.gs+=gA; if(gB>gA) tA.pts+=3; else if(gA===gB) tA.pts+=1; }
+                    atribuirEstatisticaNPC(f.home.id, gA, compId, gB); atribuirEstatisticaNPC(f.away.id, gB, compId, gA);
+                });
+                if (jogosRodada.every(f => f.golsHome !== undefined)) {
+                    estado.rodadaAtual++;
+                    if (estado.rodadaAtual > 8) processarFimLigaSuica(compId);
+                }
+            }
         } else if (estado.tipo === "mata-mata" && estado.confrontos) {
-            let temJogoMeu = estado.confrontos.some(c => c.timeA.id === jogador.clubeId || c.timeB.id === jogador.clubeId);
+            // sem checar se já tinha vencedorId. Resultado: assim que eu jogava a
+            // minha ida/volta e o meu confronto ficava resolvido, o meu confronto
+            // continuava "presente" no array — então temJogoMeu ficava true PARA
+            // SEMPRE naquela fase, e os OUTROS confrontos (só entre times da IA)
+            // nunca mais eram simulados (porque só simulavam quando compAtual
+            // fosse essa competição, ou quando eu não tivesse jogo nela). A fase
+            // ficava travada, sem nunca ter todos os vencedorId definidos, então
+            // avancarFaseMataMata() nunca era chamado — e a próxima fase (ex:
+            // Quartas) só era "resolvida" à força, com placares aleatórios, no
+            // forcarFimDeCopas() lá no fim da temporada. Isso é exatamente o bug
+            // relatado: oitavas acontecem normalmente, mas quartas em diante ficam
+            // travadas e os adversários que aparecem depois não batem com quem
+            // realmente avançou.
+            let temJogoMeu = estado.confrontos.some(c => (c.timeA.id === jogador.clubeId || c.timeB.id === jogador.clubeId) && !c.vencedorId);
             let simularHoje = (!compAtual) || (compAtual.compId === compId) || (!temJogoMeu && rodadaAtual % 3 === 0);
 
             if (simularHoje) {
@@ -5654,7 +6751,7 @@ function simularRodadaMundial() {
                             const res = resolverVencedorMataMata(conf.timeA.id, conf.timeB.id, agA, agB, fA, fB);
                             conf.vencedorId = res.vencedorId; conf.penaltis = res.penaltis;
                         }
-                        atribuirEstatisticaNPC(conf.timeA.id, gC, compId); atribuirEstatisticaNPC(conf.timeB.id, gV, compId);
+                        atribuirEstatisticaNPC(conf.timeA.id, gC, compId, gV); atribuirEstatisticaNPC(conf.timeB.id, gV, compId, gC);
                     }
                 });
                 if(estado.confrontos.every(c => c.vencedorId) && estado.confrontos.length >= 1) avancarFaseMataMata(compId);
@@ -5673,6 +6770,13 @@ function simularRodadaMundial() {
 // substitui as chamadas diretas a simularRodadaMundial() nos pontos em que
 // a rodada avança.
 window.simularRodadaMundialOnline = async function() {
+    // 🧑 PESSOAL: a convocação para a seleção (principal e de base) é sempre
+    // processada no MEU cliente, mesmo quando não sou o "anfitrião do mundo"
+    // (que só calcula as tabelas/copas partilhadas). Sem isto, quem não fosse
+    // anfitrião nunca seria convocado para a seleção enquanto jogasse online.
+    processarJanelaSelecoes();
+    processarJanelaSelecoesBase();
+
     if (window.connectionMode !== 'online' || !window.firebaseIntegration) {
         simularRodadaMundial();
         return;
@@ -5707,6 +6811,23 @@ function forcarFimDeCopas() {
     while(loopSafety > 0) {
         let pendente = false;
         for (const [compId, estado] of Object.entries(copasEstado)) {
+            if (estado.tipo === "liga_unica" && estado.fixtures) {
+                pendente = true;
+                // Preenche à força qualquer jogo restante (incluindo o meu, se eu não
+                // tiver conseguido jogar todas as 8 rodadas) só para a fase de liga
+                // conseguir fechar e o playoff/oitavas serem gerados corretamente.
+                estado.fixtures.forEach(f => {
+                    if (f.golsHome === undefined) {
+                        const gA = Math.floor(Math.random()*3); const gB = Math.floor(Math.random()*2);
+                        f.golsHome = gA; f.golsAway = gB;
+                        const tH = estado.tabela.find(t=>t.id===f.home.id); const tA = estado.tabela.find(t=>t.id===f.away.id);
+                        if (tH) { tH.j++; tH.gf+=gA; tH.gs+=gB; if(gA>gB) tH.pts+=3; else if(gA===gB) tH.pts+=1; }
+                        if (tA) { tA.j++; tA.gf+=gB; tA.gs+=gA; if(gB>gA) tA.pts+=3; else if(gA===gB) tA.pts+=1; }
+                    }
+                });
+                processarFimLigaSuica(compId);
+                continue;
+            }
             if (estado.tipo === "grupos" && estado.grupos && estado.fase !== "Campeão Definido") {
                 pendente = true;
                 let classificados = [];
@@ -5943,6 +7064,16 @@ function apurarCampeoesTemporada() {
             }
         }
     }
+
+    // 🆕 O campeão da Champions League E o campeão da Europa League garantem
+    // vaga direta na Champions League da temporada seguinte, mesmo que não
+    // tenham terminado a liga doméstica numa posição classificável — reflete
+    // a regra real da UEFA (título garante entrada independente da posição).
+    [campeoesAnoAnterior.copas.uefa_cl, campeoesAnoAnterior.copas.uefa_el].forEach(campeaoId => {
+        if (campeaoId && !window.vagasContinentais.uefa_cl.includes(campeaoId)) {
+            window.vagasContinentais.uefa_cl.push(campeaoId);
+        }
+    });
 }
 
 function processarFimTemporada() {
@@ -6061,6 +7192,11 @@ function processarFimTemporada() {
 // inteiro é transmitido para o amigo aplicar, para que os dois vejam
 // exatamente os mesmos campeões e prémios.
 window.processarFimTemporadaOnline = async function() {
+    // 🤝 PESSOAL: a promessa feita ao técnico usa só as minhas próprias
+    // estatísticas — por isso é avaliada sempre, em qualquer modo, e mesmo
+    // para quem não é o "anfitrião do mundo" no online.
+    avaliarPromessasTecnico();
+
     if (window.connectionMode !== 'online' || !window.firebaseIntegration) {
         processarFimTemporada();
         return;
@@ -6421,7 +7557,11 @@ function clubeManagerAtual() {
 }
 
 function calcularFolhaClube(clubeId) {
-    return jogadoresIA.filter(p => p.clubeId === clubeId && !p.aposentado).reduce((acc, p) => acc + Math.max(12000, (p.valorMercadoNum || calcularValorMercadoJogador(p)) * 0.018), 0);
+    const clube = clubes.find(c => c.id === clubeId);
+    const reputacao = clube?.reputacao || 65;
+    const fatorClube = 0.55 + (reputacao / 100) * 1.2;
+    const fatorArabe = clube?.ligaId?.startsWith("ara") ? 1.6 : 1;
+    return jogadoresIA.filter(p => p.clubeId === clubeId && !p.aposentado).reduce((acc, p) => acc + Math.max(12000, (p.valorMercadoNum || calcularValorMercadoJogador(p)) * 0.018) * fatorClube * fatorArabe, 0);
 }
 
 function gerarBaseManager(clube) {
@@ -6635,8 +7775,8 @@ window.managerSimularPartida = async function() {
         managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + 1));
     }
     if(typeof atribuirEstatisticaNPC === 'function') {
-        atribuirEstatisticaNPC(mt.id, gA, clube.ligaId);
-        atribuirEstatisticaNPC(advEntry.id, gB, clube.ligaId);
+        atribuirEstatisticaNPC(mt.id, gA, clube.ligaId, gB);
+        atribuirEstatisticaNPC(advEntry.id, gB, clube.ligaId, gA);
     }
 
     if(managerEstado.confianca <= 0) {
@@ -6839,6 +7979,7 @@ window.managerDrop = function(ev, tipoAlvo, idAlvo) {
 function renderizarManagerTactics() {
     const clube = clubeManagerAtual();
     if (!clube) return;
+    obterTitularesClube(clube.id);
     const slots = FORMACOES_SLOTS[managerEstado.tatica.formacao] || FORMACOES_SLOTS["4-3-3"];
     const esc = garantirEscalacaoManager(clube);
     const sel = window.managerSelecaoAtiva;
@@ -6880,11 +8021,15 @@ function renderizarManagerTactics() {
         const titularesIds = new Set(Object.values(esc.titulares));
         const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado).sort((a, b) => b.geral - a.geral);
         if (jogador?.clubeId === clube.id) elenco.unshift(jogador);
-        squadListEl.innerHTML = elenco.map(p => `<div class="squad-player-item ${titularesIds.has(p.id) ? "titular" : ""}">
+        const capitaoId = (jogador?.clubeId === clube.id && jogador.eCapitao) ? "player" : (clube.capitaoId || null);
+        squadListEl.innerHTML = elenco.map(p => {
+            const ehCapitao = p.id === capitaoId;
+            return `<div class="squad-player-item ${titularesIds.has(p.id) ? "titular" : ""}">
             <img class="squad-player-avatar-img" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
-            <div class="squad-player-info"><span class="squad-player-name">${p.nome}</span><span class="squad-player-pos">${p.posicao}${titularesIds.has(p.id) ? " • Titular" : ""}</span></div>
+            <div class="squad-player-info"><span class="squad-player-name">${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</span><span class="squad-player-pos">${p.posicao}${titularesIds.has(p.id) ? " • Titular" : ""}</span></div>
             <span class="squad-player-ovr">${p.geral}</span>
-        </div>`).join("");
+        </div>`;
+        }).join("");
     }
 
     const formSel = document.getElementById("formation-select");
@@ -6905,13 +8050,27 @@ function renderizarManagerFullSquad() {
     if (!clube || !el) return;
     const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado).sort((a, b) => b.geral - a.geral);
     if (jogador?.clubeId === clube.id) elenco.unshift(jogador);
-    el.innerHTML = `<div class="manager-full-squad-list">${elenco.map(p => `
-        <div class="manager-row" onclick="abrirPerfilJogador('${p.id}')">
+    // 🆕 Braçadeira (C) e "Titular": usa a escalação REAL do treinador (a mesma
+    // do campo tático, com os ajustes manuais dele) como fonte da verdade para
+    // este clube — e não o cálculo automático genérico (esse é só para simular
+    // estatísticas dos milhares de clubes que ninguém gerencia diretamente).
+    // Se o próprio jogador já conquistou a braçadeira (conversa com o técnico),
+    // isso tem prioridade sobre qualquer outro cálculo.
+    const esc = garantirEscalacaoManager(clube);
+    const idsTitulares = new Set(Object.values(esc.titulares));
+    obterTitularesClube(clube.id); // garante fallback (capitaoId) computado, caso o jogador não seja capitão
+    const capitaoId = (jogador?.clubeId === clube.id && jogador.eCapitao) ? "player" : (clube.capitaoId || null);
+    el.innerHTML = `<div class="manager-full-squad-list">${elenco.map(p => {
+        const ehCapitao = p.id === capitaoId;
+        const ehTitular = idsTitulares.has(p.id) || ehCapitao;
+        return `
+        <div class="manager-row ${ehTitular ? 'manager-row-titular' : ''}" onclick="abrirPerfilJogador('${p.id}')">
             <img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
-            <span><strong>${p.nome}</strong><small>${p.posicao} • ${p.idade || "-"} anos</small></span>
+            <span><strong>${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong><small>${p.posicao} • ${p.idade || "-"} anos${ehTitular ? ' • Titular' : ''}</small></span>
             <em>OVR ${p.geral}</em>
             <em>${formatarMoeda(p.valorMercadoNum || calcularValorMercadoJogador(p))}</em>
-        </div>`).join("") || `<p style="color:#aaa;">Elenco vazio.</p>`}</div>`;
+        </div>`;
+    }).join("") || `<p style="color:#aaa;">Elenco vazio.</p>`}</div>`;
 }
 
 function renderizarManagerTransfers(termoBusca = "") {
@@ -7094,6 +8253,11 @@ function renderizarCalendarioTemporada() {
 function atualizarHub() {
     if (jogador) { inicializarEstadoCarreiraJogador(); atualizarProgressoObjetivos(); }
     else return;
+    // 🛡️ FIX: atualizarHub() é sempre chamado no fim de qualquer avanço de
+    // rodada/partida — é um ponto seguro para "destrancar" o botão de jogar,
+    // liberando window.partidaEmAndamento (ver guarda anti-clique-duplo em
+    // btnJogarHub/btnDescansar mais abaixo).
+    window.partidaEmAndamento = false;
     normalizarAgendaCalendario();
     let meuClube = clubes.find(c => c.id === jogador.clubeId);
     jogador.valorMercadoNum = calcularValorMercadoJogador(jogador); 
@@ -7220,7 +8384,7 @@ function inicializarInterfaceTabelasClean() {
     };
 
     let paisesMapeados = {};
-    const compsUnicas = Array.from(new Map(competicoes.filter(c => c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa").map(c => [c.id, c])).values());
+    const compsUnicas = Array.from(new Map(competicoes.filter(c => c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual").map(c => [c.id, c])).values());
     compsUnicas.forEach(comp => {
         let prefix = obterPaisCompeticaoId(comp.id);
         let info = paisInfo[prefix] || { nome: "Outros", regiao: "Mundo" };
@@ -7245,7 +8409,9 @@ function inicializarInterfaceTabelasClean() {
         const logoHTML = grupo.info.logo ? `<span class="pais-logo"><img src="${grupo.info.logo}" alt="${pais}"></span>` : `<span class="pais-logo">${grupo.info.prefix.toUpperCase().slice(0,2)}</span>`;
         const btnPais = document.createElement("button");
         btnPais.className = `btn-pais-filtro ${index === 0 ? 'ativo' : ''}`; 
-        btnPais.innerHTML = `${logoHTML}<span><span class="pais-label">${pais}</span><span class="pais-sub">${grupo.info.regiao} • ${totalLigas} liga${totalLigas !== 1 ? 's' : ''}${totalCopas ? ` • ${totalCopas} copa${totalCopas !== 1 ? 's' : ''}` : ''}</span></span>`;
+        // 🛡️ Pedido do utilizador: mostrar só a logo da liga principal + nome
+        // do país (sem o resumo "UEFA • 2 ligas • 2 copas").
+        btnPais.innerHTML = `${logoHTML}<span class="pais-label">${pais}</span>`;
         btnPais.dataset.pais = pais;
         btnPais.dataset.prefix = grupo.info.prefix;
         btnPais.onclick = () => {
@@ -7267,9 +8433,13 @@ function renderizarSubdivisoesPais(competicoesDoPais, divisoesCtx, localTabela, 
     divisoesCtx.style.display = "flex"; divisoesCtx.innerHTML = ""; localTabela.innerHTML = "";
     competicoesDoPais.forEach((comp, idx) => {
         const btnDiv = document.createElement("button");
-        const rotuloTipo = comp.tipo === "liga" ? `${comp.div || 1}a divisao` : (comp.tipo === "supercopa" ? "Supercopa" : "Copa");
-        btnDiv.className = `btn-divisao ${idx === 0 ? 'ativo' : ''}`;
-        btnDiv.innerHTML = `${comp.nome}<small>${rotuloTipo}</small>`;
+        btnDiv.className = `btn-divisao btn-divisao-logo ${idx === 0 ? 'ativo' : ''}`;
+        // 🛡️ Pedido do utilizador: mostrar só a LOGO da competição (não o nome
+        // em texto "Bundesliga / 1a divisao"). O nome fica disponível via
+        // tooltip (title) para quem passar o mouse por cima.
+        const rotuloTipo = comp.tipo === "liga" ? `${comp.div || 1}ª Divisão` : (comp.tipo === "supercopa" ? "Supercopa" : (comp.tipo === "estadual" ? "Estadual" : "Copa"));
+        btnDiv.title = `${comp.nome} — ${rotuloTipo}`;
+        btnDiv.innerHTML = `<img src="${obterUrlImagem(comp, 'competicao')}" alt="${comp.nome}" style="width:100%; height:100%; object-fit:contain;">`;
         btnDiv.dataset.compId = comp.id;
         btnDiv.onclick = () => {
             divisoesCtx.querySelectorAll(".btn-divisao").forEach(b => b.classList.remove("ativo"));
@@ -7299,9 +8469,44 @@ function exibirCompeticaoEliminatoriaCodigo(compId, containerTarget) {
         containerTarget.innerHTML = `<div class="comp-detail-grid"><div>${html}<div style="width:100%; text-align:center; padding:34px; color:#aaa; font-size:1.05rem; background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.1); border-radius:14px;">Sorteio ainda nao realizado.</div></div>${montarRankingCompeticao(compId)}</div>`;
         return;
     }
+    if (estado.tipo === "liga_unica") {
+        html += renderTabelaLigaSuica(estado);
+        containerTarget.innerHTML = `<div class="comp-detail-grid"><div>${html}</div>${montarRankingCompeticao(compId)}</div>`;
+        return;
+    }
     let todasFases = [...(estado.historicoFases || []), estado];
     html += renderChaveamentoComAbas(todasFases);
     containerTarget.innerHTML = `<div class="comp-detail-grid"><div>${html}</div>${montarRankingCompeticao(compId)}</div>`;
+}
+
+// 🆕 Tabela única da Fase de Liga (formato suíço). Mostra as 3 faixas de
+// classificação (direto às oitavas / playoff / eliminado) com uma legenda.
+function renderTabelaLigaSuica(estado) {
+    const tabOrd = [...estado.tabela].sort((a,b) => b.pts - a.pts || (b.gf-b.gs) - (a.gf-a.gs) || b.gf - a.gf);
+    let html = `<div class="meta-pill" style="margin-bottom:10px;">Fase de Liga • Rodada ${Math.min(estado.rodadaAtual||1,8)}/8</div>`;
+    html += `<table class="tabela-classificacao grupo-table" style="width:100%; border-collapse:collapse; text-align:left;">
+        <thead><tr><th>Pos</th><th>Clube</th><th>Pts</th><th>J</th><th>GM</th><th>GS</th><th>SG</th></tr></thead><tbody>`;
+    tabOrd.forEach((item, index) => {
+        let clb = clubes.find(c => c.id === item.id);
+        let ehMeuClube = jogador && clb?.id === jogador.clubeId;
+        let zonaCor = index < 8 ? "#22c55e" : index < 24 ? "#facc15" : "#ef4444";
+        let bgL = ehMeuClube ? "rgba(0,255,136,0.15)" : (index % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent");
+        html += `<tr style="background:${bgL}; border-left:4px solid ${zonaCor}; cursor:pointer;" onclick="abrirPerfilClube('${item.id}')">
+            <td style="font-weight:bold;">${index+1}º</td>
+            <td style="display:flex; align-items:center; font-weight:bold; color:${ehMeuClube ? 'var(--theme-primary)' : '#fff'};">
+                <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;margin-right:12px;"><img src="${obterUrlImagem(clb,'clube')}" style="max-width:100%;max-height:100%;object-fit:contain;"></div>
+                ${clb ? clb.nome : 'Clube'}${ehMeuClube ? ' <span class="tag-meu-clube">TU</span>' : ''}
+            </td>
+            <td style="color:#ffd700; font-weight:bold;">${item.pts}</td>
+            <td>${item.j}</td><td>${item.gf}</td><td>${item.gs}</td><td>${(item.gf||0)-(item.gs||0)}</td>
+        </tr>`;
+    });
+    html += `</tbody></table><div class="tabela-legenda" style="margin-top:10px;">
+        <span class="tabela-legenda-item"><i style="background:#22c55e;"></i>1º-8º: Oitavas direto</span>
+        <span class="tabela-legenda-item"><i style="background:#facc15;"></i>9º-24º: Playoff</span>
+        <span class="tabela-legenda-item"><i style="background:#ef4444;"></i>25º-36º: Eliminado</span>
+    </div>`;
+    return html;
 }
 // Exibe a tabela de classificação de uma liga. Também assume o tema/fundo
 // global da liga sendo visualizada (ver comentário acima).
@@ -7354,7 +8559,11 @@ function renderizarChaveamentosVisuais(copaSelecionada) {
 
     let comp = competicoes.find(c=>c.id===copaSelecionada);
     let html = `<div style="display:flex; align-items:center; margin-bottom:25px; border-bottom:1px solid #333; padding-bottom:15px;"><img src="${obterUrlImagem(copaSelecionada, 'competicao')}" style="width:50px; height:50px; margin-right:20px; border-radius:8px; object-fit:contain;"><h2 style="color:var(--theme-primary); margin:0; font-size: 2rem;">${comp?.nome}</h2></div>`;
-    
+
+    if (estado.tipo === "liga_unica") {
+        html += renderTabelaLigaSuica(estado);
+        return `<div class="comp-detail-grid"><div>${html}</div>${montarRankingCompeticao(copaSelecionada)}</div>`;
+    }
     html += renderChaveamentoComAbas([...(estado.historicoFases || []), estado]);
     return `<div class="comp-detail-grid"><div>${html}</div>${montarRankingCompeticao(copaSelecionada)}</div>`;
 }
@@ -7378,7 +8587,9 @@ function montarConfrontoCardHtml(conf) {
     }
     const jogadoFinal = !!conf.vencedorId || (!duasPartidas && conf.golsA !== null && conf.golsA !== undefined);
     const team = (t, gols, win) => {
-        if (!t) return `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
+        if (!t) return conf.bye
+            ? `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">–</span><span class="bracket-slot-name">Bye (folga)</span><span class="bracket-slot-goals">–</span></div>`
+            : `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
         const elim = conf.vencedorId && conf.vencedorId !== t.id;
         return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilClube('${t.id}')">
             <img class="bracket-slot-crest" src="${obterUrlImagem(t,'clube')}" onerror="this.style.visibility='hidden'">
@@ -7432,10 +8643,43 @@ function renderConteudoFaseUnica(faseObj) {
 // único painel, lado a lado horizontalmente, com linhas conectoras precisas
 // ligando cada par de confrontos ao confronto da rodada seguinte — em vez da
 // navegação antiga por abas (uma rodada por vez).
+// Agrupa as fases de mata-mata em "blocos" visuais. Um bloco é uma sequência
+// de fases onde cada uma tem exatamente METADE dos confrontos da anterior
+// (Oitavas -> Quartas -> Semis -> Final, o "chaveamento" normal). Sempre que
+// isso quebra — por exemplo o Playoff da Fase de Liga (8 confrontos) que gera
+// as Oitavas (também 8 confrontos, porque 8 vencedores se juntam a mais 8
+// classificados diretos) — a fase seguinte começa um bloco novo. Sem isto, a
+// árvore tentava centralizar/conectar confrontos que não têm relação de
+// "pai/filho" real entre si, e alguns times apareciam meio soltos/desalinhados.
+function agruparFasesMataMataEmBlocos(fasesMataMata) {
+    const blocos = [];
+    let blocoAtual = [];
+    fasesMataMata.forEach((fase, i) => {
+        if (i === 0) { blocoAtual = [fase]; return; }
+        const anterior = fasesMataMata[i - 1];
+        const meiaMetade = fase.confrontos.length * 2 === anterior.confrontos.length;
+        if (meiaMetade) { blocoAtual.push(fase); }
+        else { blocos.push(blocoAtual); blocoAtual = [fase]; }
+    });
+    if (blocoAtual.length) blocos.push(blocoAtual);
+    return blocos;
+}
+
 function renderArvoreHorizontalMataMata(fasesMataMata) {
     if (!fasesMataMata || !fasesMataMata.length) return `<div style="width:100%; text-align:center; padding:40px; color:#aaa;">Sorteio ainda não realizado.</div>`;
 
-    const MATCH_H = 78;   // altura de cada cartão de confronto
+    const blocos = agruparFasesMataMataEmBlocos(fasesMataMata);
+    return blocos.map((bloco, i) => {
+        const arvore = renderBlocoArvoreMataMata(bloco);
+        if (i === 0) return arvore;
+        // Separador visual entre blocos que não se conectam diretamente (ex: Playoff -> Oitavas),
+        // deixando claro que times classificados diretamente entram aqui.
+        return `<div class="bracket-tree-bloco-sep"><span>➔ classificados diretos entram na chave ➔</span></div>${arvore}`;
+    }).join("");
+}
+
+function renderBlocoArvoreMataMata(fasesMataMata) {
+    const MATCH_H = 120;  // altura de cada cartão de confronto (2 linhas de time + "vs" + padding)
     const GAP0 = 30;      // espaço vertical entre confrontos na 1ª rodada
     const UNIT = MATCH_H + GAP0;
     const COL_W = 232;    // largura de cada cartão/coluna
@@ -7562,6 +8806,19 @@ function atualizarConteudoAbaAtiva() {
 // e exibirCompeticaoEliminatoriaCodigo), e é restaurado ao sair para outra secção.
 const VIEWS_EXPLORACAO_LIVRE = ["view-classificacao", "view-chaveamentos", "view-comp-int", "view-selecoes"];
 
+// ==========================================
+// 📱 MENU LATERAL RETRÁTIL (mobile/tablet)
+// ==========================================
+// Em telas largas a sidebar fica sempre visível (como sempre foi). Abaixo do
+// breakpoint definido no CSS, ela vira uma gaveta escondida fora da tela —
+// estas funções abrem/fecham essa gaveta e escurecem o fundo (overlay).
+window.toggleSidebarMobile = function() {
+    document.querySelector(".dashboard-layout")?.classList.toggle("sidebar-aberta-mobile");
+};
+window.fecharSidebarMobile = function() {
+    document.querySelector(".dashboard-layout")?.classList.remove("sidebar-aberta-mobile");
+};
+
 document.addEventListener("click", function(event) {
     const btn = event.target.closest(".menu-item");
     if (btn) {
@@ -7577,6 +8834,9 @@ document.addEventListener("click", function(event) {
             }
             atualizarConteudoAbaAtiva();
         }
+        // 🆕 No mobile, a sidebar é uma gaveta — escolher uma seção deve fechá-la
+        // automaticamente (senão o conteúdo fica escondido atrás do menu aberto).
+        fecharSidebarMobile();
     }
 });
 document.addEventListener("change", function(event) {
@@ -7611,8 +8871,8 @@ window.abrirMinhaTabela = function() {
     if (!gridPaises || !divisoesCtx || !localTabela) return;
 
     const prefix = obterPaisCompeticaoId(ligaId);
-    const compsDoPais = competicoes.filter(c => (c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa") && obterPaisCompeticaoId(c.id) === prefix)
-        .sort((a,b) => { const peso = { liga: 0, copa: 1, supercopa: 2 }; return (peso[a.tipo] ?? 9) - (peso[b.tipo] ?? 9) || (a.div || 99) - (b.div || 99) || a.nome.localeCompare(b.nome); });
+    const compsDoPais = competicoes.filter(c => (c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual") && obterPaisCompeticaoId(c.id) === prefix)
+        .sort((a,b) => { const peso = { liga: 0, estadual: 1, copa: 2, supercopa: 3 }; return (peso[a.tipo] ?? 9) - (peso[b.tipo] ?? 9) || (a.div || 99) - (b.div || 99) || a.nome.localeCompare(b.nome); });
 
     gridPaises.querySelectorAll(".btn-pais-filtro").forEach(b => b.classList.toggle("ativo", b.dataset.prefix === prefix));
 
@@ -7645,7 +8905,34 @@ document.getElementById("btnJogar")?.addEventListener("click", () => {
 });
 
 // Botão "Entrar em Relvado" do hub do jogo - simulação de partida
+// 🛡️ FIX: liga a trava anti-clique-duplo/duplicação de partida, com uma REDE
+// DE SEGURANÇA — se por qualquer motivo (bug não previsto, aba em segundo
+// plano, etc.) ela nunca for liberada normalmente por atualizarHub(), este
+// timer solta-a sozinha depois de 6 minutos, para nunca deixar o jogador
+// travado no botão "Entrar em Relvado" para sempre.
+window.ativarPartidaEmAndamento = function() {
+    window.partidaEmAndamento = true;
+    clearTimeout(window._watchdogPartidaEmAndamento);
+    window._watchdogPartidaEmAndamento = setTimeout(() => {
+        if (window.partidaEmAndamento) {
+            console.warn("Rede de segurança: a libertar 'partidaEmAndamento' presa há demasiado tempo.");
+            window.partidaEmAndamento = false;
+        }
+    }, 6 * 60 * 1000);
+};
+
 document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
+    // 🛡️ FIX: impede que a partida/rodada seja iniciada DUAS VEZES ao mesmo
+    // tempo (ex: clique duplo por impaciência, ou o retry automático do
+    // sistema de "pronto" disparando junto com um clique manual). Sem isto,
+    // no modo online isso podia criar duas simulações em paralelo — cada uma
+    // a transmitir os seus próprios eventos para o Firebase — resultando numa
+    // partida "bugada" que parecia nunca acabar e com estatísticas duplicadas.
+    if (window.partidaEmAndamento) {
+        console.warn("Ignorado: já existe uma partida/rodada em processamento.");
+        return;
+    }
+    window.ativarPartidaEmAndamento();
     try {
         // In-game hub - proceed with match simulation
         inicializarEstadoCarreiraJogador();
@@ -7654,7 +8941,7 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
         // exatamente ao mesmo tempo. Só avança quando o amigo também estiver pronto.
         if (window.connectionMode === 'online') {
             const pronto = await window.aguardarSincronizacaoRodada('btnJogarHub');
-            if (!pronto) return;
+            if (!pronto) { window.partidaEmAndamento = false; return; }
         }
 
         let comp = agendaTemporada[rodadaAtual - 1];
@@ -7753,7 +9040,8 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
         // ==========================================
         const COMPETICOES_COM_INTRO = new Set([
             "uefa_cl", "uefa_el", "uefa_col", "conmebol_lib", "conmebol_sul", "concacaf_clc", "afc_cla",
-            "copa_mundo", "euro", "copa_america", "olimpiadas", "gold_cup", "copa_africa", "copa_asia"
+            "copa_mundo", "euro", "copa_america", "olimpiadas", "gold_cup", "copa_africa", "copa_asia",
+            "mundial_sub17", "mundial_sub21"
         ]);
 
         function precisaIntroCompeticao(compAtual) {
@@ -7767,14 +9055,19 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
         function exibirIntroCompeticao(compId, chave, onFinish) {
             introsExibidas[chave] = true;
             window.salvarJogo();
-            const compInfo = competicoes.find(c => c.id === compId);
+            // 🛡️ FIX: competições de SELEÇÃO (Copa do Mundo, Euro, Sub-17...) não
+            // vivem no array "competicoes" (esse é só de clubes) — sem este
+            // fallback, a intro delas aparecia sem nome nem logo nenhum.
+            const compInfo = competicoes.find(c => c.id === compId)
+                || COMPETICOES_SELECOES.find(c => c.id === compId)
+                || COMPETICOES_SELECOES_BASE.find(c => c.id === compId);
             const cor = CORES_COMP?.[compId] || "#facc15";
 
             let overlay = document.getElementById("introCompeticaoOverlay");
             if (!overlay) { overlay = document.createElement("div"); overlay.id = "introCompeticaoOverlay"; document.body.appendChild(overlay); }
             overlay.className = "intro-comp-overlay";
             overlay.innerHTML = `
-                <video id="introCompeticaoVideo" class="intro-comp-video oculto" muted playsinline></video>
+                <video id="introCompeticaoVideo" class="intro-comp-video oculto" playsinline></video>
                 <div class="intro-comp-fallback" id="introCompeticaoFallback">
                     <div class="intro-comp-rays" style="--intro-cor:${cor};"></div>
                     ${compInfo?.logo ? `<img src="${compInfo.logo}" class="intro-comp-logo" onerror="this.style.display='none'">` : ""}
@@ -7784,24 +9077,54 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                 <button class="intro-comp-skip" onclick="window.pularIntroCompeticao()">Pular ⏭</button>`;
             overlay.classList.remove("oculto");
 
+            // 🛡️ FIX: guarda todos os timers pendentes da intro para poder
+            // cancelá-los assim que ela terminar (por vídeo, por "Pular" ou por
+            // fallback) — antes, um timer "esquecido" podia disparar segundos
+            // depois, já com a partida seguinte em curso, mexendo no overlay ou
+            // relançando o callback de início de partida por engano. Isso é o
+            // suspeito mais provável para "as próximas partidas ficam bugadas
+            // depois da intro".
+            const timersIntro = [];
             let terminou = false;
-            const finalizar = () => { if (terminou) return; terminou = true; overlay.classList.add("oculto"); onFinish(); };
+            const finalizar = () => {
+                if (terminou) return;
+                terminou = true;
+                timersIntro.forEach(t => clearTimeout(t));
+                const v = document.getElementById("introCompeticaoVideo");
+                if (v) { v.onended = null; v.onerror = null; v.onloadeddata = null; v.pause(); v.src = ""; }
+                overlay.remove(); // 🛡️ remove do DOM por completo, não só esconde — zero estado residual
+                onFinish();
+            };
             window.pularIntroCompeticao = finalizar;
 
             const videoEl = document.getElementById("introCompeticaoVideo");
             const fallbackEl = document.getElementById("introCompeticaoFallback");
-            const usarFallback = () => { fallbackEl.classList.remove("oculto"); videoEl.classList.add("oculto"); setTimeout(finalizar, 4200); };
+            const usarFallback = () => {
+                if (terminou) return; // 🛡️ nunca reagir depois de já ter terminado
+                fallbackEl.classList.remove("oculto"); videoEl.classList.add("oculto");
+                timersIntro.push(setTimeout(finalizar, 4200));
+            };
             videoEl.src = `assets/intros/${compId}.mp4`;
             videoEl.onerror = usarFallback;
             videoEl.onended = finalizar;
             videoEl.onloadeddata = () => {
+                if (terminou) return;
                 videoEl.classList.remove("oculto"); fallbackEl.classList.add("oculto");
-                videoEl.play().catch(usarFallback);
+                // 🔊 FIX: o vídeo estava sempre mudo (atributo "muted" fixo no
+                // HTML) — por isso "o som não sai". Agora tenta tocar COM som;
+                // se o navegador bloquear autoplay com áudio (política comum
+                // de browsers sem interação prévia do utilizador), tenta de
+                // novo mudo em vez de simplesmente desistir do vídeo inteiro.
+                videoEl.muted = false;
+                videoEl.play().catch(() => {
+                    videoEl.muted = true;
+                    videoEl.play().catch(usarFallback);
+                });
             };
             // Se não existir ficheiro local nenhum, o navegador não dispara onloadeddata
             // nem sempre onerror rapidamente — este timeout garante que a cinemática
             // animada aparece de qualquer forma, sem travar o jogador numa tela preta.
-            setTimeout(() => { if (!terminou && videoEl.readyState === 0) usarFallback(); }, 900);
+            timersIntro.push(setTimeout(() => { if (!terminou && videoEl.readyState === 0) usarFallback(); }, 900));
         }
 
         // Função que efetivamente arranca a partida (só é chamada depois de fechadas
@@ -7887,10 +9210,34 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                 : (escalacao.statusAtual === "banco" ? "🪑 Começas no banco. Aguarda a tua oportunidade..." : "🪑 Não estás nos relacionados de hoje para entrar em campo."));
             setText("uiConsolePartida", `<div style='color:#00ff88; text-align:center;'>${avisoEscalacao}</div>`);
 
+            let _ultimoMin = 0, _ultimoGc = 0, _ultimoGv = 0;
             engine.simularPartidaAoVivo((min, gc, gv, log) => {
+                _ultimoMin = min; _ultimoGc = gc; _ultimoGv = gv;
+
+                // 🌐 Sinais especiais de "pênalti em curso" vindos do amigo que está a
+                // jogar (não são eventos reais de jogo — nunca aparecem no log nem
+                // fazem soar apitos/golos). Mostram/escondem um aviso para quem está
+                // só a assistir, para não parecer que o jogo travou sem motivo.
+                if (log === "__PENALTY_WAIT__") {
+                    let banner = document.getElementById("avisoPenaltiAmigo");
+                    if (!banner) {
+                        banner = document.createElement("div");
+                        banner.id = "avisoPenaltiAmigo";
+                        banner.style.cssText = "background:rgba(250,204,21,0.15); border:1px solid #facc15; color:#facc15; font-weight:800; text-align:center; padding:10px; border-radius:8px; margin-bottom:8px;";
+                        banner.textContent = "⏳ O seu amigo está a bater/defender um pênalti... aguarde a cobrança!";
+                        document.getElementById("uiConsolePartida")?.prepend(banner);
+                    }
+                    return;
+                }
+                if (log === "__PENALTY_RESUME__") {
+                    document.getElementById("avisoPenaltiAmigo")?.remove();
+                    return;
+                }
+
                 if (ehConfrontoDiretoOnline && souHostConfronto) {
                     window.firebaseIntegration.transmitirTick(matchKeyConfronto, { min, gc, gv, log: log || "" });
                 }
+                if (min <= 1) window.tocarSom('apito_inicio'); // 🔊 apito inicial, só uma vez no começo
                 setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
                 if(log) {
                     let c = document.getElementById("uiConsolePartida");
@@ -7898,12 +9245,14 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                         const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
                         const substituicao = log.includes("SUBSTITUIÇÃO");
                         const golTime = !meuGol && !substituicao && (log.includes("GOLO") || log.includes("GOL"));
+                        if (meuGol || golTime) window.tocarSom('gol', meuGol ? 0.7 : 0.5); // 🔊 som de gol (mais forte se for teu)
                         c.innerHTML += `<div class="${meuGol ? "gol-meu" : (substituicao ? "gol-substituicao" : (golTime ? "gol-time" : ""))}">${meuGol ? "⭐ " : ""}${log}</div>`;
                         c.scrollTop = c.scrollHeight;
                     }
                 }
             }, (gc, gv, marcadores, entrouEmCampo, minutosJogados) => {
                 try {
+                    window.tocarSom('apito_fim'); // 🔊 apito final
                     if (ehConfrontoDiretoOnline && souHostConfronto) {
                         window.firebaseIntegration.finalizarTransmissaoPartida(matchKeyConfronto, { gc, gv });
                     }
@@ -7924,6 +9273,23 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                         if(entrouEmCampo) jogador.estatisticasAtuais.jogos++;
                         if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
     if(!jogador.estatisticasAtuais.defesas) jogador.estatisticasAtuais.defesas = 0;
+                        // 🛡️ FIX: estatísticas defensivas REAIS para quando TU és
+                        // defensor/goleiro (antes só existiam para NPCs via fórmula
+                        // inventada — agora também acumulas de verdade).
+                        if (entrouEmCampo && ["Zagueiro","Lateral","Goleiro"].includes(jogador.posicao)) {
+                            const golsSofridosNoJogo = souMandante ? gv : gc;
+                            if(!jogador.estatisticasAtuais.desarmes) jogador.estatisticasAtuais.desarmes = 0;
+                            if(!jogador.estatisticasAtuais.interceptacoes) jogador.estatisticasAtuais.interceptacoes = 0;
+                            if(!jogador.estatisticasAtuais.jogosSemSofrerGol) jogador.estatisticasAtuais.jogosSemSofrerGol = 0;
+                            const fatorOvr = Math.max(0, (jogador.geral - 58)) / 100;
+                            if (jogador.posicao === "Goleiro") {
+                                jogador.estatisticasAtuais.defesas += Math.max(0, Math.round((1.5 + fatorOvr * 3.2 + Math.random() * 2 - golsSofridosNoJogo * 0.3) * fatorParticipacao));
+                            } else {
+                                jogador.estatisticasAtuais.desarmes += Math.round((0.6 + fatorOvr * 2.0 + Math.random() * 1.4) * fatorParticipacao);
+                                jogador.estatisticasAtuais.interceptacoes += Math.round((0.5 + fatorOvr * 1.6 + Math.random() * 1.2) * fatorParticipacao);
+                            }
+                            if (golsSofridosNoJogo === 0) jogador.estatisticasAtuais.jogosSemSofrerGol++;
+                        }
                         if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
                         if(entrouEmCampo) registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
                     } else {
@@ -7960,10 +9326,10 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                     let msgBtn = document.getElementById("btnFecharModalPartida");
                     if(msgBtn) {
                         msgBtn.classList.remove("oculto");
-                        msgBtn.onclick = () => {
+                        msgBtn.onclick = async () => {
                             try {
                                 msgBtn.classList.add("oculto"); if(mP) mP.classList.add("oculto");
-                                resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
+                                await resolverLogicaPosPartida(comp, gc, gv, golsJogadorPartida, assistsJogadorPartida);
 
                                 const meusGols = souMandante ? gc : gv; const golsSofridos = souMandante ? gv : gc;
                                 if(!isSel) registrarFormaResultado(meusGols > golsSofridos ? "V" : (meusGols === golsSofridos ? "E" : "D"));
@@ -8000,6 +9366,22 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                 } catch (error) {
                     console.error("Erro no callback pós-jogo:", error);
                 }
+            }, (tipo, resolverCallback) => {
+                // 🎮 GAMEPLAY: pênalti interativo — chamado pelo motor quando és TU
+                // quem bate ou quem defende. Mostra o mini-jogo de escolher o lado
+                // e só continua a partida depois de resolveres.
+                // 🌐 Se for um confronto direto online, avisa o teu amigo que estás
+                // a bater/defender um pênalti, para ele não ver o jogo "congelado"
+                // sem explicação enquanto tu decides o lado.
+                if (ehConfrontoDiretoOnline && souHostConfronto) {
+                    window.firebaseIntegration.transmitirTick(matchKeyConfronto, { min: _ultimoMin, gc: _ultimoGc, gv: _ultimoGv, log: "__PENALTY_WAIT__" });
+                }
+                abrirMiniJogoPenalti(tipo, (zonaEscolhida) => {
+                    if (ehConfrontoDiretoOnline && souHostConfronto) {
+                        window.firebaseIntegration.transmitirTick(matchKeyConfronto, { min: _ultimoMin, gc: _ultimoGc, gv: _ultimoGv, log: "__PENALTY_RESUME__" });
+                    }
+                    resolverCallback(zonaEscolhida);
+                });
             });
         }
 
@@ -8021,16 +9403,24 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
         else dispararEntrevistaPreEIniciar();
     } catch (outerError) {
         console.error("Erro geral no botão jogar:", outerError);
+        window.partidaEmAndamento = false; // 🛡️ FIX: nunca deixa o jogador travado por causa de um erro
     }
 });
 
 document.getElementById("btnDescansar")?.addEventListener("click", async () => {
+    // 🛡️ FIX: mesma guarda anti-clique-duplo/retry-duplicado do botão principal.
+    if (window.partidaEmAndamento) {
+        console.warn("Ignorado: já existe uma partida/rodada em processamento.");
+        return;
+    }
+    window.ativarPartidaEmAndamento();
+    try {
     inicializarEstadoCarreiraJogador();
 
     // 🌐 MUNDO COMPARTILHADO: mesmo sistema de "pronto" do botão principal.
     if (window.connectionMode === 'online') {
         const pronto = await window.aguardarSincronizacaoRodada('btnDescansar');
-        if (!pronto) return;
+        if (!pronto) { window.partidaEmAndamento = false; return; }
     }
 
     let comp = agendaTemporada[rodadaAtual - 1]; 
@@ -8053,12 +9443,16 @@ document.getElementById("btnDescansar")?.addEventListener("click", async () => {
     let pCasa = Math.random() + diff + 0.15; let pVisita = Math.random() - diff;
     let gc = pCasa > 0.5 ? (pCasa > 1.2 ? 3 : (pCasa > 0.8 ? 2 : 1)) : 0; let gv = pVisita > 0.6 ? (pVisita > 1.2 ? 3 : (pVisita > 0.9 ? 2 : 1)) : 0;
     
-    resolverLogicaPosPartida(comp, gc, gv);
+    await resolverLogicaPosPartida(comp, gc, gv);
     await window.simularRodadaMundialOnline(); 
     rodadaAtual++; 
     window.salvarJogo(); 
     atualizarHub();
     mostrarToast("Descanso", "A tua equipa jogou sem ti. Foste poupado esta rodada!", "info");
+    } catch (erroDescanso) {
+        console.error("Erro no botão Descansar:", erroDescanso);
+        window.partidaEmAndamento = false; // 🛡️ FIX: nunca deixa o jogador travado por causa de um erro
+    }
 });
 
 // Botão "Sair / Apagar Save" - apaga o progresso guardado e volta ao menu principal
@@ -8118,7 +9512,125 @@ document.getElementById("btnTreinar")?.addEventListener("click", () => {
     atualizarHub();
 });
 
-function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador = 0) {
+// ==========================================
+// 🎯 DISPUTA DE PÊNALTIS INTERATIVA (mata-mata de clube)
+// ==========================================
+// Substitui resolverVencedorMataMata quando o confronto empatou E o TEU
+// clube está envolvido — em vez de resolver tudo instantaneamente, mostra a
+// disputa cobrança por cobrança, com o mini-jogo interativo nas cobranças
+// que te dizem respeito (bates se fores atacante/meia, defendes se fores
+// guarda-redes). Se não estiveres envolvido ou não precisar de pênaltis,
+// comporta-se exatamente como a função síncrona original.
+async function resolverVencedorMataMataComPenaltisInterativos(idA, idB, golsA, golsB, forcaA, forcaB, meuTimeId) {
+    if (golsA !== golsB || (meuTimeId !== idA && meuTimeId !== idB)) {
+        return resolverVencedorMataMata(idA, idB, golsA, golsB, forcaA, forcaB);
+    }
+    return await disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId);
+}
+
+function _shootoutDecisaoAntecipada(scoreA, scoreB, tomadasA, tomadasB) {
+    const restantesA = Math.max(0, 5 - tomadasA), restantesB = Math.max(0, 5 - tomadasB);
+    return (scoreA > scoreB + restantesB) || (scoreB > scoreA + restantesA);
+}
+
+async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
+    const clubA = clubes.find(c => c.id === idA), clubB = clubes.find(c => c.id === idB);
+    const nomeA = clubA?.nome || idA, nomeB = clubB?.nome || idB;
+
+    let overlay = document.getElementById("shootoutOverlay");
+    if (!overlay) { overlay = document.createElement("div"); overlay.id = "shootoutOverlay"; document.body.appendChild(overlay); }
+    overlay.className = "shootout-overlay";
+    overlay.innerHTML = `
+        <div class="shootout-modal">
+            <h2 class="shootout-titulo">🎯 DISPUTA DE PÊNALTIS</h2>
+            <div class="shootout-placar">
+                <div class="shootout-time"><img src="${obterUrlImagem(clubA,'clube')}"><span>${nomeA}</span><strong id="shootoutScoreA">0</strong></div>
+                <div class="shootout-vs">×</div>
+                <div class="shootout-time"><strong id="shootoutScoreB">0</strong><span>${nomeB}</span><img src="${obterUrlImagem(clubB,'clube')}"></div>
+            </div>
+            <div class="shootout-bolas" id="shootoutBolasA"></div>
+            <div class="shootout-bolas" id="shootoutBolasB"></div>
+            <p class="shootout-status" id="shootoutStatus">A preparar a disputa de pênaltis...</p>
+        </div>`;
+    overlay.classList.remove("oculto");
+    window.tocarSom('notificacao', 0.4);
+
+    let scoreA = 0, scoreB = 0;
+    const setStatus = (t) => { const el = document.getElementById("shootoutStatus"); if (el) el.textContent = t; };
+    const setPlacar = () => { setText("shootoutScoreA", scoreA); setText("shootoutScoreB", scoreB); };
+    const addBola = (lado, converteu) => {
+        const el = document.getElementById(lado === "A" ? "shootoutBolasA" : "shootoutBolasB");
+        if (el) el.innerHTML += `<span class="shootout-bola ${converteu ? 'gol' : 'falhou'}">${converteu ? '⚽' : '❌'}</span>`;
+    };
+
+    const souGoleiro = jogador.posicao === "Goleiro";
+    // 🎯 Mesma exigência da cobrança durante o jogo normal: só assumes a
+    // responsabilidade do pênalti se fores titular, tiveres a confiança do
+    // técnico, e já tiveres treinado o suficiente essa cobrança específica.
+    const ehTitular = jogador.statusEscalacaoAnterior === "titular";
+    const nivelPenaltis = jogador.lifestyle?.upgrades?.training?.penalties ?? 0;
+    const reunoRequisitosPenalti = ehTitular && (jogador.relacaoTecnico ?? 0) >= MORAL_TECNICO_MINIMA_PENALTI && nivelPenaltis >= NIVEL_PENALTIS_MINIMO;
+    const souCobradorTipico = ["Atacante","Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao) && reunoRequisitosPenalti;
+
+    // ladoSou = true quando é a cobrança do MEU clube.
+    const cobrar = async (ladoSou, numeroCobranca) => {
+        const meuLado = meuTimeId === idA ? "A" : "B";
+        const estaCobrandoOMeuTime = (ladoSou && meuLado === "A") || (!ladoSou && meuLado === "B");
+        const souEuQueBato = estaCobrandoOMeuTime && souCobradorTipico && numeroCobranca === 1;
+        const souEuQueDefendo = !estaCobrandoOMeuTime && souGoleiro;
+        let converteu;
+        if (souEuQueBato || souEuQueDefendo) {
+            setStatus(souEuQueBato ? "🎯 É a tua vez de cobrar!" : "🧤 Defende esta cobrança!");
+            const zonaEscolhida = await new Promise(resolve => window.abrirMiniJogoPenalti(souEuQueBato ? "cobrar" : "defender", resolve));
+            const zonas = ["esquerda", "centro", "direita"];
+            const zonaAdversario = zonas[Math.floor(Math.random() * zonas.length)];
+            const acertou = zonaEscolhida === zonaAdversario;
+            if (souEuQueBato) {
+                converteu = Math.random() < (acertou ? 0.30 : 0.90);
+            } else {
+                converteu = !(Math.random() < (acertou ? 0.58 : 0.10));
+            }
+        } else {
+            const forcaLado = (ladoSou ? forcaA : forcaB);
+            setStatus(`${ladoSou ? nomeA : nomeB} vai cobrar...`);
+            await new Promise(r => setTimeout(r, 750));
+            converteu = Math.random() < Math.max(0.55, Math.min(0.92, 0.68 + (forcaLado - 70) * 0.004));
+        }
+        window.tocarSom(converteu ? 'gol' : 'erro', 0.4);
+        return converteu;
+    };
+
+    let tomadasA = 0, tomadasB = 0, rodada = 1;
+    while (true) {
+        const numeroCobranca = rodada <= 5 ? rodada : 99; // 99 = morte súbita (sem "cobrador designado" fixo)
+        const convA = await cobrar(true, numeroCobranca); tomadasA++;
+        if (convA) scoreA++; addBola("A", convA); setPlacar();
+        await new Promise(r => setTimeout(r, 350));
+
+        const convB = await cobrar(false, numeroCobranca); tomadasB++;
+        if (convB) scoreB++; addBola("B", convB); setPlacar();
+        await new Promise(r => setTimeout(r, 350));
+
+        if (rodada <= 5) {
+            // Dentro das 5 cobranças normais: para se já está matematicamente
+            // decidido, ou se chegaram ao fim das 5 com placares diferentes.
+            if (_shootoutDecisaoAntecipada(scoreA, scoreB, tomadasA, tomadasB) || (rodada === 5 && scoreA !== scoreB)) break;
+        } else {
+            // Morte súbita: decide assim que uma rodada completa termina com placares diferentes.
+            if (scoreA !== scoreB) break;
+        }
+        rodada++;
+    }
+
+    const vencedorId = scoreA > scoreB ? idA : idB;
+    setStatus(`🏆 ${vencedorId === idA ? nomeA : nomeB} venceu a disputa de pênaltis!`);
+    window.tocarSom(vencedorId === meuTimeId ? 'vitoria' : 'derrota');
+    await new Promise(r => setTimeout(r, 2200));
+    overlay.remove();
+    return { vencedorId, penaltis: true, placarPen: `${scoreA}-${scoreB}` };
+}
+
+async function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador = 0) {
     if (comp.isSelecao) {
         const key = comp.compId;
         const estado = selecoesEstado.torneios?.[key];
@@ -8174,6 +9686,23 @@ function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador 
                 if(mGrp && aGrp) { mGrp.j++; aGrp.j++; mGrp.gf+=gc; mGrp.gs+=gv; aGrp.gf+=gv; aGrp.gs+=gc; if(gc>gv) mGrp.pts+=3; else if(gv>gc) aGrp.pts+=3; else { mGrp.pts+=1; aGrp.pts+=1; } }
             });
         }
+    } else if(comp.fase === "Fase de Liga") {
+        // 🆕 FORMATO SUÍÇO: registra o meu jogo na tabela única e marca a partida
+        // correspondente em estado.fixtures como resolvida, para que a simulação
+        // semanal saiba que pode fechar a rodada e seguir em frente.
+        let estado = copasEstado[comp.compId];
+        if(estado && estado.tipo === "liga_unica") {
+            const meuGol = comp.emCasa !== false ? gc : gv;
+            const advGol = comp.emCasa !== false ? gv : gc;
+            const fixture = (estado.fixtures || []).find(f => f.rodada === comp.rodadaLigaSuica && (f.home.id === jogador.clubeId || f.away.id === jogador.clubeId));
+            if (fixture) {
+                fixture.golsHome = fixture.home.id === jogador.clubeId ? meuGol : advGol;
+                fixture.golsAway = fixture.away.id === jogador.clubeId ? meuGol : advGol;
+            }
+            const m = estado.tabela.find(e => e.id === jogador.clubeId);
+            const a = estado.tabela.find(e => e.id === comp.adversarioId);
+            if(m && a) { m.j++; a.j++; m.gf+=gc; m.gs+=gv; a.gf+=gv; a.gs+=gc; if(gc>gv) m.pts+=3; else if(gv>gc) a.pts+=3; else { m.pts+=1; a.pts+=1; } }
+        }
     } else {
         let estado = copasEstado[comp.compId];
         if(estado && estado.tipo === "mata-mata" && estado.confrontos) {
@@ -8185,7 +9714,7 @@ function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador 
                     if(comp.isFinal || estado.jogoUnico || (estado.fase.includes("Final") && estado.pernasFinal !== 2)) {
                         const fA = clubes.find(c=>c.id===conf.timeA.id)?.reputacao || 70;
                         const fB = clubes.find(c=>c.id===conf.timeB.id)?.reputacao || 70;
-                        const res = resolverVencedorMataMata(conf.timeA.id, conf.timeB.id, isTimeA ? gc : gv, isTimeA ? gv : gc, fA, fB);
+                        const res = await resolverVencedorMataMataComPenaltisInterativos(conf.timeA.id, conf.timeB.id, isTimeA ? gc : gv, isTimeA ? gv : gc, fA, fB, jogador.clubeId);
                         conf.vencedorId = res.vencedorId; conf.penaltis = res.penaltis;
                         if (conf.vencedorId === jogador.clubeId) {
                             let nomeCop = competicoes.find(c=>c.id === comp.compId)?.nome || "Copa";
@@ -8199,7 +9728,7 @@ function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJogador 
                     let aggA = (conf.golsAIda||0) + (conf.golsAVolta||0); let aggB = (conf.golsBIda||0) + (conf.golsBVolta||0);
                     const fA = clubes.find(c=>c.id===conf.timeA.id)?.reputacao || 70;
                     const fB = clubes.find(c=>c.id===conf.timeB.id)?.reputacao || 70;
-                    const res = resolverVencedorMataMata(conf.timeA.id, conf.timeB.id, aggA, aggB, fA, fB);
+                    const res = await resolverVencedorMataMataComPenaltisInterativos(conf.timeA.id, conf.timeB.id, aggA, aggB, fA, fB, jogador.clubeId);
                     conf.vencedorId = res.vencedorId; conf.penaltis = res.penaltis;
                     if (conf.vencedorId === jogador.clubeId && (estado.fase.includes("Final") || comp.isFinal)) {
                         let nomeCop = competicoes.find(c=>c.id === comp.compId)?.nome || "Copa";
@@ -8671,7 +10200,15 @@ function applyTrainingSkillBoost(skill) {
             jogador.velocidade = (jogador.velocidade || 60) + boostAmount;
             break;
     }
-    
+
+    // 🛡️ FIX: sem isto, um atributo treinado repetidamente (ex: finalizacao)
+    // podia passar de 99 sem limite, e como recalcularGeral() é só a média
+    // dos atributos, isso inflava o Overall (OVR) de forma repentina e sem
+    // aviso — o jogador "do nada" aparecia com 99 geral numa nova temporada.
+    ["finalizacao","passe","drible","defesa","resistencia","cabeceamento","velocidade","forca","inteligencia"].forEach(attr => {
+        if (jogador[attr] != null) jogador[attr] = Math.min(99, jogador[attr]);
+    });
+
     recalcularGeral();
 }
 
@@ -8943,7 +10480,7 @@ function recalcularGeral() {
         jogador.forca || 60
     ];
     
-    jogador.geral = Math.floor(stats.reduce((a, b) => a + b, 0) / stats.length);
+    jogador.geral = Math.max(40, Math.min(99, Math.floor(stats.reduce((a, b) => a + b, 0) / stats.length)));
 }
 
 window.assinarPrimeiroClube = function(clubeId) {
@@ -9135,6 +10672,151 @@ window.closePenaltyModal = function() {
     }
 };
 
+// ==========================================
+// 🗣️ SOLICITAR MUDANÇA DE POSIÇÃO
+// ==========================================
+// Espectro de posições, da defesa ao ataque — usado para medir a "distância"
+// entre a posição atual e a pedida (pedidos próximos, ex: Ponta -> Atacante,
+// são mais fáceis de aceitar que pedidos radicais, ex: Zagueiro -> Atacante).
+const ESPECTRO_POSICOES = ["Zagueiro", "Lateral", "Volante", "Meio-Campista", "Meia Ofensivo", "Ponta", "Atacante"];
+const RELACAO_MINIMA_PEDIR_POSICAO = 60; // precisa de uma relação BOA com o técnico para sequer pedir
+
+// Monta o bloco HTML do pedido de mudança de posição, dentro do modal
+// "Falar com o Técnico". Jogadores de Goleiro não podem pedir mudança (e
+// ninguém pode pedir para virar Goleiro) — é uma mudança de posição, não de
+// função no jogo.
+function htmlSolicitarPosicao(relacaoTecnico) {
+    if (jogador.posicao === "Goleiro") return "";
+    const jaPediuEsteAno = jogador.ultimoPedidoPosicaoAno === anoAtual;
+    const opcoes = ESPECTRO_POSICOES.filter(p => p !== jogador.posicao);
+    const relacaoOk = relacaoTecnico >= RELACAO_MINIMA_PEDIR_POSICAO;
+    return `
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">🔄 Solicitar Mudança de Posição</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Posição atual: <strong>${jogador.posicao}</strong>. A decisão final é sempre do técnico — não podes mudar de posição por conta própria.</p>
+            ${!relacaoOk ? `<p style="color:#ff8c00; font-size:0.85rem;">⚠️ Precisas de uma relação BOA (${RELACAO_MINIMA_PEDIR_POSICAO}+) com o técnico para ele sequer considerar isto.</p>` : ""}
+            ${jaPediuEsteAno ? `<p style="color:#aaa; font-size:0.85rem;">Já fizeste um pedido de posição esta temporada. Tenta de novo na próxima.</p>` : `
+            <select id="selectNovaPosicao" ${!relacaoOk ? "disabled" : ""} style="width:100%; padding:8px; border-radius:6px; background:#111; color:#fff; border:1px solid #333; margin-bottom:8px;">
+                ${opcoes.map(p => `<option value="${p}">${p}</option>`).join("")}
+            </select>
+            <button ${!relacaoOk ? "disabled" : ""} onclick="solicitarMudancaPosicao(document.getElementById('selectNovaPosicao').value)" style="width:100%; padding:10px; background:${relacaoOk ? 'var(--theme-primary)' : '#333'}; color:#000; border:none; border-radius:8px; font-weight:bold; cursor:${relacaoOk ? 'pointer' : 'not-allowed'};">Pedir mudança de posição</button>
+            `}
+        </div>`;
+}
+
+// Processa o pedido de mudança de posição. A chance de sucesso depende da
+// relação com o técnico E de quão "radical" é o pedido (posições distantes
+// no espectro são mais arriscadas). Só pode ser pedido uma vez por temporada.
+window.solicitarMudancaPosicao = function(novaPosicao) {
+    const relacaoTecnico = jogador.relacaoTecnico || 50;
+    if (relacaoTecnico < RELACAO_MINIMA_PEDIR_POSICAO) {
+        mostrarToast("Técnico", "Ele nem quer ouvir falar nisso agora. Melhora a tua relação primeiro.", "warning");
+        return;
+    }
+    if (jogador.ultimoPedidoPosicaoAno === anoAtual) return;
+    jogador.ultimoPedidoPosicaoAno = anoAtual;
+
+    const idxAtual = ESPECTRO_POSICOES.indexOf(jogador.posicao);
+    const idxNova = ESPECTRO_POSICOES.indexOf(novaPosicao);
+    const distancia = (idxAtual === -1 || idxNova === -1) ? 3 : Math.abs(idxAtual - idxNova);
+
+    // Base de 55% (com relação mínima exigida) subindo com relação extra,
+    // e caindo com a distância entre as posições.
+    const chanceSucesso = Math.max(0.05, Math.min(0.9, 0.35 + (relacaoTecnico - RELACAO_MINIMA_PEDIR_POSICAO) * 0.008 - distancia * 0.13));
+
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+
+    if (Math.random() < chanceSucesso) {
+        jogador.posicao = novaPosicao;
+        jogador.relacaoTecnico = Math.min(100, relacaoTecnico + 5);
+        registrarNoticia("Mudança de posição aceite!", `${nomeTecnico} aceitou reposicionar ${jogador.nome} para ${novaPosicao}.`, "Clube");
+        mostrarModalConversaTecnico(nomeTecnico, "Pedido aceite", `"Pensei bem nisso... vamos tentar-te como ${novaPosicao}. Não me desiludas."`);
+    } else {
+        jogador.relacaoTecnico = Math.max(0, relacaoTecnico - 5);
+        mostrarModalConversaTecnico(nomeTecnico, "Pedido recusado", `"Entendo a tua vontade, mas por agora preciso de ti como ${jogador.posicao}. Continua a mostrar serviço."`);
+    }
+    window.salvarJogo();
+    document.getElementById("btnFalarTecnico")?.click();
+};
+
+// ==========================================
+// 🤝 PROMESSAS AO TÉCNICO
+// ==========================================
+// O jogador pode comprometer-se com uma meta para o resto da temporada. É
+// avaliada automaticamente no fim da época (ver avaliarPromessasTecnico) e
+// afeta a relação para melhor (se cumprida) ou para pior (se quebrada).
+const METAS_PROMESSA = [
+    { tipo: "gols", meta: 10, label: "Vou marcar 10 gols até ao fim da temporada" },
+    { tipo: "gols", meta: 20, label: "Vou marcar 20 gols até ao fim da temporada" },
+    { tipo: "assistencias", meta: 10, label: "Vou dar 10 assistências até ao fim da temporada" },
+    { tipo: "condicionamento", meta: 80, label: "Vou melhorar o meu condicionamento físico (jogar 80%+ dos jogos)" }
+];
+
+function htmlFazerPromessa() {
+    if (jogador.promessaTecnico) {
+        const p = jogador.promessaTecnico;
+        const atual = p.tipo === "gols" ? jogador.estatisticasAtuais.gols
+            : p.tipo === "assistencias" ? jogador.estatisticasAtuais.assistencias
+            : Math.round(((jogador.estatisticasAtuais.jogos || 0) / Math.max(1, jogador.jogosDisputaveisTemporada || 38)) * 100);
+        return `
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">🤝 Promessa em Andamento</h4>
+            <p style="margin:0; color:#ccc;">"${METAS_PROMESSA.find(m => m.tipo === p.tipo && m.meta === p.meta)?.label || p.tipo}"</p>
+            <p style="margin:8px 0 0; font-size:0.85rem; color:#aaa;">Progresso atual: <strong style="color:var(--theme-primary);">${atual}${p.tipo === "condicionamento" ? "%" : ""} / ${p.meta}${p.tipo === "condicionamento" ? "%" : ""}</strong> — avaliada no fim da temporada ${p.ano}.</p>
+        </div>`;
+    }
+    return `
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">🤝 Fazer uma Promessa</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Compromete-te publicamente com o técnico. Se cumprires, a relação melhora MUITO. Se falhares, ele não vai esquecer.</p>
+            <select id="selectPromessa" style="width:100%; padding:8px; border-radius:6px; background:#111; color:#fff; border:1px solid #333; margin-bottom:8px;">
+                ${METAS_PROMESSA.map((m, i) => `<option value="${i}">${m.label}</option>`).join("")}
+            </select>
+            <button onclick="fazerPromessaTecnico(parseInt(document.getElementById('selectPromessa').value))" style="width:100%; padding:10px; background:var(--theme-primary); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Fazer promessa</button>
+        </div>`;
+}
+
+window.fazerPromessaTecnico = function(indice) {
+    if (jogador.promessaTecnico) return; // só uma promessa ativa de cada vez
+    const escolha = METAS_PROMESSA[indice];
+    if (!escolha) return;
+    jogador.promessaTecnico = { tipo: escolha.tipo, meta: escolha.meta, ano: anoAtual };
+    jogador.relacaoTecnico = Math.min(100, (jogador.relacaoTecnico || 50) + 3); // o técnico gosta da ambição, já de início
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    mostrarModalConversaTecnico(clube?.tecnico || "O treinador", "Promessa feita", `"Gosto de ouvir isso. Vou lembrar-me desta conversa no fim da temporada."`);
+    window.salvarJogo();
+    document.getElementById("btnFalarTecnico")?.click();
+};
+
+// Avalia, no fim da temporada, se a promessa feita ao técnico foi cumprida.
+// É uma verificação PESSOAL (usa só as estatísticas do próprio jogador), por
+// isso corre sempre — mesmo no modo online e mesmo para quem não é o
+// "anfitrião do mundo" (ver window.processarFimTemporadaOnline).
+function avaliarPromessasTecnico() {
+    if (!jogador?.promessaTecnico || jogador.promessaTecnico.ano !== anoAtual) return;
+    const p = jogador.promessaTecnico;
+    let atingiu = false;
+    if (p.tipo === "gols") atingiu = jogador.estatisticasAtuais.gols >= p.meta;
+    else if (p.tipo === "assistencias") atingiu = jogador.estatisticasAtuais.assistencias >= p.meta;
+    else if (p.tipo === "condicionamento") {
+        const pct = ((jogador.estatisticasAtuais.jogos || 0) / Math.max(1, jogador.jogosDisputaveisTemporada || 38)) * 100;
+        atingiu = pct >= p.meta;
+    }
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+    if (atingiu) {
+        jogador.relacaoTecnico = Math.min(100, (jogador.relacaoTecnico || 50) + 20);
+        registrarNoticia("Promessa cumprida!", `${jogador.nome} cumpriu a promessa feita a ${nomeTecnico} no início da temporada.`, "Clube");
+        mostrarToast("Promessa cumprida", `Cumpriste a tua promessa! A relação com ${nomeTecnico} disparou. 🤝`, "success");
+    } else {
+        jogador.relacaoTecnico = Math.max(0, (jogador.relacaoTecnico || 50) - 15);
+        registrarNoticia("Promessa quebrada", `${jogador.nome} não cumpriu a promessa feita a ${nomeTecnico}. A confiança foi abalada.`, "Clube");
+        mostrarToast("Promessa quebrada", `Não cumpriste a promessa. ${nomeTecnico} está desapontado.`, "danger");
+    }
+    jogador.promessaTecnico = null;
+}
+
 // Talk to coach system for captaincy and squad role
 document.getElementById("btnFalarTecnico")?.addEventListener("click", () => {
     const clube = clubes.find(c => c.id === jogador.clubeId);
@@ -9172,13 +10854,16 @@ document.getElementById("btnFalarTecnico")?.addEventListener("click", () => {
     const htmlFuncoes = `
         <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
             <h4 style="margin:0 0 10px; color:var(--gold);">Função no Elenco</h4>
+            <p style="margin:0 0 10px; font-size:0.8rem; color:#aaa;">🔒 = precisas de mais relação com o técnico para ele considerar este pedido.</p>
             <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:10px;">
-                ${['promessa', 'rodizio', 'importante', 'banco', 'lenda', 'capitao'].map(f => `
-                    <div style="padding:8px; border-radius:6px; text-align:center; cursor:pointer; border:2px solid ${funcaoAtual === f ? 'var(--theme-primary)' : '#333'}; background:${funcaoAtual === f ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.2)'};" onclick="mudarFuncaoElenco('${f}')">
-                        <div style="font-size:1.5rem;">${f === 'promessa' ? '⭐' : f === 'rodizio' ? '🔄' : f === 'importante' ? '💪' : f === 'banco' ? '🪑' : f === 'lenda' ? '👑' : '🎯'}</div>
+                ${['promessa', 'rodizio', 'importante', 'banco', 'lenda', 'capitao'].map(f => {
+                    const bloqueado = relacaoTecnico < (RELACAO_MINIMA_FUNCAO[f] ?? 0);
+                    return `
+                    <div style="padding:8px; border-radius:6px; text-align:center; cursor:pointer; opacity:${bloqueado ? 0.55 : 1}; border:2px solid ${funcaoAtual === f ? 'var(--theme-primary)' : '#333'}; background:${funcaoAtual === f ? 'rgba(0,255,136,0.1)' : 'rgba(0,0,0,0.2)'};" onclick="mudarFuncaoElenco('${f}')">
+                        <div style="font-size:1.5rem;">${bloqueado ? '🔒' : (f === 'promessa' ? '⭐' : f === 'rodizio' ? '🔄' : f === 'importante' ? '💪' : f === 'banco' ? '🪑' : f === 'lenda' ? '👑' : '🎯')}</div>
                         <div style="font-size:0.75rem; margin-top:4px; text-transform:uppercase;">${f}</div>
                     </div>
-                `).join('')}
+                `;}).join('')}
             </div>
             <p style="margin:5px 0 0; font-size:0.85rem; color:#aaa;">Função sugerida pelo técnico: <strong style="color:var(--success);">${funcaoSugerida}</strong></p>
         </div>
@@ -9206,6 +10891,15 @@ document.getElementById("btnFalarTecnico")?.addEventListener("click", () => {
                     <span>Lista de Empréstimo</span>
                 </label>
             </div>
+        </div>
+
+        ${htmlSolicitarPosicao(relacaoTecnico)}
+        ${htmlFazerPromessa()}
+
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px; text-align:center;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">🗣️ Conversa Coletiva</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Fala com o grupo e o técnico sobre o momento da equipa.</p>
+            <button onclick="document.getElementById('modalConversaTecnico')?.remove(); abrirEntrevista('coletiva_time', {}, null)" style="width:100%; padding:10px; background:var(--theme-primary); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Iniciar conversa coletiva</button>
         </div>
         
         ${podeSerCapitao && !jogador.eCapitao ? `
@@ -9270,7 +10964,36 @@ function mostrarModalConversaTecnicoExpandido(nomeTecnico, titulo, conteudoHTML,
     }
 }
 
+// Exigência mínima de relação com o técnico para CADA função no elenco — o
+// jogador só pode PEDIR, o técnico é quem decide se aceita. Funções "para
+// baixo" (banco, promessa) não têm exigência: ninguém recusa um jogador que
+// aceita um papel menor.
+const RELACAO_MINIMA_FUNCAO = { promessa: 0, banco: 0, rodizio: 25, importante: 55, lenda: 75, capitao: 60 };
+
 window.mudarFuncaoElenco = function(novaFuncao) {
+    const relacaoTecnico = jogador.relacaoTecnico || 50;
+    const minimoExigido = RELACAO_MINIMA_FUNCAO[novaFuncao] ?? 0;
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+
+    // 🛡️ FIX: a função no elenco já não é escolhida livremente — é um PEDIDO
+    // que depende da relação com o técnico (exatamente como o pedido de
+    // mudança de posição). "Capitão" também exige os requisitos normais de
+    // capitania (anos no clube, OVR, titularidade), iguais aos do bloco
+    // "Capitania Disponível".
+    if (relacaoTecnico < minimoExigido) {
+        mostrarModalConversaTecnico(nomeTecnico, "Pedido recusado", `"Ainda não confio o suficiente em ti para te dar esse papel no plantel. Continua a mostrar serviço."`);
+        return;
+    }
+    if (novaFuncao === "capitao") {
+        const anosNoClube = jogador.anoNoClubeAtual || 0;
+        const podeSerCapitao = anosNoClube >= 3 && (jogador.geral || 60) >= 75 && (jogador.titularidade || 48) >= 60 && relacaoTecnico >= 60;
+        if (!podeSerCapitao) {
+            mostrarModalConversaTecnico(nomeTecnico, "Pedido recusado", `"A braçadeira é uma responsabilidade grande. Ainda não estás pronto para isso."`);
+            return;
+        }
+    }
+
     jogador.funcaoNoElenco = novaFuncao;
     
     // Relationship impact based on role change
@@ -9330,3 +11053,17 @@ if (document.readyState === 'loading') {
 }
 
 aplicarHistoricosReaisIniciais();
+
+// 🔊 Botão flutuante para ligar/desligar os efeitos sonoros — injetado por
+// JS para não precisar mexer no index.html. Fica sempre visível, num canto,
+// sem atrapalhar o resto da interface.
+(function criarBotaoSom() {
+    const btn = document.createElement("button");
+    btn.id = "btnAlternarSom";
+    btn.title = "Ligar/desligar efeitos sonoros";
+    btn.style.cssText = "position:fixed; bottom:14px; right:14px; z-index:9999; width:44px; height:44px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.65); color:#fff; font-size:1.2rem; cursor:pointer; backdrop-filter:blur(6px);";
+    const atualizarIcone = () => { btn.textContent = somAtivado() ? "🔊" : "🔇"; };
+    atualizarIcone();
+    btn.onclick = () => { window.alternarSons(); atualizarIcone(); };
+    document.body.appendChild(btn);
+})();

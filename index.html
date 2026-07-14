@@ -271,6 +271,7 @@
                 <option value="Nigeria">Nigeria </option>
                 <option value="Costa do Marfim">Costa do Marfim</option>
                 <option value="Noruega">Noruega </option>
+                <option value="Suiça">Suiça </option>
             </select>
         </div>
         <div class="form-group" style="margin-bottom: 25px;">
@@ -300,6 +301,7 @@
 
 <div id="view-hub" class="tela oculto dashboard-layout">
     <aside class="sidebar glass-panel">
+        <button id="btnFecharSidebarMobile" class="sidebar-close-mobile" onclick="fecharSidebarMobile()" aria-label="Fechar menu">✕</button>
         <div class="sidebar-header">
             <div class="avatar-container">
                 <img id="sidePlayerImg" src="" alt="Jogador" class="player-avatar">
@@ -340,8 +342,11 @@
         <button class="btn btn-danger btn-block" id="btnReset" style="margin-top: auto; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: var(--danger);">Sair / Apagar Save</button>
     </aside>
 
+    <div id="sidebarOverlayMobile" class="sidebar-overlay-mobile" onclick="fecharSidebarMobile()"></div>
+
     <main class="main-content">
         <header class="topbar glass-panel">
+            <button id="btnAbrirSidebarMobile" class="mobile-menu-toggle" onclick="toggleSidebarMobile()" aria-label="Abrir menu">☰</button>
             <div class="search-bar">
                 <span>🔍</span>
                 <input type="text" id="inputPesquisa" placeholder="Pesquisar jogador ou clube no mundo...">

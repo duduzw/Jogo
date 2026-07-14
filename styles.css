@@ -2013,6 +2013,8 @@ body { margin: 0; font-family: 'Montserrat', sans-serif; background: var(--theme
 .selecao-stat-card strong { display:block; font-size:2.2rem; color:#fff; }
 .selecao-stat-card span { color:#a1a1aa; font-size:0.8rem; font-weight:700; text-transform:uppercase; }
 .convocado-card { display:flex; align-items:center; gap:10px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); }
+.convocado-card.titular { border-left:3px solid var(--theme-primary); }
+.convocado-card.reserva { opacity:0.85; }
 .convocado-card.eu { border-color:#facc15; background:linear-gradient(90deg, rgba(250,204,21,0.18), rgba(250,204,21,0.04)); box-shadow:0 0 24px rgba(250,204,21,0.15); animation:spotlightPulse 2s ease-in-out infinite; }
 .convocado-card img.convocado-foto { width:48px; height:48px; border-radius:50%; object-fit:cover !important; border:2px solid rgba(255,255,255,0.2); }
 .convocado-card img.convocado-clube { width:28px; height:28px; object-fit:contain !important; background:#fff; border-radius:6px; padding:2px; }
@@ -2593,6 +2595,8 @@ body.tema-pt {
 /* Avatar redondo dentro do item de elenco (a CSS antiga só previa um emoji) */
 .squad-player-avatar-img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.15); }
 .squad-player-item.titular { border-color: var(--theme-primary); background: rgba(0,255,136,0.06); }
+.badge-capitao { display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; background:var(--world-cup-gold, #ffd700); color:#1a1a1a; font-size:0.62rem; font-weight:800; margin-left:5px; vertical-align:middle; }
+.manager-row-titular { background: rgba(0,255,136,0.05); border-left: 3px solid var(--theme-primary); }
 
 /* Tela de escolher clube */
 .manager-shell { padding: 0 4px; }
@@ -2835,4 +2839,103 @@ body.tema-pt {
 @media (max-width: 600px) {
     .intro-comp-logo { width: 110px; height: 110px; }
     .intro-comp-title { font-size: 1.5rem; letter-spacing: 0.2em; }
+}
+
+/* ==========================================
+   📱 RESPONSIVIDADE GERAL (tablet e celular)
+   ==========================================
+   O layout base é um "app shell" desktop: sidebar fixa de 280px + conteúdo
+   ao lado. Numa tela de celular isso sozinho já sobra quase toda a largura
+   disponível. Abaixo do breakpoint, a sidebar vira uma gaveta escondida fora
+   da tela (aberta pelo botão hambúrguer na topbar) em vez de ficar sempre
+   visível espremendo o conteúdo. */
+
+.mobile-menu-toggle {
+    display: none;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    font-size: 1.25rem;
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 10px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+}
+.sidebar-close-mobile {
+    display: none;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 2;
+}
+.sidebar-overlay-mobile {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 150;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+@media (max-width: 900px) {
+    .mobile-menu-toggle { display: flex; }
+    .sidebar-close-mobile { display: flex; }
+
+    .dashboard-layout { position: relative; }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        max-height: 100vh;
+        width: min(280px, 82vw);
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+        z-index: 200;
+        box-shadow: 12px 0 32px rgba(0,0,0,0.55);
+    }
+    .dashboard-layout.sidebar-aberta-mobile .sidebar { transform: translateX(0); }
+    .dashboard-layout.sidebar-aberta-mobile .sidebar-overlay-mobile { display: block; opacity: 1; pointer-events: auto; }
+
+    .main-content { width: 100%; min-width: 0; }
+
+    .topbar { padding: 12px 14px; gap: 10px; }
+    .search-bar { width: auto; flex: 1 1 auto; min-width: 0; }
+    .search-bar input { min-width: 0; }
+    .topbar-date { font-size: 0.76rem; white-space: nowrap; }
+
+    .view-container { padding: 16px; max-width: 100%; }
+
+    .stats-grid-3 { grid-template-columns: 1fr 1fr; gap: 12px; }
+
+    .modal-content { width: 92vw !important; max-width: 92vw; }
+
+    /* Tabelas largas (classificação, mercado): permite rolar na horizontal
+       em vez de espremer/cortar colunas, mais previsível em telas pequenas. */
+    .tabela-classificacao, table.grupo-table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+@media (max-width: 560px) {
+    .stats-grid-3 { grid-template-columns: 1fr; }
+    .search-bar { padding: 5px 5px 5px 10px; }
+    .search-bar input { font-size: 0.85rem; }
+    .search-bar #btnPesquisar { padding: 8px 10px !important; font-size: 0.76rem; }
+    .view-container { padding: 12px; }
+    .sidebar { width: 86vw; }
+    .topbar-date { display: none; } /* pouco essencial, libera espaço pro campo de busca */
 }
