@@ -18,17 +18,32 @@ export const FORMATOS_INT = {
     nations_a: { formato: "nations_grupos", conf: "UEFA", div: "A", grupos: 4, porGrupo: 4, avancamTop: 2, avancamBottom: 1 },
     nations_b: { formato: "liga", conf: "UEFA", div: "B", maxTimes: 8 },
     nations_c: { formato: "liga", conf: "UEFA", div: "C", maxTimes: 8 },
-    nations_d: { formato: "liga", conf: "UEFA", div: "D", maxTimes: 6 }
+    nations_d: { formato: "liga", conf: "UEFA", div: "D", maxTimes: 6 },
+    // ==========================================
+    // 🧒 SELEÇÕES DE BASE (Sub-17 e Sub-21)
+    // ==========================================
+    // Mesmo formato "grupos_mata" dos torneios continentais adultos, mas com
+    // um limite de idade (idadeMax) que restringe quem pode ser convocado.
+    // Dão a jogadores jovens — mesmo sem nível para a seleção principal — uma
+    // competição de verdade para representar o seu país.
+    mundial_sub17: { formato: "grupos_mata", grupos: 6, porGrupo: 4, avancam: 2, mataLegs: 1, jogosGrupo: 3, idadeMax: 17 },
+    mundial_sub21: { formato: "grupos_mata", grupos: 6, porGrupo: 4, avancam: 2, mataLegs: 1, jogosGrupo: 3, idadeMax: 21 }
 };
 
+// Diz se uma competição é uma fase eliminatória/classificatória (que dá vaga
+// para outra competição maior), em vez de um torneio final em si.
 export function isEliminatoria(compId) {
     return compId?.startsWith("eliminatorias_") || compId === "euro_qualy";
 }
 
+// Gera uma chave única para identificar um torneio internacional específico
+// (competição + ano), usada para guardar o estado do torneio em selecoesEstado.
 export function chaveTorneio(compId, ano) {
     return `int_${compId}_${ano}`;
 }
 
+// Converte os dados de uma seleção (país) num objeto "time" simples, no
+// formato que o motor de mata-mata/grupos espera (id, nome, logo, país).
 export function criarTimeTorneio(selecao) {
     return { id: selecao.id, nome: selecao.nome, logo: selecao.logo, pais: selecao.pais };
 }
@@ -61,17 +76,27 @@ export function idsCompeticoesAtivas(ano) {
     }
     // Nations League (anos ímpares: 2025, 2027)
     if (ano % 2 === 1) ids.push("nations_a", "nations_b", "nations_c", "nations_d");
+    // 🧒 Mundial Sub-17: em anos ímpares (não coincide com a Copa do Mundo adulta).
+    if (ano % 2 === 1) ids.push("mundial_sub17");
+    // 🧒 Mundial Sub-21: em anos pares que NÃO são de Copa do Mundo nem Olimpíadas
+    // (para não sobrecarregar o calendário de base no mesmo ano de dois grandes torneios adultos).
+    if (ano % 2 === 0 && ano % 4 !== 2 && ano % 4 !== 0) ids.push("mundial_sub21");
     return ids;
 }
 
+// Classifica uma competição internacional numa categoria ampla, usada para
+// escolher o ícone e a organização visual na tela de Competições Internacionais.
 export function categoriaComp(compId) {
     if (isEliminatoria(compId)) return "eliminatorias";
     if (compId.startsWith("nations_")) return "nations";
     if (compId === "amistoso") return "amistosos";
     if (compId === "copa_mundo" || compId === "olimpiadas") return "mundial";
+    if (compId.startsWith("mundial_sub")) return "base";
     return "continental";
 }
 
+// Monta os metadados de exibição (categoria, ícone, subtítulo "classificatório
+// para X") de uma competição, para as telas de seleções/competições internacionais.
 export function metaCompeticao(compId, ano) {
     const cat = categoriaComp(compId);
     const dest = anoTorneioDestino(compId, ano);
@@ -89,10 +114,12 @@ export function metaCompeticao(compId, ano) {
         destinoAno: dest,
         destinoNome,
         subtitulo: destinoNome ? `Classificatório • Rumo à ${destinoNome} ${dest}` : null,
-        icon: cat === "eliminatorias" ? "🛤️" : cat === "mundial" ? "🌍" : cat === "continental" ? "🏆" : cat === "nations" ? "⚔️" : "🤝"
+        icon: cat === "eliminatorias" ? "🛤️" : cat === "mundial" ? "🌍" : cat === "continental" ? "🏆" : cat === "nations" ? "⚔️" : cat === "base" ? "🧒" : "🤝"
     };
 }
 
+// Simula uma disputa de pênaltis entre duas seleções/times, com a força de
+// cada lado (0-100) influenciando a chance de acertar/defender cada cobrança.
 export function simularPenaltis(forcaA, forcaB) {
     const atkA = forcaA * 0.82 + 8;
     const atkB = forcaB * 0.82 + 8;
@@ -110,6 +137,8 @@ export function simularPenaltis(forcaA, forcaB) {
     return { penA, penB, venceA: penA > penB };
 }
 
+// Decide o vencedor de um confronto de mata-mata: quem fez mais gols agregados
+// vence direto; em caso de empate, vai para os pênaltis (ver simularPenaltis).
 export function resolverVencedorMataMata(idA, idB, golsA, golsB, forcaA = 75, forcaB = 75) {
     if (golsA > golsB) return { vencedorId: idA, penaltis: false, placarPen: null };
     if (golsB > golsA) return { vencedorId: idB, penaltis: false, placarPen: null };
@@ -118,6 +147,9 @@ export function resolverVencedorMataMata(idA, idB, golsA, golsB, forcaA = 75, fo
     return { vencedorId, penaltis: true, placarPen: `${pens.penA}-${pens.penB}` };
 }
 
+// Simula o placar de um jogo entre duas seleções, a partir da força (0-100)
+// de cada lado. Em mata-mata, garante que não fica empatado (soma +1 gol
+// aleatório a favor de quem tem mais força/sorte para desempatar).
 export function simularPlacarSelecao(forcaA, forcaB, isMataMata = false) {
     const total = forcaA + forcaB;
     let chanceA = (forcaA / total) * 0.05 + 0.008;
@@ -135,6 +167,7 @@ export function simularPlacarSelecao(forcaA, forcaB, isMataMata = false) {
     return { gA, gB };
 }
 
+// Cores de destaque usadas na UI para cada competição (barras, badges, etc.).
 export const CORES_COMP = {
     copa_mundo: "#facc15",
     euro: "#3b82f6",
@@ -144,5 +177,7 @@ export const CORES_COMP = {
     eliminatorias_uefa: "#60a5fa",
     eliminatorias_conmebol: "#4ade80",
     euro_qualy: "#818cf8",
+    mundial_sub17: "#2dd4bf",
+    mundial_sub21: "#38bdf8",
     default: "#00ff88"
 };

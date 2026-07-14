@@ -2,39 +2,39 @@ export const clubes = [
 
     // BRASIL SÉRIE A (Completando 12 times)
     // Já existem: Flamengo, Palmeiras, São Paulo, Corinthians, Santos
-    { id: "c_cam", nome: "Atlético Mineiro", ligaId: "br_1", reputacao: 80, cor: "#000000", logo: "https://tmssl.akamaized.net//images/wappen/head/330.png?lm=1411033853" },
-    { id: "c_cap", nome: "Athletico-PR", ligaId: "br_1", reputacao: 77, cor: "#c8102e", logo: "https://tmssl.akamaized.net//images/wappen/small/679.png?lm=1548711363" },
-    { id: "c_bah", nome: "Bahia", ligaId: "br_1", reputacao: 79, cor: "#0057b8", logo: "https://tmssl.akamaized.net//images/wappen/head/10010.png?lm=1412879173" },
-    { id: "c_bot", nome: "Botafogo", ligaId: "br_1", reputacao: 79, cor: "#000000", logo: "https://tmssl.akamaized.net//images/wappen/head/537.png?lm=1651494898" },
-    { id: "c_cha", nome: "Chapecoense", ligaId: "br_1", reputacao: 70, cor: "#0b8f3d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3195_imgbank_1683642012.png" },
-    { id: "c_cor", nome: "Corinthians", ligaId: "br_1", reputacao: 77, cor: "#111111", logo: "https://tmssl.akamaized.net//images/wappen/head/199.png?lm=1649430398" },
-    { id: "c_corit", nome: "Coritiba", ligaId: "br_1", reputacao: 72, cor: "#0b8f3d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2235_imgbank_1683624576.png" },
-    { id: "c_cru", nome: "Cruzeiro", ligaId: "br_1", reputacao: 78, cor: "#003aab", logo: "https://tmssl.akamaized.net//images/wappen/head/609.png?lm=1757639240" },
-    { id: "c_fla", nome: "Flamengo", ligaId: "br_1", reputacao: 83, cor: "#c8102e", logo: "https://tmssl.akamaized.net//images/wappen/head/614.png?lm=1551023331" },
-    { id: "c_flu", nome: "Fluminense", ligaId: "br_1", reputacao: 79, cor: "#8a1538", logo: "https://tmssl.akamaized.net//images/wappen/head/2462.png?lm=1648225934" },
-    { id: "c_gre", nome: "Grêmio", ligaId: "br_1", reputacao: 79, cor: "#0d80bf", logo: "https://tmssl.akamaized.net//images/wappen/head/210.png?lm=1412879265" },
-    { id: "c_int", nome: "Internacional", ligaId: "br_1", reputacao: 79, cor: "#e5053a", logo: "https://tmssl.akamaized.net//images/wappen/head/6600.png?lm=1644878605" },
-    { id: "c_mir", nome: "Mirassol", ligaId: "br_1", reputacao: 69, cor: "#f7d117", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3348_imgbank_1685113760.png" },
-    { id: "c_pal", nome: "Palmeiras", ligaId: "br_1", reputacao: 83, cor: "#006437", logo: "https://tmssl.akamaized.net//images/wappen/head/1023.png?lm=1411204983" },
-    { id: "c_bra", nome: "Red Bull Bragantino", ligaId: "br_1", reputacao: 75, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3156_imgbank_1683624209.png" },
+    { id: "c_cam", nome: "Atlético Mineiro", ligaId: "br_1", reputacao: 80, cor: "#000000", logo: "https://tmssl.akamaized.net//images/wappen/head/330.png?lm=1411033853" , estado: "MG" },
+    { id: "c_cap", nome: "Athletico-PR", ligaId: "br_1", reputacao: 77, cor: "#c8102e", logo: "https://tmssl.akamaized.net//images/wappen/small/679.png?lm=1548711363" , estado: "PR" },
+    { id: "c_bah", nome: "Bahia", ligaId: "br_1", reputacao: 79, cor: "#0057b8", logo: "https://tmssl.akamaized.net//images/wappen/head/10010.png?lm=1412879173" , estado: "BA" },
+    { id: "c_bot", nome: "Botafogo", ligaId: "br_1", reputacao: 79, cor: "#000000", logo: "https://tmssl.akamaized.net//images/wappen/head/537.png?lm=1651494898" , estado: "RJ" },
+    { id: "c_cha", nome: "Chapecoense", ligaId: "br_1", reputacao: 70, cor: "#0b8f3d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3195_imgbank_1683642012.png" , estado: "SC" },
+    { id: "c_cor", nome: "Corinthians", ligaId: "br_1", reputacao: 77, cor: "#111111", logo: "https://tmssl.akamaized.net//images/wappen/head/199.png?lm=1649430398" , estado: "SP" },
+    { id: "c_corit", nome: "Coritiba", ligaId: "br_1", reputacao: 72, cor: "#0b8f3d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2235_imgbank_1683624576.png" , estado: "PR" },
+    { id: "c_cru", nome: "Cruzeiro", ligaId: "br_1", reputacao: 78, cor: "#003aab", logo: "https://tmssl.akamaized.net//images/wappen/head/609.png?lm=1757639240" , estado: "MG" },
+    { id: "c_fla", nome: "Flamengo", ligaId: "br_1", reputacao: 83, cor: "#c8102e", logo: "https://tmssl.akamaized.net//images/wappen/head/614.png?lm=1551023331" , estado: "RJ" },
+    { id: "c_flu", nome: "Fluminense", ligaId: "br_1", reputacao: 79, cor: "#8a1538", logo: "https://tmssl.akamaized.net//images/wappen/head/2462.png?lm=1648225934" , estado: "RJ" },
+    { id: "c_gre", nome: "Grêmio", ligaId: "br_1", reputacao: 79, cor: "#0d80bf", logo: "https://tmssl.akamaized.net//images/wappen/head/210.png?lm=1412879265" , estado: "RS" },
+    { id: "c_int", nome: "Internacional", ligaId: "br_1", reputacao: 79, cor: "#e5053a", logo: "https://tmssl.akamaized.net//images/wappen/head/6600.png?lm=1644878605" , estado: "RS" },
+    { id: "c_mir", nome: "Mirassol", ligaId: "br_1", reputacao: 69, cor: "#f7d117", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3348_imgbank_1685113760.png" , estado: "SP" },
+    { id: "c_pal", nome: "Palmeiras", ligaId: "br_1", reputacao: 83, cor: "#006437", logo: "https://tmssl.akamaized.net//images/wappen/head/1023.png?lm=1411204983" , estado: "SP" },
+    { id: "c_bra", nome: "Red Bull Bragantino", ligaId: "br_1", reputacao: 75, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3156_imgbank_1683624209.png" , estado: "SP" },
     { id: "c_rem", nome: "Remo", ligaId: "br_1", reputacao: 68, cor: "#001f5b", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3423_imgbank_1683707910.png" },
-    { id: "c_san", nome: "Santos", ligaId: "br_1", reputacao: 76, cor: "#ffffff", logo: "https://tmssl.akamaized.net//images/wappen/head/221.png?lm=1412879099" },
-    { id: "c_sao", nome: "São Paulo", ligaId: "br_1", reputacao: 78, cor: "#ffffff", logo: "https://tmssl.akamaized.net//images/wappen/head/585.png?lm=1409133922" },
-    { id: "c_vas", nome: "Vasco da Gama", ligaId: "br_1", reputacao: 77, cor: "#111111", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2258_imgbank_1683640645.png" },
-    { id: "c_vit", nome: "Vitória", ligaId: "br_1", reputacao: 72, cor: "#c8102e", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2259_imgbank_1683640658.png" },
+    { id: "c_san", nome: "Santos", ligaId: "br_1", reputacao: 76, cor: "#ffffff", logo: "https://tmssl.akamaized.net//images/wappen/head/221.png?lm=1412879099" , estado: "SP" },
+    { id: "c_sao", nome: "São Paulo", ligaId: "br_1", reputacao: 78, cor: "#ffffff", logo: "https://tmssl.akamaized.net//images/wappen/head/585.png?lm=1409133922" , estado: "SP" },
+    { id: "c_vas", nome: "Vasco da Gama", ligaId: "br_1", reputacao: 77, cor: "#111111", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2258_imgbank_1683640645.png" , estado: "RJ" },
+    { id: "c_vit", nome: "Vitória", ligaId: "br_1", reputacao: 72, cor: "#c8102e", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2259_imgbank_1683640658.png" , estado: "BA" },
 
      // BRASIL SÉRIE B
-    { id: "c_sport", nome: "Sport Recife", ligaId: "br_2", reputacao: 72, cor: "#d71920", logo: "" },
-    { id: "c_ceara", nome: "Ceará", ligaId: "br_2", reputacao: 70, cor: "#111111", logo: "" },
-    { id: "c_avai", nome: "Avaí", ligaId: "br_2", reputacao: 68, cor: "#005bac", logo: "" },
+    { id: "c_sport", nome: "Sport Recife", ligaId: "br_2", reputacao: 72, cor: "#d71920", logo: "" , estado: "PE" },
+    { id: "c_ceara", nome: "Ceará", ligaId: "br_2", reputacao: 70, cor: "#111111", logo: "" , estado: "CE" },
+    { id: "c_avai", nome: "Avaí", ligaId: "br_2", reputacao: 68, cor: "#005bac", logo: "" , estado: "SC" },
      // BRASIL SÉRIE C
     { id: "c_paysanndu", nome: "Paysandu", ligaId: "br_3", reputacao: 67, cor: "#d71920", logo: "" },
-    { id: "c_brusque", nome: "Brusque", ligaId: "br_3", reputacao: 61, cor: "#111111", logo: "" },
+    { id: "c_brusque", nome: "Brusque", ligaId: "br_3", reputacao: 61, cor: "#111111", logo: "" , estado: "SC" },
     { id: "c_amazonas", nome: "	Amazonas", ligaId: "br_3", reputacao: 63, cor: "#005bac", logo: "" },
      // BRASIL SÉRIE D
-    { id: "c_portuguesa_SP", nome: "Portuguesa-SP", ligaId: "br_4", reputacao: 58, cor: "#d71920", logo: "https://tmssl.akamaized.net//images/wappen/head/10247.png?lm=1673282057" },
-    { id: "c_portuguesa_RJ", nome: "Portuguesa-RJ", ligaId: "br_4", reputacao: 54, cor: "#111111", logo: "https://imgs.search.brave.com/A6Y5c12_naKxbSfhJjKbpiXncHgmDqR8TlSnA-z0Q2c/rs:fit:100:100:1:0/g:ce/aHR0cHM6Ly9tZWRp/YS5hcGktc3BvcnRz/LmlvL2Zvb3RiYWxs/L3RlYW1zLzc4MzUu/cG5n" },
-    { id: "c_portuguesa_SANTISTA", nome: "Portuguesa-AA", ligaId: "br_4", reputacao: 49, cor: "#005bac", logo: "https://tmssl.akamaized.net//images/wappen/head/17038.png?lm=1445631744" },
+    { id: "c_portuguesa_SP", nome: "Portuguesa-SP", ligaId: "br_4", reputacao: 58, cor: "#d71920", logo: "https://tmssl.akamaized.net//images/wappen/head/10247.png?lm=1673282057" , estado: "SP" },
+    { id: "c_portuguesa_RJ", nome: "Portuguesa-RJ", ligaId: "br_4", reputacao: 54, cor: "#111111", logo: "https://imgs.search.brave.com/A6Y5c12_naKxbSfhJjKbpiXncHgmDqR8TlSnA-z0Q2c/rs:fit:100:100:1:0/g:ce/aHR0cHM6Ly9tZWRp/YS5hcGktc3BvcnRz/LmlvL2Zvb3RiYWxs/L3RlYW1zLzc4MzUu/cG5n" , estado: "RJ" },
+    { id: "c_portuguesa_SANTISTA", nome: "Portuguesa-AA", ligaId: "br_4", reputacao: 49, cor: "#005bac", logo: "https://tmssl.akamaized.net//images/wappen/head/17038.png?lm=1445631744" , estado: "SP" },
   
     // ARGENTINA
     { id: "c_boca", nome: "Boca Juniors", ligaId: "arg_1", reputacao: 79, cor: "#0033a0", logo: "https://tmssl.akamaized.net/images/wappen/head/189.png?lm=1457975903" },
@@ -189,8 +189,7 @@ export const clubes = [
     { id: "c_elv", nome: "SV Elversberg", ligaId: "ger_1", reputacao: 70, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/13318_imgbank_1748533465.png" },
     { id: "c_pad", nome: "Paderborn", ligaId: "ger_1", reputacao: 71, cor: "#003b8e", logo: "https://cdn-img.staticzz.com/img/logos/equipas/4458_imgbank_1683887256.png" }, 
     // ALEMANHA 2
-    { id: "c_hsv", nome: "Hamburger SV", ligaId: "ger_2", reputacao: 74, cor: "#005aaa", logo: "https://assets.football-logos.cc/logos/germany/512x512/hamburger-sv.6a4c40a6.png" },
-    { id: "c_schalke", nome: "Schalke 04", ligaId: "ger_2", reputacao: 73, cor: "#004b9b", logo: "" },
+
 
 
     // FRANÇA
@@ -246,8 +245,8 @@ export const clubes = [
     { id: "c_mor", nome: "Moreirense", ligaId: "pt_1", reputacao: 68, cor: "#000000", logo: "https://assets.football-logos.cc/logos/portugal/512x512/moreirense.9a455d5d.png" },
     { id: "c_ama", nome: "Estrela da Amadora", ligaId: "pt_1", reputacao: 69, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/253884_imgbank_1755880629.png" },
     { id: "c_scl", nome: "Santa Clara", ligaId: "pt_1", reputacao: 71, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/32_imgbank_1720775732.png" },
-    { id: "c_mar", nome: "Marítimo", ligaId: "pt_1", reputacao: 70, cor: "#007a33", logo: "https://cdn-img.staticzz.com/img/logos/equipas/12_imgbank_1682583249.png" },
-    { id: "c_nac", nome: "Nacional", ligaId: "pt_1", reputacao: 69, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/27_imgbank_1682588574.png" },
+    { id: "c_maritimo", nome: "Marítimo", ligaId: "pt_1", reputacao: 70, cor: "#007a33", logo: "https://cdn-img.staticzz.com/img/logos/equipas/12_imgbank_1682583249.png" },
+    { id: "c_nacional", nome: "Nacional", ligaId: "pt_1", reputacao: 69, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/27_imgbank_1682588574.png" },
     { id: "c_aro", nome: "Arouca", ligaId: "pt_1", reputacao: 70, cor: "#f4c300", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3555_imgbank_1682582864.png" },
     { id: "c_cas", nome: "Casa Pia", ligaId: "pt_1", reputacao: 69, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2412_imgbank_1695724045.png" },
     { id: "c_acv", nome: "Académico de Viseu", ligaId: "pt_1", reputacao: 68, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2181_imgbank_1762193325.png" },
@@ -277,15 +276,21 @@ export const clubes = [
     { id: "c_ajax", nome: "Ajax", ligaId: "nl_1", reputacao: 83, cor: "#d2122e", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Logo_AFC_Ajax_%281928-1991%2C_2025-%29.png/120px-Logo_AFC_Ajax_%281928-1991%2C_2025-%29.png" },
     { id: "c_psv", nome: "PSV", ligaId: "nl_1", reputacao: 83, cor: "#ff0000", logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/c/ca/PSV_Eindhoven_escudo.png/250px-PSV_Eindhoven_escudo.png" },
     { id: "c_fey", nome: "Feyenoord", ligaId: "nl_1", reputacao: 82, cor: "#e00034", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Feyenoord_logo_since_2024.svg/120px-Feyenoord_logo_since_2024.svg.png" },
-    { id: "c_az", nome: "AZ Alkmaar", ligaId: "nl_1", reputacao: 78, cor: "#d4001f", logo: "" },
-    { id: "c_twe", nome: "Twente", ligaId: "nl_1", reputacao: 77, cor: "#e30613", logo: "" },
-    { id: "c_utr", nome: "Utrecht", ligaId: "nl_1", reputacao: 75, cor: "#e60028", logo: "" },
-    { id: "c_vit_nl", nome: "Vitesse", ligaId: "nl_1", reputacao: 73, cor: "#f2d100", logo: "" },
-    { id: "c_hee", nome: "Heerenveen", ligaId: "nl_1", reputacao: 73, cor: "#003da5", logo: "" },
-    { id: "c_spa", nome: "Sparta Rotterdam", ligaId: "nl_1", reputacao: 72, cor: "#d71920", logo: "" },
-    { id: "c_goa", nome: "Go Ahead Eagles", ligaId: "nl_1", reputacao: 72, cor: "#ffcc00", logo: "" },
-    { id: "c_gae", nome: "Groningen", ligaId: "nl_1", reputacao: 71, cor: "#008000", logo: "" },
-    { id: "c_her", nome: "Heracles", ligaId: "nl_1", reputacao: 70, cor: "#000000", logo: "" },
+    { id: "c_az", nome: "AZ Alkmaar", ligaId: "nl_1", reputacao: 78, cor: "#d4001f", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1927_imgbank_1684155564.png" },
+    { id: "c_twe", nome: "Twente", ligaId: "nl_1", reputacao: 77, cor: "#e30613", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1930_imgbank_1687180641.png" },
+    { id: "c_utr", nome: "Utrecht", ligaId: "nl_1", reputacao: 75, cor: "#e60028", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1114_imgbank_1762419921.png" },
+    { id: "c_nec_nl", nome: "Nec", ligaId: "nl_1", reputacao: 73, cor: "#f2d100", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1120_imgbank_1687180602.png" },
+    { id: "c_hee", nome: "Heerenveen", ligaId: "nl_1", reputacao: 73, cor: "#003da5", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1929_imgbank_1687180626.png" },
+    { id: "c_spa", nome: "Sparta Rotterdam", ligaId: "nl_1", reputacao: 72, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/4983_imgbank_1687180734.png" },
+    { id: "c_goa", nome: "Go Ahead Eagles", ligaId: "nl_1", reputacao: 72, cor: "#ffcc00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5792_imgbank_1687180766.png" },
+    { id: "c_gae", nome: "Groningen", ligaId: "nl_1", reputacao: 71, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1933_imgbank_1687180673.png" },
+    { id: "c_her", nome: "Heracles", ligaId: "nl_1", reputacao: 70, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5948_imgbank_1691139733.png" },
+    { id: "c_wil", nome: "Willem II", ligaId: "nl_1", reputacao: 71, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1928_imgbank_1691138994.png" },
+    { id: "c_fortuna", nome: "Fortuna Sittard", ligaId: "nl_1", reputacao: 70, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/4485_imgbank_1687180723.png" },
+    { id: "c_ado", nome: "ADO Den Haag", ligaId: "nl_1", reputacao: 69, cor: "#ffff00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1937_imgbank_1691140260.png" },
+    { id: "c_zwo", nome: "PEC Zwolle", ligaId: "nl_1", reputacao: 69, cor: "#0000ff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1938_imgbank_1691140429.png" },
+    { id: "c_exc", nome: "Excelsior", ligaId: "nl_1", reputacao: 68, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5359_imgbank_1687180745.png" },
+    { id: "c_cambuur", nome: "SC Cambuur", ligaId: "nl_1", reputacao: 67, cor: "#ffff00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/7473_imgbank_1687180776.png" },
 
     // TURQUIA
     { id: "c_gala", nome: "Galatasaray", ligaId: "tr_1", reputacao: 81, cor: "#ffcc00", logo: "https://assets.football-logos.cc/logos/turkey/512x512/galatasaray.beadfca5.png" },
@@ -312,22 +317,65 @@ export const clubes = [
     { id: "c_char", nome: "Charleroi", ligaId: "be_1", reputacao: 72, cor: "#000000", logo: "https://tmssl.akamaized.net/images/wappen/head/9064.png" },
 
     // ESCÓCIA
-   { id: "c_celtic", nome: "Celtic", ligaId: "sco_1", reputacao: 80, cor: "#018749", logo: "https://tmssl.akamaized.net/images/wappen/head/371.png" },
-   { id: "c_rangers", nome: "Rangers", ligaId: "sco_1", reputacao: 79, cor: "#005eb8", logo: "https://tmssl.akamaized.net/images/wappen/head/124.png" },
-   { id: "c_aberdeen", nome: "Aberdeen", ligaId: "sco_1", reputacao: 73, cor: "#d71920", logo: "https://tmssl.akamaized.net/images/wappen/head/370.png" },
-   { id: "c_hearts", nome: "Hearts", ligaId: "sco_1", reputacao: 74, cor: "#7a263a", logo: "https://tmssl.akamaized.net/images/wappen/head/121.png" },
-   { id: "c_hibs", nome: "Hibernian", ligaId: "sco_1", reputacao: 73, cor: "#006747", logo: "https://tmssl.akamaized.net/images/wappen/head/122.png" },
-   { id: "c_dundeeu", nome: "Dundee United", ligaId: "sco_1", reputacao: 71, cor: "#f58220", logo: "https://tmssl.akamaized.net/images/wappen/head/151.png" },
-   { id: "c_motherwell", nome: "Motherwell", ligaId: "sco_1", reputacao: 70, cor: "#fdb913", logo: "https://tmssl.akamaized.net/images/wappen/head/123.png" },
-   { id: "c_stmirren", nome: "St. Mirren", ligaId: "sco_1", reputacao: 69, cor: "#000000", logo: "https://tmssl.akamaized.net/images/wappen/head/360.png" },
-   { id: "c_kilmarnock", nome: "Kilmarnock", ligaId: "sco_1", reputacao: 69, cor: "#00529f", logo: "https://tmssl.akamaized.net/images/wappen/head/359.png" },
-   { id: "c_dundee", nome: "Dundee FC", ligaId: "sco_1", reputacao: 68, cor: "#003da5", logo: "https://tmssl.akamaized.net/images/wappen/head/357.png" },
-   { id: "c_ross", nome: "Ross County", ligaId: "sco_1", reputacao: 67, cor: "#003da5", logo: "https://tmssl.akamaized.net/images/wappen/head/2758.png" },
-   { id: "c_livingston", nome: "Livingston", ligaId: "sco_1", reputacao: 66, cor: "#f9d616", logo: "https://tmssl.akamaized.net/images/wappen/head/1465.png" },
+    { id: "c_celtic", nome: "Celtic", ligaId: "sco_1", reputacao: 80, cor: "#018749", logo: "https://tmssl.akamaized.net/images/wappen/head/371.png" },
+    { id: "c_rangers", nome: "Rangers", ligaId: "sco_1", reputacao: 79, cor: "#005eb8", logo: "https://tmssl.akamaized.net/images/wappen/head/124.png" },
+    { id: "c_aberdeen", nome: "Aberdeen", ligaId: "sco_1", reputacao: 73, cor: "#d71920", logo: "https://tmssl.akamaized.net/images/wappen/head/370.png" },
+    { id: "c_hearts", nome: "Hearts", ligaId: "sco_1", reputacao: 74, cor: "#7a263a", logo: "https://tmssl.akamaized.net/images/wappen/head/121.png" },
+    { id: "c_hibs", nome: "Hibernian", ligaId: "sco_1", reputacao: 73, cor: "#006747", logo: "https://tmssl.akamaized.net/images/wappen/head/122.png" },
+    { id: "c_dundeeu", nome: "Dundee United", ligaId: "sco_1", reputacao: 71, cor: "#f58220", logo: "https://tmssl.akamaized.net/images/wappen/head/151.png" },
+    { id: "c_motherwell", nome: "Motherwell", ligaId: "sco_1", reputacao: 70, cor: "#fdb913", logo: "https://tmssl.akamaized.net/images/wappen/head/123.png" },
+    { id: "c_stmirren", nome: "St. Mirren", ligaId: "sco_1", reputacao: 69, cor: "#000000", logo: "https://tmssl.akamaized.net/images/wappen/head/360.png" },
+    { id: "c_kilmarnock", nome: "Kilmarnock", ligaId: "sco_1", reputacao: 69, cor: "#00529f", logo: "https://tmssl.akamaized.net/images/wappen/head/359.png" },
+    { id: "c_dundee", nome: "Dundee FC", ligaId: "sco_1", reputacao: 68, cor: "#003da5", logo: "https://tmssl.akamaized.net/images/wappen/head/357.png" },
+    { id: "c_ross", nome: "Ross County", ligaId: "sco_1", reputacao: 67, cor: "#003da5", logo: "https://tmssl.akamaized.net/images/wappen/head/2758.png" },
+    { id: "c_livingston", nome: "Livingston", ligaId: "sco_1", reputacao: 66, cor: "#f9d616", logo: "https://tmssl.akamaized.net/images/wappen/head/1465.png" },
 
-    
+    // Suíça
+    { id: "c_basel", nome: "FC Basel", ligaId: "sui_1", reputacao: 78, cor: "#d4001f", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1117_imgbank_1684155396.png" },
+    { id: "c_lug", nome: "FC Lugano", ligaId: "sui_1", reputacao: 75, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3878_imgbank_1690474763.png" },
+    { id: "c_sion", nome: "FC Sion", ligaId: "sui_1", reputacao: 72, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/4151_imgbank_1736243898.png" },
+    { id: "c_thun", nome: "FC Thun", ligaId: "sui_1", reputacao: 70, cor: "#d4001f", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2141_imgbank_1691657938.png" },
+    { id: "c_vad", nome: "FC Vaduz", ligaId: "sui_1", reputacao: 68, cor: "#cc0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1141_imgbank_1690452742.png" },
+    { id: "c_zur", nome: "FC Zürich", ligaId: "sui_1", reputacao: 77, cor: "#00529c", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2144_imgbank_1690475319.png" },
+    { id: "c_gra", nome: "Grasshoppers", ligaId: "sui_1", reputacao: 76, cor: "#003366", logo: "https://cdn-img.staticzz.com/img/logos/equipas/161_imgbank_1687266809.png" },
+    { id: "c_lau", nome: "Lausanne-Sport", ligaId: "sui_1", reputacao: 73, cor: "#0066cc", logo: "https://cdn-img.staticzz.com/img/logos/equipas/8434_imgbank_1719574151.png" },
+    { id: "c_luz", nome: "Luzern", ligaId: "sui_1", reputacao: 74, cor: "#0066ff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/7758_imgbank_1690474955.png" },
+    { id: "c_ser", nome: "Servette", ligaId: "sui_1", reputacao: 77, cor: "#7a0019", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2139_imgbank_1690475112.png" },
+    { id: "c_stg", nome: "St. Gallen", ligaId: "sui_1", reputacao: 74, cor: "#00843d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2142_imgbank_1690475186.png" },
+    { id: "c_yb", nome: "Young Boys", ligaId: "sui_1", reputacao: 80, cor: "#ffdd00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1102_imgbank_1688574649.png" },
+     
+    //Austria 
+    { id: "c_lustenau", nome: "Austria Lustenau", ligaId: "aut_1", reputacao: 65, cor: "#006400", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5248_imgbank_1687189269.png" },
+    { id: "c_austriawien", nome: "Austria Wien", ligaId: "aut_1", reputacao: 74, cor: "#4b0082", logo: "https://cdn-img.staticzz.com/img/logos/equipas/159_imgbank_1687189193.png" },
+    { id: "c_grazer", nome: "Grazer AK", ligaId: "aut_1", reputacao: 68, cor: "#ff0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/152_imgbank_1687189022.png" },
+    { id: "c_lask", nome: "LASK Linz", ligaId: "aut_1", reputacao: 75, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/4052_imgbank_1687189258.png" },
+    { id: "c_rapid", nome: "Rapid Wien", ligaId: "aut_1", reputacao: 76, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1755_imgbank_1687189226.png" },
+    { id: "c_salzburg", nome: "Red Bull Salzburg", ligaId: "aut_1", reputacao: 82, cor: "#ff0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1119_imgbank_1759250365.png" },
+    { id: "c_altach", nome: "SCR Altach", ligaId: "aut_1", reputacao: 66, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/7831_imgbank_1783432149.png" },
+    { id: "c_sturm", nome: "Sturm Graz", ligaId: "aut_1", reputacao: 77, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1760_imgbank_1687189242.png" },
+    { id: "c_ried", nome: "SV Ried", ligaId: "aut_1", reputacao: 67, cor: "#006400", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5872_imgbank_1687189284.png" },
+    { id: "c_hartberg", nome: "TSV Hartberg", ligaId: "aut_1", reputacao: 68, cor: "#0000ff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/9475_imgbank_1687189304.png" },
+    { id: "c_wolfsberger", nome: "Wolfsberger AC", ligaId: "aut_1", reputacao: 71, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/39878_imgbank_1687189386.png" },
+    { id: "c_wsgtirol", nome: "WSG Tirol", ligaId: "aut_1", reputacao: 66, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/39616_imgbank_1687189332.png" },
+
+    //Grecia
+    { id: "c_aek", nome: "AEK Athens", ligaId: "gre_1", reputacao: 78, cor: "#ffcc00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/148_imgbank_1687265232.png" },
+    { id: "c_aris", nome: "Aris Thessaloniki", ligaId: "gre_1", reputacao: 73, cor: "#ffcc00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1111_imgbank_1688113339.png" },
+    { id: "c_asteras", nome: "Asteras Tripolis", ligaId: "gre_1", reputacao: 69, cor: "#0000ff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/8611_imgbank_1688113497.png" },
+    { id: "c_atromitos", nome: "Atromitos", ligaId: "gre_1", reputacao: 68, cor: "#0000ff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1918_imgbank_1688113873.png" },
+    { id: "c_kifisia", nome: "Kifisia", ligaId: "gre_1", reputacao: 65, cor: "#00aaff", logo: "https://cdn-img.staticzz.com/img/logos/equipas/231157_imgbank_1753976905.png" },
+    { id: "c_larissa", nome: "Larissa (AEL)", ligaId: "gre_1", reputacao: 67, cor: "#8b0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/6169_imgbank_1727176846.png" },
+    { id: "c_levadiakos", nome: "Levadiakos FC", ligaId: "gre_1", reputacao: 66, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/6235_imgbank_1732893382.png" },
+    { id: "c_ofi", nome: "OFI Crete", ligaId: "gre_1", reputacao: 69, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1920_imgbank_1688394112.png" },
+    { id: "c_olympiacos", nome: "Olympiacos", ligaId: "gre_1", reputacao: 81, cor: "#ff0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/136_imgbank_1687267606.png" },
+    { id: "c_panathinaikos", nome: "Panathinaikos", ligaId: "gre_1", reputacao: 80, cor: "#008000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/137_imgbank_1687267676.png" },
+    { id: "c_panetolikos", nome: "Panetolikos", ligaId: "gre_1", reputacao: 67, cor: "#ffff00", logo: "https://cdn-img.staticzz.com/img/logos/equipas/26397_imgbank_1688114122.png" },
+    { id: "c_panserraikos", nome: "Panserraikos", ligaId: "gre_1", reputacao: 66, cor: "#ff0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/12120_imgbank_1707320430.png" },
+    { id: "c_paok", nome: "PAOK", ligaId: "gre_1", reputacao: 79, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/1116_imgbank_1688394015.png" },
+    { id: "c_volos", nome: "Volos NFC", ligaId: "gre_1", reputacao: 68, cor: "#ff0000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/231916_imgbank_1707320111.png" },
+
+
     // ARÁBIA
-
     { id: "c_aln", nome: "Al Nassr", ligaId: "ara_1", reputacao: 82, cor: "#fce903", logo: "https://assets.football-logos.cc/logos/saudi-arabia/512x512/al-nassr.1de248ec.png" },
     { id: "c_hil", nome: "Al Hilal", ligaId: "ara_1", reputacao: 83, cor: "#0055a5", logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Al_Hilal_SFC_Logo.svg/120px-Al_Hilal_SFC_Logo.svg.png" },
     { id: "c_itt", nome: "Al Ittihad", ligaId: "ara_1", reputacao: 81, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/5977_imgbank_1686924578.png" },
@@ -363,20 +411,20 @@ export const clubes = [
     { id: "c_kun", nome: "Kun Khalifa", ligaId: "nga_1", reputacao: 59, cor: "#444444", logo: "" },
 
     // LIGUE 1 COSTA MARFIM
-    { id: "c_asec", nome: "ASEC Mimosas", ligaId: "civ_1", reputacao: 74, cor: "#f7c600", logo: "" },
-    { id: "c_africa", nome: "Africa Sports", ligaId: "civ_1", reputacao: 70, cor: "#e10600", logo: "" },
-    { id: "c_stella", nome: "Stella Club", ligaId: "civ_1", reputacao: 67, cor: "#009933", logo: "" },
-    { id: "c_afad", nome: "AFAD Plateau", ligaId: "civ_1", reputacao: 68, cor: "#0066cc", logo: "" },
-    { id: "c_sanpedro", nome: "FC San Pedro", ligaId: "civ_1", reputacao: 69, cor: "#ff7f00", logo: "" },
-    { id: "c_mimosifcom", nome: "Mouna FC", ligaId: "civ_1", reputacao: 65, cor: "#663399", logo: "" },
-    { id: "c_lys", nome: "LYS Sassandra", ligaId: "civ_1", reputacao: 64, cor: "#006633", logo: "" },
-    { id: "c_sol", nome: "SOL FC", ligaId: "civ_1", reputacao: 64, cor: "#00aaff", logo: "" },
+    { id: "c_asec", nome: "ASEC Mimosas", ligaId: "civ_1", reputacao: 74, cor: "#f7c600", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/5/50/ASEC_Mimosas.png/250px-ASEC_Mimosas.png" },
+    { id: "c_africa", nome: "Africa Sports", ligaId: "civ_1", reputacao: 70, cor: "#e10600", logo: "https://upload.wikimedia.org/wikipedia/en/4/4e/Africa_Sports_Logo.png" },
+    { id: "c_stella", nome: "Stella Club", ligaId: "civ_1", reputacao: 67, cor: "#009933", logo: "https://upload.wikimedia.org/wikipedia/en/a/a9/Stella_Club_d%27Adjam%C3%A9.png" },
+    { id: "c_afad", nome: "AFAD Plateau", ligaId: "civ_1", reputacao: 68, cor: "#0066cc", logo: "https://imgs.search.brave.com/eywapxPzXKsYUNLxRjy-cA2QuuvrRUAVx8y0K9gGZT4/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9zLmhz/LWRhdGEuY29tL2dm/eC9lbWJsZW0vY29t/bW9uLzE1MHgxNTAv/NDg2NjkucG5n" },
+    { id: "c_sanpedro", nome: "FC San Pedro", ligaId: "civ_1", reputacao: 69, cor: "#ff7f00", logo: "https://upload.wikimedia.org/wikipedia/en/thumb/a/a4/FCSANPedroLogo.png/250px-FCSANPedroLogo.png" },
+    { id: "c_mimosifcom", nome: "Mouna FC", ligaId: "civ_1", reputacao: 65, cor: "#663399", logo: "https://imgs.search.brave.com/Y6u3T_SOvkXsfb1K49QKlWwXDdp_UAFKI-mhYayeX1U/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly9hc3Nl/dHMuYXNlYy5jaS9p/bWFnZXMvY2x1Yi9t/b3VuYS1mYy0xeDEz/MC5wbmc" },
+    { id: "c_lys", nome: "LYS Sassandra", ligaId: "civ_1", reputacao: 64, cor: "#006633", logo: "https://tag-pictures.tribuna.com/image/cc86be9c-6a5e-4cdd-b2eb-331f0ae747ae?width=120&quality=70" },
+    { id: "c_soa", nome: "SOA FC", ligaId: "civ_1", reputacao: 64, cor: "#00aaff", logo: "https://upload.wikimedia.org/wikipedia/en/2/28/Soci%C3%A9t%C3%A9_Omnisports_de_l%27Arm%C3%A9e.png" },
     { id: "c_zoman", nome: "Zoman FC", ligaId: "civ_1", reputacao: 63, cor: "#ff6600", logo: "" },
     { id: "c_racingabidjan", nome: "Racing Club Abidjan", ligaId: "civ_1", reputacao: 66, cor: "#0033cc", logo: "" },
     { id: "c_bouake", nome: "Bouaké FC", ligaId: "civ_1", reputacao: 62, cor: "#cc0000", logo: "" },
     { id: "c_cocody", nome: "CO Korhogo", ligaId: "civ_1", reputacao: 61, cor: "#0099ff", logo: "" },
     { id: "c_osafc", nome: "OSA FC", ligaId: "civ_1", reputacao: 61, cor: "#9900cc", logo: "" },
-    { id: "c_stade", nome: "Stade d'Abidjan", ligaId: "civ_1", reputacao: 71, cor: "#0055aa", logo: "" },
+    { id: "c_stade", nome: "Stade d'Abidjan", ligaId: "civ_1", reputacao: 71, cor: "#0055aa", logo: "https://upload.wikimedia.org/wikipedia/en/0/06/Stade_d%27Abidjan.png" },
     { id: "c_isca", nome: "ISCA", ligaId: "civ_1", reputacao: 60, cor: "#444444", logo: "" },
     { id: "c_esb", nome: "ES Bafing", ligaId: "civ_1", reputacao: 60, cor: "#228b22", logo: "" },
 
@@ -428,5 +476,108 @@ export const clubes = [
   { id: "c_sanluis", nome: "Atlético San Luis", ligaId: "mx_1", reputacao: 73, cor: "#c8102e", logo: "https://assets.football-logos.cc/logos/mexico/512x512/atletico-de-san-luis.3e32a0dc.png" },
 
 
+
+
+    // ==========================================
+    // CLUBES REGIONAIS - APENAS CAMPEONATOS ESTADUAIS
+    // (ligaId vazio: nao entram nas ligas nacionais)
+    // ==========================================
+
+    // SP
+    { id: "c_pontepreta", nome: "Ponte Preta", ligaId: "br_2", reputacao: 66, cor: "#000000", logo: "", estado: "SP" },
+    { id: "c_guarani", nome: "Guarani", ligaId: "br_3", reputacao: 65, cor: "#00563f", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2242_imgbank_1683641006.png", estado: "SP" },
+    { id: "c_novorizontino", nome: "Novorizontino", ligaId: "br_2", reputacao: 66, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/24836_imgbank_1683641304.png", estado: "SP" },
+    { id: "c_ituano", nome: "Ituano", ligaId: "br_3", reputacao: 61, cor: "#7b1fa2", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2543_imgbank_1683641599.png", estado: "SP" },
+    { id: "c_aguasanta", nome: "Água Santa", ligaId: "br_4", reputacao: 58, cor: "#006437", logo: "https://cdn-img.staticzz.com/img/logos/equipas/71236_imgbank.png", estado: "SP" },
+    { id: "c_interlimeira", nome: "Inter de Limeira", ligaId: "br_3", reputacao: 57, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3291_imgbank_1683649721.png", estado: "SP" },
+    { id: "c_botafogosp", nome: "Botafogo-SP", ligaId: "br_2", reputacao: 60, cor: "#111111", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3154_imgbank_1685113109.png", estado: "SP" },
+    { id: "c_saobento", nome: "São Bento", ligaId: "", reputacao: 56, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3457_imgbank.png", estado: "SP" },
+
+    // RJ
+    { id: "c_boavista", nome: "Boavista", ligaId: "", reputacao: 58, cor: "#e30613", logo: "https://cdn-img.staticzz.com/img/logos/equipas/8516_imgbank_1736424131.png", estado: "RJ" },
+    { id: "c_novaiguacu", nome: "Nova Iguaçu", ligaId: "br_4", reputacao: 57, cor: "#f7d117", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3363_imgbank_1683650130.png", estado: "RJ" },
+    { id: "c_voltaredonda", nome: "Volta Redonda", ligaId: "br_3", reputacao: 60, cor: "#111111", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3538_imgbank_1685114545.png", estado: "RJ" },
+    { id: "c_madureira", nome: "Madureira", ligaId: "br_4", reputacao: 57, cor: "#006437", logo: "https://cdn-img.staticzz.com/img/logos/equipas/3332_imgbank.png", estado: "RJ" },
+    { id: "c_bangu", nome: "Bangu", ligaId: "", reputacao: 56, cor: "#c8102e", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2232_imgbank.png", estado: "RJ" },
+    { id: "c_audaxrio", nome: "Audax Rio", ligaId: "", reputacao: 54, cor: "#0054a6", logo: "https://cdn-img.staticzz.com/img/logos/equipas/16211_imgbank_1742380171.png", estado: "RJ" },
+    { id: "c_resende", nome: "Resende", ligaId: "", reputacao: 55, cor: "#d71920", logo: "https://cdn-img.staticzz.com/img/logos/equipas/12036_imgbank_1683641402.png", estado: "RJ" },
+
+    // MG
+    { id: "c_americamg", nome: "América Mineiro", ligaId: "", reputacao: 68, cor: "#00964c", logo: "", estado: "MG" },
+    { id: "c_villanova", nome: "Villa Nova", ligaId: "", reputacao: 58, cor: "#111111", logo: "", estado: "MG" },
+    { id: "c_tombense", nome: "Tombense", ligaId: "", reputacao: 64, cor: "#111111", logo: "", estado: "MG" },
+    { id: "c_caldense", nome: "Caldense", ligaId: "", reputacao: 56, cor: "#c8102e", logo: "", estado: "MG" },
+    { id: "c_urt", nome: "URT", ligaId: "", reputacao: 54, cor: "#0054a6", logo: "", estado: "MG" },
+    { id: "c_democratagv", nome: "Democrata-GV", ligaId: "", reputacao: 53, cor: "#006437", logo: "", estado: "MG" },
+    { id: "c_patrocinense", nome: "Patrocinense", ligaId: "", reputacao: 54, cor: "#d71920", logo: "", estado: "MG" },
+    { id: "c_pousoalegre", nome: "Pouso Alegre", ligaId: "", reputacao: 55, cor: "#0054a6", logo: "", estado: "MG" },
+
+    // RS
+    { id: "c_juventude", nome: "Juventude", ligaId: "", reputacao: 68, cor: "#00964c", logo: "", estado: "RS" },
+    { id: "c_caxias", nome: "Caxias", ligaId: "", reputacao: 59, cor: "#c8102e", logo: "", estado: "RS" },
+    { id: "c_ypiranga", nome: "Ypiranga-RS", ligaId: "", reputacao: 57, cor: "#111111", logo: "", estado: "RS" },
+    { id: "c_saoluiz", nome: "São Luiz", ligaId: "", reputacao: 55, cor: "#0054a6", logo: "", estado: "RS" },
+    { id: "c_novohamburgo", nome: "Novo Hamburgo", ligaId: "", reputacao: 56, cor: "#e30613", logo: "", estado: "RS" },
+    { id: "c_brasildepelotas", nome: "Brasil de Pelotas", ligaId: "", reputacao: 58, cor: "#d71920", logo: "", estado: "RS" },
+    { id: "c_aimore", nome: "Aimoré", ligaId: "", reputacao: 53, cor: "#111111", logo: "", estado: "RS" },
+    { id: "c_saojose_rs", nome: "São José-RS", ligaId: "", reputacao: 54, cor: "#c8102e", logo: "", estado: "RS" },
+
+    // PR
+    { id: "c_londrina", nome: "Londrina", ligaId: "", reputacao: 61, cor: "#111111", logo: "", estado: "PR" },
+    { id: "c_maringa", nome: "Maringá", ligaId: "", reputacao: 56, cor: "#0054a6", logo: "", estado: "PR" },
+    { id: "c_operariopr", nome: "Operário-PR", ligaId: "", reputacao: 60, cor: "#111111", logo: "", estado: "PR" },
+    { id: "c_cianorte", nome: "Cianorte", ligaId: "", reputacao: 55, cor: "#006437", logo: "", estado: "PR" },
+    { id: "c_riobrancopr", nome: "Rio Branco-PR", ligaId: "", reputacao: 53, cor: "#d71920", logo: "", estado: "PR" },
+    { id: "c_uniaofrederiquense", nome: "União Frederiquense", ligaId: "", reputacao: 52, cor: "#0054a6", logo: "", estado: "PR" },
+    { id: "c_azuriz", nome: "Azuriz", ligaId: "", reputacao: 54, cor: "#111111", logo: "", estado: "PR" },
+    { id: "c_fccascavel", nome: "FC Cascavel", ligaId: "", reputacao: 53, cor: "#d71920", logo: "", estado: "PR" },
+
+    // SC
+    { id: "c_criciuma", nome: "Criciúma", ligaId: "br_2", reputacao: 67, cor: "#f7d117", logo: "", estado: "SC" },
+    { id: "c_joinville", nome: "Joinville", ligaId: "", reputacao: 60, cor: "#111111", logo: "", estado: "SC" },
+    { id: "c_marciliodias", nome: "Marcílio Dias", ligaId: "", reputacao: 55, cor: "#0054a6", logo: "", estado: "SC" },
+    { id: "c_concordia", nome: "Concórdia", ligaId: "", reputacao: 53, cor: "#006437", logo: "", estado: "SC" },
+    { id: "c_camboriu", nome: "Camboriú", ligaId: "", reputacao: 52, cor: "#d71920", logo: "", estado: "SC" },
+    { id: "c_hercilioluz", nome: "Hercílio Luz", ligaId: "", reputacao: 52, cor: "#c8102e", logo: "", estado: "SC" },
+    { id: "c_barra_sc", nome: "Barra", ligaId: "", reputacao: 51, cor: "#111111", logo: "", estado: "SC" },
+    { id: "c_metropolitano", nome: "Metropolitano", ligaId: "", reputacao: 51, cor: "#0054a6", logo: "", estado: "SC" },
+    { id: "c_prospera", nome: "Próspera", ligaId: "", reputacao: 50, cor: "#d71920", logo: "", estado: "SC" },
+
+    // GO
+    { id: "c_goias", nome: "Goiás", ligaId: "br_2", reputacao: 68, cor: "#006437", logo: "", estado: "GO" },
+    { id: "c_vilanova_go", nome: "Vila Nova", ligaId: "", reputacao: 62, cor: "#c8102e", logo: "", estado: "GO" },
+    { id: "c_atleticogo", nome: "Atlético Goianiense", ligaId: "", reputacao: 65, cor: "#c8102e", logo: "", estado: "GO" },
+    { id: "c_jataiense", nome: "Jataiense", ligaId: "", reputacao: 52, cor: "#0054a6", logo: "", estado: "GO" },
+    { id: "c_anapolis", nome: "Anápolis", ligaId: "", reputacao: 53, cor: "#111111", logo: "", estado: "GO" },
+    { id: "c_aparecidense", nome: "Aparecidense", ligaId: "", reputacao: 55, cor: "#006437", logo: "", estado: "GO" },
+    { id: "c_ipora", nome: "Iporá", ligaId: "", reputacao: 50, cor: "#d71920", logo: "", estado: "GO" },
+    { id: "c_crac", nome: "CRAC", ligaId: "", reputacao: 51, cor: "#0054a6", logo: "", estado: "GO" },
+
+    // PE
+    { id: "c_nautico", nome: "Náutico", ligaId: "", reputacao: 63, cor: "#c8102e", logo: "", estado: "PE" },
+    { id: "c_santacruz", nome: "Santa Cruz", ligaId: "", reputacao: 60, cor: "#111111", logo: "", estado: "PE" },
+    { id: "c_salgueiro", nome: "Salgueiro", ligaId: "", reputacao: 53, cor: "#0054a6", logo: "", estado: "PE" },
+    { id: "c_central_pe", nome: "Central", ligaId: "", reputacao: 51, cor: "#f7d117", logo: "", estado: "PE" },
+    { id: "c_retro", nome: "Retrô", ligaId: "", reputacao: 54, cor: "#111111", logo: "", estado: "PE" },
+    { id: "c_afogados", nome: "Afogados", ligaId: "", reputacao: 50, cor: "#d71920", logo: "", estado: "PE" },
+    { id: "c_petrolina", nome: "Petrolina", ligaId: "", reputacao: 51, cor: "#006437", logo: "", estado: "PE" },
+    { id: "c_portope", nome: "Porto", ligaId: "", reputacao: 50, cor: "#0054a6", logo: "", estado: "PE" },
+
+    // BA
+    { id: "c_jacuipense", nome: "Jacuipense", ligaId: "", reputacao: 54, cor: "#006437", logo: "", estado: "BA" },
+    { id: "c_barcelonaba", nome: "Barcelona-BA", ligaId: "", reputacao: 51, cor: "#0054a6", logo: "", estado: "BA" },
+    { id: "c_juazeirense", nome: "Juazeirense", ligaId: "", reputacao: 55, cor: "#c8102e", logo: "", estado: "BA" },
+    { id: "c_bahiadefeira", nome: "Bahia de Feira", ligaId: "", reputacao: 52, cor: "#d71920", logo: "", estado: "BA" },
+    { id: "c_atleticoalagoinhas", nome: "Atlético de Alagoinhas", ligaId: "", reputacao: 50, cor: "#111111", logo: "", estado: "BA" },
+    { id: "c_vitoriadaconquista", nome: "Vitória da Conquista", ligaId: "", reputacao: 51, cor: "#0054a6", logo: "", estado: "BA" },
+
+    // CE
+    { id: "c_fortaleza", nome: "Fortaleza", ligaId: "br_2", reputacao: 76, cor: "#004791", logo: "https://cdn-img.staticzz.com/img/logos/equipas/2239_imgbank_1683625223.png", estado: "CE" },
+    { id: "c_ferroviario", nome: "Ferroviário", ligaId: "", reputacao: 59, cor: "#c8102e", logo: "", estado: "CE" },
+    { id: "c_iguatu", nome: "Iguatu", ligaId: "", reputacao: 53, cor: "#006437", logo: "", estado: "CE" },
+    { id: "c_maracanace", nome: "Maracanã", ligaId: "", reputacao: 50, cor: "#0054a6", logo: "", estado: "CE" },
+    { id: "c_guaranidejuazeiro", nome: "Guarani de Juazeiro", ligaId: "", reputacao: 51, cor: "#111111", logo: "", estado: "CE" },
+    { id: "c_pacajus", nome: "Pacajus", ligaId: "", reputacao: 50, cor: "#d71920", logo: "", estado: "CE" },
+    { id: "c_horizonte", nome: "Horizonte", ligaId: "", reputacao: 52, cor: "#f7d117", logo: "", estado: "CE" },
 
 ];

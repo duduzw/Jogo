@@ -1619,7 +1619,7 @@ function concederTituloInternacional(selecaoId, nomeComp, torneioKey) {
         }
     });
     const sel = SELECOES.find(s => s.id === selecaoId);
-    registrarNoticia(`${sel?.nome || "Seleção"} campeã!`, `A Seleção ${sel?.nome} conquistou a ${nomeComp} ${anoAtual}!`, "Seleções", nomeComp, "trofeu");
+    registrarNoticia(`${sel?.nome || "Seleção"} campeã!`, `A Seleção ${sel?.nome} conquistou a ${nomeComp} ${anoAtual}!`, "Seleções", nomeComp, "trofeu", true);
 }
 
 function selecionarTimesTorneio(fmt, compConfig) {
@@ -2603,6 +2603,41 @@ styleOverrides.innerHTML = `
     .coach-talk-btn:hover { filter:brightness(1.08); }
     .match-log .gol-substituicao { color:#facc15 !important; font-weight:800; background:rgba(250,204,21,0.06); border:1px dashed rgba(250,204,21,0.3); border-radius:8px; padding:8px; }
     .interview-card .interview-tag-grande { display:inline-block; margin-left:8px; padding:3px 9px; border-radius:999px; background:rgba(239,68,68,0.18); color:#f87171; font-size:0.68rem; font-weight:900; text-transform:uppercase; vertical-align:middle; }
+
+    /* HALL DA FAMA */
+    .hof-header { display:flex; align-items:center; gap:18px; padding:22px 25px; background:linear-gradient(120deg, rgba(250,204,21,0.10), rgba(255,255,255,0.02)); border:1px solid rgba(250,204,21,0.25); }
+    .hof-avatar { width:64px; height:64px; border-radius:50%; background:rgba(250,204,21,0.12); border:2px solid rgba(250,204,21,0.4); display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; font-size:1.8rem; }
+    .hof-avatar img { width:100%; height:100%; object-fit:cover; }
+    .hof-stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-top:16px; }
+    .hof-stat-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; text-align:center; }
+    .hof-stat-card strong { display:block; font-size:1.8rem; font-weight:900; color:#fff; }
+    .hof-stat-card span { font-size:0.75rem; color:#94a3b8; text-transform:uppercase; font-weight:700; letter-spacing:0.5px; }
+    .hof-stat-card.destaque { background:rgba(250,204,21,0.10); border-color:rgba(250,204,21,0.35); }
+    .hof-stat-card.destaque strong { color:var(--gold); }
+    .hof-trofeu-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(110px, 1fr)); gap:14px; }
+    .hof-trofeu-item { display:flex; flex-direction:column; align-items:center; text-align:center; gap:6px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:14px 8px; position:relative; transition:transform 0.15s, border-color 0.15s; }
+    .hof-trofeu-item:hover { transform:translateY(-3px); border-color:rgba(250,204,21,0.4); }
+    .hof-trofeu-item img { width:44px; height:44px; object-fit:contain; }
+    .hof-trofeu-fallback { font-size:2rem; }
+    .hof-trofeu-item span { font-size:0.74rem; color:#d4d4d8; font-weight:700; line-height:1.25; }
+    .hof-trofeu-item em { position:absolute; top:6px; right:8px; font-style:normal; font-size:0.7rem; font-weight:900; color:var(--gold); background:rgba(0,0,0,0.5); border-radius:8px; padding:1px 6px; }
+    .hof-trofeu-tag { display:inline-block; background:rgba(250,204,21,0.12); color:#facc15; border:1px solid rgba(250,204,21,0.3); border-radius:999px; padding:2px 8px; font-size:0.72rem; font-weight:700; margin:2px 3px 2px 0; white-space:nowrap; }
+
+    /* NOTÍCIAS: chips de filtro (clicáveis) */
+    .noticia-filtro-chip { font-size:0.72rem; font-weight:800; padding:5px 10px; border-radius:20px; background:color-mix(in srgb, var(--chip-cor) 13%, transparent); color:var(--chip-cor); border:1px solid color-mix(in srgb, var(--chip-cor) 35%, transparent); cursor:pointer; user-select:none; transition:transform 0.12s, filter 0.12s; }
+    .noticia-filtro-chip:hover { transform:translateY(-1px); filter:brightness(1.15); }
+    .noticia-filtro-chip.ativo { background:var(--chip-cor); color:#000; border-color:var(--chip-cor); }
+
+    /* NOTÍCIAS: cartão "última hora" — reservado a grandes momentos (título, Bola de Ouro, seleção campeã) */
+    .noticia-manchete-card { position:relative; background:linear-gradient(135deg, rgba(239,68,68,0.14), rgba(250,204,21,0.08)); border:1px solid rgba(239,68,68,0.4); border-radius:16px; padding:20px; overflow:hidden; }
+    .noticia-manchete-card::before { content:''; position:absolute; inset:0; background:repeating-linear-gradient(-45deg, rgba(255,255,255,0.02) 0 12px, transparent 12px 24px); pointer-events:none; }
+    .noticia-manchete-tag { display:inline-block; background:#ef4444; color:#fff; font-weight:900; font-size:0.68rem; letter-spacing:1px; padding:4px 10px; border-radius:999px; margin-bottom:12px; animation:pulseManchete 1.8s infinite; }
+    @keyframes pulseManchete { 0%,100% { opacity:1; } 50% { opacity:0.55; } }
+    .noticia-manchete-body { display:flex; gap:18px; align-items:center; }
+    .noticia-manchete-img { width:90px; height:90px; object-fit:contain; background:rgba(255,255,255,0.06); border-radius:12px; padding:8px; flex-shrink:0; }
+    .noticia-manchete-headline { margin:0 0 8px; font-size:1.4rem; font-weight:900; color:#fff; line-height:1.2; }
+    .noticia-manchete-texto { margin:0 0 8px; color:#e4e4e7; line-height:1.5; }
+    .noticia-manchete-cat { font-size:0.75rem; font-weight:800; text-transform:uppercase; }
 
     /* NOTÍCIAS: cartão estilo "post" de rede social */
     .noticia-post-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:16px 18px; }
@@ -3638,8 +3673,8 @@ const FORMATOS_NOTICIA_FIXOS = {
     "Prémios": "jornal", "Números": "jornal", "Seleções": "jornal", "Clássico": "jornal", "Mercado": "jornal", "Finanças": "jornal", "Tática": "jornal"
 };
 const HANDLES_POST = ["@ImprensaGlobal", "@FutMundialNews", "@RedacaoEsportiva", "@OlhoNoJogo", "@VozDoVestiario"];
-function registrarNoticia(manchete, corpo, categoria = "Geral", refImagem = null, tipoImagem = "jogador") {
-    const formato = FORMATOS_NOTICIA_FIXOS[categoria] || (Math.random() < 0.5 ? "post" : "jornal");
+function registrarNoticia(manchete, corpo, categoria = "Geral", refImagem = null, tipoImagem = "jogador", destaque = false) {
+    const formato = destaque ? "manchete" : (FORMATOS_NOTICIA_FIXOS[categoria] || (Math.random() < 0.5 ? "post" : "jornal"));
     const item = {
         manchete, corpo, data: `${categoria} • ${anoAtual} • Rodada ${rodadaAtual}`,
         formato, refImagem, tipoImagem, categoria,
@@ -5777,6 +5812,76 @@ function renderizarTransferencias() {
             ${cards}
         </div>`;
 }
+// 📜 HALL DA FAMA — antes a view existia no HTML mas nenhuma função a
+// preenchia (a tabela #corpoHistorico ficava sempre vazia). Os dados em si
+// já eram gravados certinho em jogador.historicoCarreira (ano a ano) e em
+// jogador.titulosSelecao (troféus pela seleção) — só faltava mesmo desenhar.
+function renderizarHistorico() {
+    const el = document.getElementById("view-historico");
+    if(!el) return;
+    const hist = jogador.historicoCarreira || [];
+    const carreira = obterEstatisticasCarreira(jogador);
+
+    // Conta cada troféu distinto ganho ao longo da carreira: de clube +
+    // prêmios individuais (guardados como texto em historicoCarreira.trofeus)
+    // e troféus pela seleção (guardados à parte em titulosSelecao).
+    const contagemTrofeus = {};
+    hist.forEach(h => {
+        if (!h.trofeus || h.trofeus === "-") return;
+        h.trofeus.split(",").map(t => t.trim()).filter(Boolean).forEach(nome => {
+            contagemTrofeus[nome] = (contagemTrofeus[nome] || 0) + 1;
+        });
+    });
+    (jogador.titulosSelecao || []).forEach(t => {
+        contagemTrofeus[t.trofeu] = (contagemTrofeus[t.trofeu] || 0) + 1;
+    });
+    const trofeusOrdenados = Object.entries(contagemTrofeus).sort((a,b) => b[1] - a[1]);
+    const totalTrofeus = Object.values(contagemTrofeus).reduce((a,b) => a+b, 0);
+
+    const linhasTabela = hist.map(h => `
+        <tr>
+            <td>${h.ano}</td>
+            <td>${h.clube}</td>
+            <td>${h.jogos}</td>
+            <td>${h.gols}</td>
+            <td>${h.trofeus && h.trofeus !== "-" ? h.trofeus.split(",").map(t => `<span class="hof-trofeu-tag">🏆 ${t.trim()}</span>`).join(" ") : `<span style="color:#666;">—</span>`}</td>
+        </tr>`).join("");
+
+    el.innerHTML = `
+        <div class="dashboard-card hof-header">
+            <div class="hof-avatar"><img src="${jogador.foto || ''}" onerror="this.style.display='none'"><span>🐐</span></div>
+            <div>
+                <span style="text-transform:uppercase; font-weight:900; color:var(--gold); letter-spacing:1px; font-size:0.8rem;">📜 Hall da Fama</span>
+                <h2 style="margin:6px 0;">${jogador.nome}</h2>
+                <p style="margin:0; color:#aaa;">${hist.length} temporada${hist.length === 1 ? "" : "s"} de carreira registada${hist.length === 1 ? "" : "s"}${jogador.aposentado ? " • Carreira encerrada" : ""}</p>
+            </div>
+        </div>
+        <div class="hof-stats-grid">
+            <div class="hof-stat-card"><strong>${carreira.jogos}</strong><span>Jogos</span></div>
+            <div class="hof-stat-card"><strong>${carreira.gols}</strong><span>Gols</span></div>
+            <div class="hof-stat-card"><strong>${carreira.assistencias}</strong><span>Assistências</span></div>
+            <div class="hof-stat-card destaque"><strong>${totalTrofeus}</strong><span>Troféus</span></div>
+        </div>
+        <div class="dashboard-card" style="padding:25px; margin-top:18px;">
+            <h3 style="margin:0 0 16px;">🏆 Vitrine de Troféus</h3>
+            ${trofeusOrdenados.length ? `<div class="hof-trofeu-grid">
+                ${trofeusOrdenados.map(([nome, qtd]) => `
+                    <div class="hof-trofeu-item" title="${nome}">
+                        <img src="${obterUrlImagem(nome, 'trofeu')}" onerror="this.outerHTML='<span class=&quot;hof-trofeu-fallback&quot;>🏆</span>'">
+                        <span>${nome}</span>
+                        ${qtd > 1 ? `<em>×${qtd}</em>` : ""}
+                    </div>`).join("")}
+            </div>` : `<p style="color:#aaa;">Ainda sem troféus. A glória está por vir! 🌱</p>`}
+        </div>
+        <div class="dashboard-card" style="padding:25px; margin-top:18px;">
+            <h3 style="margin:0 0 15px 0;">📅 O Teu Legado, Ano a Ano</h3>
+            <table class="data-table">
+                <thead><tr><th>Ano</th><th>Clube</th><th>Partidas</th><th>Golos</th><th>Troféus</th></tr></thead>
+                <tbody id="corpoHistorico">${linhasTabela || `<tr><td colspan="5" style="text-align:center; color:#aaa; padding:20px;">Ainda sem temporadas completas registadas. Avança de época para começar a escrever a tua história.</td></tr>`}</tbody>
+            </table>
+        </div>`;
+}
+
 function renderizarNoticias() {
     const el = document.getElementById("view-noticias");
     if(!el) return;
@@ -5792,26 +5897,43 @@ function renderizarNoticias() {
         "Clássico": { icone: "🔥", cor: "#f87171" }
     };
     const categoriasPresentes = [...new Set(noticias.map(n => (n.data || "").split(" • ")[0]).filter(Boolean))];
+    const filtroAtivo = window._filtroNoticiaAtivo || null;
+    const noticiasFiltradas = filtroAtivo ? noticias.filter(n => (n.categoria || (n.data || "").split(" • ")[0]) === filtroAtivo) : noticias;
     el.innerHTML = `
         <div class="dashboard-card" style="padding:25px; border-top:4px solid #3b82f6;">
             <h2 style="margin-top:0;">📰 Central de Notícias</h2>
             ${categoriasPresentes.length ? `<div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:18px;">
+                <span class="noticia-filtro-chip ${!filtroAtivo ? "ativo" : ""}" style="--chip-cor:#94a3b8;" onclick="window.filtrarNoticias(null)">🗞️ Todas</span>
                 ${categoriasPresentes.map(cat => {
                     const est = categoriaEstilo[cat] || { icone: "📰", cor: "#94a3b8" };
-                    return `<span style="font-size:0.72rem; font-weight:800; padding:5px 10px; border-radius:20px; background:${est.cor}22; color:${est.cor}; border:1px solid ${est.cor}55;">${est.icone} ${cat}</span>`;
+                    return `<span class="noticia-filtro-chip ${filtroAtivo === cat ? "ativo" : ""}" style="--chip-cor:${est.cor};" onclick="window.filtrarNoticias('${cat}')">${est.icone} ${cat}</span>`;
                 }).join("")}
             </div>` : ""}
             <div style="display:grid; gap:16px;">
-                ${noticias.length ? noticias.map(n => {
+                ${noticiasFiltradas.length ? noticiasFiltradas.map(n => {
                     const cat = n.categoria || (n.data || "").split(" • ")[0];
                     const est = categoriaEstilo[cat] || { icone: "📰", cor: "#3b82f6" };
                     const img = n.refImagem ? obterUrlImagem(n.refImagem, n.tipoImagem || 'jogador') : "";
+                    if (n.formato === "manchete") {
+                        return `
+                        <div class="noticia-manchete-card">
+                            <span class="noticia-manchete-tag">🔴 ÚLTIMA HORA</span>
+                            <div class="noticia-manchete-body">
+                                ${img ? `<img class="noticia-manchete-img" src="${img}" onerror="this.remove()">` : ""}
+                                <div>
+                                    <h2 class="noticia-manchete-headline">${n.manchete}</h2>
+                                    <p class="noticia-manchete-texto">${n.corpo}</p>
+                                    <span class="noticia-manchete-cat" style="color:${est.cor};">${est.icone} ${cat} • ${n.data}</span>
+                                </div>
+                            </div>
+                        </div>`;
+                    }
                     if (n.formato === "post") {
                         return `
                         <div class="noticia-post-card">
                             <div class="noticia-post-header">
                                 ${img ? `<img class="noticia-post-avatar" src="${img}" onerror="this.outerHTML='<div class=&quot;noticia-post-avatar-fallback&quot;>${est.icone}</div>'">` : `<div class="noticia-post-avatar-fallback">${est.icone}</div>`}                                <div>
-                                    <strong>${n.handle || "@ImprensaGlobal"}</strong>
+                                    <strong>${n.handle || "@ImprensaGlobal"}${n.verificado === false ? "" : " ✔️"}</strong>
                                     <span class="noticia-post-cat" style="color:${est.cor};">${est.icone} ${cat}</span>
                                 </div>
                             </div>
@@ -5835,10 +5957,17 @@ function renderizarNoticias() {
                             </div>
                         </div>
                     </div>`;
-                }).join("") : `<p style="color:#aaa;">Sem notícias por enquanto.</p>`}
+                }).join("") : `<p style="color:#aaa;">Sem notícias nesta categoria por enquanto.</p>`}
             </div>
         </div>`;
 }
+
+// Filtra o feed de notícias por categoria (clique num chip). Passar null
+// remove o filtro e volta a mostrar tudo.
+window.filtrarNoticias = function(categoria) {
+    window._filtroNoticiaAtivo = categoria;
+    renderizarNoticias();
+};
 
 function processarEventosAleatorios() {
     if(!jogador || Math.random() > 0.22) return;
@@ -7028,6 +7157,15 @@ function apurarCampeoesTemporada() {
                 if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = [];
                 campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp?.nome || ligaId}`);
 
+                // 📰 Antes, ganhar uma liga não gerava NENHUMA notícia. Agora: se
+                // for o TEU clube, é manchete; ligas de topo de outros países
+                // rendem uma nota para dar variedade ao feed.
+                if (campeaoClube.id === jogador.clubeId) {
+                    registrarNoticia(`${campeaoClube.nome} é CAMPEÃO!`, `${campeaoClube.nome} conquistou a ${comp?.nome || ligaId} de ${anoAtual}, com ${jogador.nome} no elenco campeão!`, "Partida", { nome: comp?.nome || ligaId }, "trofeu", true);
+                } else if (comp?.div === 1) {
+                    registrarNoticia(`${campeaoClube.nome} conquista a ${comp?.nome}`, `${campeaoClube.nome} garantiu o título da ${comp?.nome} na temporada de ${anoAtual}.`, "Partida", { nome: comp?.nome || ligaId }, "trofeu");
+                }
+
                 const pontosTitulo = (comp?.div === 1) ? PONTOS_TITULO.ligaPrincipal : PONTOS_TITULO.ligaSecundaria;
                 let elencoCamp = getElencoClube(campeaoClube.id);
                 elencoCamp.forEach(j => {
@@ -7055,6 +7193,13 @@ function apurarCampeoesTemporada() {
             if(campeaoClube) {
                 if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = [];
                 campeaoClube.historicoTitulos.unshift(`${anoAtual} - ${comp.nome}`);
+
+                if (campeaoClube.id === jogador.clubeId) {
+                    registrarNoticia(`${campeaoClube.nome} LEVANTA A TAÇA!`, `${campeaoClube.nome} venceu a ${comp.nome} de ${anoAtual}, com ${jogador.nome} no elenco campeão!`, "Partida", { nome: comp.nome }, "trofeu", true);
+                } else {
+                    registrarNoticia(`${campeaoClube.nome} conquista a ${comp.nome}`, `${campeaoClube.nome} venceu a final e é o novo campeão da ${comp.nome} de ${anoAtual}.`, "Partida", { nome: comp.nome }, "trofeu");
+                }
+
                 let elencoCamp = getElencoClube(campeaoClube.id);
                 const pontosTitulo = pontosTituloClube(comp);
                 elencoCamp.forEach(j => {
@@ -7322,7 +7467,7 @@ function simularGalaEpica(ranking) {
     premiosIndividuaisPendentes = todosPremiosResumo.map(p => ({ nome: p.nome, playerId: p.vencedor.p.id || (p.vencedor.p === jogador ? "player" : ""), pontos: p.pontos }));
 
     todosPremiosResumo.forEach(p => {
-        registrarNoticia(`${p.nome}: ${p.vencedor.p.nome} é o vencedor!`, `${p.vencedor.p.nome} conquistou o prêmio ${p.nome} da temporada (${p.metrica(p.vencedor)}).`, "Prémios", { nome: p.vencedor.p.nome, foto: p.vencedor.p.foto }, "jogador");
+        registrarNoticia(`${p.nome}: ${p.vencedor.p.nome} é o vencedor!`, `${p.vencedor.p.nome} conquistou o prêmio ${p.nome} da temporada (${p.metrica(p.vencedor)}).`, "Prémios", { nome: p.vencedor.p.nome, foto: p.vencedor.p.foto }, "jogador", !!p.grande);
     });
 
     const melhor11 = montarMelhor11(ranking);
@@ -8797,6 +8942,7 @@ function atualizarConteudoAbaAtiva() {
     else if (abaAtivaId === "view-manager") { if (typeof renderizarManager === 'function') renderizarManager(); }
     else if (abaAtivaId === "view-lifestyle") { if (typeof renderLifestyleSystem === 'function') renderLifestyleSystem(); }
     else if (abaAtivaId === "view-noticias") { if (typeof renderizarNoticias === 'function') renderizarNoticias(); }
+    else if (abaAtivaId === "view-historico") { if (typeof renderizarHistorico === 'function') renderizarHistorico(); }
 }
 
 // Views onde o jogador está livremente a "passear" por competições/tabelas

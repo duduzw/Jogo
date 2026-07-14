@@ -3,6 +3,13 @@ import { jogadoresIA, clubes } from '../data/database.js';
 const PESO_GOL_POS = { "Atacante": 1.0, "Ponta": 0.78, "Meia Ofensivo": 0.62, "Meio-Campista": 0.38, "Volante": 0.16, "Lateral": 0.12, "Zagueiro": 0.07, "Goleiro": 0.01 };
 const PESO_AST_POS = { "Atacante": 0.32, "Ponta": 0.62, "Meia Ofensivo": 0.82, "Meio-Campista": 0.68, "Volante": 0.38, "Lateral": 0.44, "Zagueiro": 0.09, "Goleiro": 0.02 };
 
+// 🎯 Requisitos para PODERES bater um pênalti pelo teu time: precisas da
+// confiança do técnico, teres treinado o suficiente essa cobrança específica,
+// e seres titular (quem começa no banco não assume a responsabilidade,
+// mesmo que já tenha entrado em campo).
+export const MORAL_TECNICO_MINIMA_PENALTI = 60; // jogador.relacaoTecnico é 0-100
+export const NIVEL_PENALTIS_MINIMO = 6; // jogador.lifestyle.upgrades.training.penalties é 0-10
+
 export class MatchEngine {
     constructor(jogadorReal, clubeMandanteId, clubeVisitanteId, minutoEntradaJogador = null) {
         this.jogadorReal = jogadorReal;
@@ -71,6 +78,17 @@ export class MatchEngine {
         return this.jogadorJaEntrou;
     }
 
+    // 🎯 Verifica se o jogador real REÚNE OS REQUISITOS para bater um pênalti:
+    // confiança do técnico, nível de treino de pênaltis, e ser titular (não
+    // basta ter entrado como suplente — a responsabilidade da cobrança é de
+    // quem começou o jogo).
+    podeBaterPenalti(j) {
+        const ehTitular = this.minutoEntradaJogador === null || this.minutoEntradaJogador === undefined;
+        const moral = j.relacaoTecnico ?? 0;
+        const nivelPenaltis = j.lifestyle?.upgrades?.training?.penalties ?? 0;
+        return ehTitular && moral >= MORAL_TECNICO_MINIMA_PENALTI && nivelPenaltis >= NIVEL_PENALTIS_MINIMO;
+    }
+
     sortearAutor(elenco) {
         const disponiveis = elenco.filter(j => this.podeParticipar(j));
         const base = disponiveis.length > 0 ? disponiveis : elenco;
@@ -133,7 +151,15 @@ export class MatchEngine {
         };
 
         const rodarTick = () => {
-            minuto += 3; let log = null; let rng = Math.random();
+            // 🛡️ FIX: guarda "dura" contra o relógio a avançar durante uma
+            // decisão de pênalti pendente. Mesmo que, por qualquer motivo
+            // (ex: um clique duplo, uma corrida entre eventos), este tick
+            // ainda chegue a disparar enquanto aguardamos a escolha do lado,
+            // ele não faz NADA — sem isto, era possível o cronómetro voltar a
+            // correr "por baixo" do mini-jogo e o jogo ultrapassar os 90'
+            // enquanto o jogador ainda estava a decidir o pênalti.
+            if (emPausaPenalti) return;
+            minuto = Math.min(90, minuto + 3); let log = null; let rng = Math.random();
 
             if (!this.jogadorJaEntrou && !this._entradaAnunciada && this.minutoEntradaJogador !== null && minuto >= this.minutoEntradaJogador) {
                 this.jogadorJaEntrou = true;
@@ -153,11 +179,14 @@ export class MatchEngine {
                 const golsBate = timeJogador === (bateCasa ? this.clubeMandanteId : this.clubeVisitanteId);
                 const souGoleiroDefende = souGoleiro && this.podeParticipar(this.jogadorReal) &&
                     timeJogador === (bateCasa ? this.clubeVisitanteId : this.clubeMandanteId);
-                const souCobradorPotencial = !souGoleiro && golsBate && this.podeParticipar(this.jogadorReal) && ["Atacante","Ponta","Meia Ofensivo","Meio-Campista"].includes(this.jogadorReal.posicao);
+                const souCobradorPotencial = !souGoleiro && golsBate && this.podeParticipar(this.jogadorReal) && ["Atacante","Ponta","Meia Ofensivo","Meio-Campista"].includes(this.jogadorReal.posicao) && this.podeBaterPenalti(this.jogadorReal);
 
                 onTick(minuto, placarCasa, placarVisita, `<span style="color:#facc15; font-weight:800;">🚩 ${minuto}' PÊNALTI PARA O ${timeBateNome.toUpperCase()}!</span>`);
 
                 const concluirPenalti = (defendeu, cobradorNome) => {
+                    // 🛡️ Retoma o relógio SÓ agora, depois de já termos o
+                    // resultado do lance — nunca antes.
+                    emPausaPenalti = false;
                     if (defendeu) {
                         onTick(minuto, placarCasa, placarVisita, `<span style="color:#a855f7; font-weight:800;">🧤 DEFESA! O guarda-redes ${souGoleiroDefende ? "É VOCÊ! " : ""}impede o pênalti de ${cobradorNome}!</span>`);
                     } else {
@@ -169,18 +198,36 @@ export class MatchEngine {
                         marcadores.push(souCobradorPotencial ? "player" : "npc_pen");
                     }
                     onTick(minuto, placarCasa, placarVisita, null);
-                    if (minuto >= 90) { finalizar(); } else { this.cronometro = setInterval(rodarTick, 110); }
+                    if (minuto >= 90) { finalizar(); } else {
+                        // 🛡️ Nunca deixa dois cronómetros ativos: garante que
+                        // qualquer intervalo anterior está mesmo parado antes
+                        // de agendar o próximo.
+                        clearInterval(this.cronometro);
+                        this.cronometro = setInterval(rodarTick, 110);
+                    }
                 };
 
                 if ((souGoleiroDefende || souCobradorPotencial) && typeof onPenalti === "function") {
+                    emPausaPenalti = true;
                     clearInterval(this.cronometro);
                     onPenalti(souGoleiroDefende ? "defender" : "cobrar", (direcaoEscolhida) => {
-                        let chanceSucesso = souGoleiroDefende
-                            ? 0.22 + Math.max(0, (this.jogadorReal.geral - 65)) * 0.01 // defender: base baixa, sobe com OVR
-                            : 0.68 + Math.max(0, (this.jogadorReal.geral - 65)) * 0.006; // cobrar: base alta, sobe com OVR
-                        const acertouLado = Math.random() < 0.55; // goleiro "lê" o lado certo
+                        // 🎮 GAMEPLAY: a direção que escolheste agora importa de verdade —
+                        // é um duelo de zona contra zona, como um pênalti real. O
+                        // "adversário" (goleiro ou cobrador controlado pelo motor)
+                        // escolhe a sua própria zona de forma independente e oculta.
+                        const ZONAS = ["esquerda", "centro", "direita"];
+                        const zonaAdversario = ZONAS[Math.floor(Math.random() * ZONAS.length)];
+                        const acertouLado = direcaoEscolhida === zonaAdversario;
+                        let chanceSucesso;
                         if (souGoleiroDefende) {
-                            const defendeu = acertouLado && Math.random() < chanceSucesso;
+                            // Sou o guarda-redes: acertar o MESMO lado do cobrador é o que me dá chance de defender.
+                            chanceSucesso = (acertouLado ? 0.58 : 0.08) + Math.max(0, (this.jogadorReal.geral - 65)) * 0.008;
+                        } else {
+                            // Sou o cobrador: quero o OPOSTO — se o guarda-redes for para o mesmo lado que eu, é pior para mim.
+                            chanceSucesso = (acertouLado ? 0.30 : 0.90) + Math.max(0, (this.jogadorReal.geral - 65)) * 0.005;
+                        }
+                        if (souGoleiroDefende) {
+                            const defendeu = Math.random() < chanceSucesso;
                             if (defendeu && !this.jogadorReal.estatisticasAtuais.defesas) this.jogadorReal.estatisticasAtuais.defesas = 0;
                             if (defendeu) this.jogadorReal.estatisticasAtuais.defesas++;
                             concluirPenalti(defendeu, souGoleiroDefende ? "você" : (bateCasa ? this.sortearAutor(this.elencoMandante).nome : this.sortearAutor(this.elencoVisitante).nome));

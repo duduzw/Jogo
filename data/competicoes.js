@@ -8,6 +8,18 @@ export const competicoes = [
     { id: "copa_br", nome: "Copa do Brasil", tipo: "copa", div: 1, logo: "https://assets.football-logos.cc/logos/brazil/512x512/copa-do-brasil--no-text.98d6c38e.png" },
     { id: "supercopa_br", nome: "Supercopa do Brasil", tipo: "supercopa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Supercopa_Rei_logo_%282023%29.svg/250px-Supercopa_Rei_logo_%282023%29.svg.png" },
 
+    // CAMPEONATOS ESTADUAIS (Brasil) — disputados em fevereiro, antes do Brasileirão
+    { id: "estadual_sp", nome: "Campeonato Paulista", tipo: "estadual", div: 1, estado: "SP", logo: "https://tmssl.akamaized.net//images/logo/header/bcp1.png?lm=1767797779" },
+    { id: "estadual_rj", nome: "Campeonato Carioca", tipo: "estadual", div: 1, estado: "RJ", logo: "https://tmssl.akamaized.net/images/logo/medium/brcg.png" },
+    { id: "estadual_mg", nome: "Campeonato Mineiro", tipo: "estadual", div: 1, estado: "MG", logo: "https://tmssl.akamaized.net/images/logo/medium/brcm.png" },
+    { id: "estadual_rs", nome: "Campeonato Gaúcho", tipo: "estadual", div: 1, estado: "RS", logo: "https://tmssl.akamaized.net//images/logo/mediumsmall/brrs.png?lm=1736968666" },
+    { id: "estadual_pr", nome: "Campeonato Paranaense", tipo: "estadual", div: 1, estado: "PR", logo: "https://tmssl.akamaized.net/images/logo/medium/brpr.png" },
+    { id: "estadual_sc", nome: "Campeonato Catarinense", tipo: "estadual", div: 1, estado: "SC", logo: "https://tmssl.akamaized.net/images/logo/medium/brsc.png" },
+    { id: "estadual_go", nome: "Campeonato Goiano", tipo: "estadual", div: 1, estado: "GO", logo: "https://tmssl.akamaized.net/images/logo/medium/brgo.png" },
+    { id: "estadual_pe", nome: "Campeonato Pernambucano", tipo: "estadual", div: 1, estado: "PE", logo: "https://tmssl.akamaized.net/images/logo/medium/brpe.png" },
+    { id: "estadual_ba", nome: "Campeonato Baiano", tipo: "estadual", div: 1, estado: "BA", logo: "https://tmssl.akamaized.net/images/logo/medium/brcb.png" },
+    { id: "estadual_ce", nome: "Campeonato Cearense", tipo: "estadual", div: 1, estado: "CE", logo: "https://tmssl.akamaized.net/images/logo/medium/brce.png" },
+
     // ARGENTINA
     { id: "arg_1", nome: "Liga Profesional Argentina", tipo: "liga", div: 1, logo: "https://www.ole.com.ar/collections/escudos/league/581t4mywybx21wcpmpykhyzr3.png" },
     { id: "copa_arg", nome: "Copa Argentina", tipo: "copa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/a/aa/Copa_argentina_logo22.png/250px-Copa_argentina_logo22.png" },
@@ -79,6 +91,18 @@ export const competicoes = [
     { id: "copa_sco", nome: "Scottish Challenge Cup", tipo: "copa", div: 1, logo: "https://r2.thesportsdb.com/images/media/league/badge/6m7mow1693378371.png/medium" },
     { id: "supercopa_sco", nome: "Scottish Super Cup", tipo: "supercopa", div: 1, logo: "https://static.flashscore.com/res/image/data/E7B8z2Sp-I3pO0ATD.png" },
 
+    //SUIÇA
+    { id: "sui_1", nome: "Brack Super League", tipo: "liga", div: 1, logo: "https://upload.wikimedia.org/wikipedia/en/thumb/a/ae/Swiss_Super_League_logo_%282025%29.svg/250px-Swiss_Super_League_logo_%282025%29.svg.png" },
+    { id: "copa_sui", nome: "Schweizer Cup", tipo: "copa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/en/thumb/1/19/SchweizerCup.jpg/250px-SchweizerCup.jpg" },
+
+    //GRECIA
+    { id: "gre_1", nome: "A1 Ethniki Katigoria", tipo: "liga", div: 1, logo: "https://cdn-img.staticzz.com/img/logos/competicoes/63_imgbank_d1_20250312160656.png" },
+    { id: "copa_gre", nome: "", tipo: "copa", div: 1, logo: "" },
+
+    //AUSTRIA
+    { id: "aut_1", nome: "Austrian Bundesliga", tipo: "liga", div: 1, logo: "https://cdn-img.staticzz.com/img/logos/competicoes/14_imgbank_d1_20250312160403.png" },
+    { id: "copa_aut", nome: "", tipo: "copa", div: 1, logo: "" },
+
     // ARÁBIA
     { id: "ara_1", nome: "Saudi Pro League", tipo: "liga", div: 1, logo: "https://assets.football-logos.cc/logos/saudi-arabia/512x512/saudi-professional-league.59d5c8af.png" },
     { id: "copa_ara", nome: "Kings Cup", tipo: "copa", div: 1, logo: "https://r2.thesportsdb.com/images/media/league/badge/bej7om1754244351.png/medium" },
@@ -144,11 +168,24 @@ export const competicoes = [
     { id: "sel_elim_wc", nome: "Eliminatórias da Copa do Mundo", tipo: "selecao", div: 0, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/FIFA_World_Cup_2026_Logo.svg/250px-FIFA_World_Cup_2026_Logo.svg.png" },
     { id: "sel_copa_mundo", nome: "Copa do Mundo", tipo: "selecao", div: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/aa/FIFA_World_Cup_2026_Logo.svg/250px-FIFA_World_Cup_2026_Logo.svg.png" },
     { id: "sel_olimpiadas", nome: "Olimpíadas", tipo: "selecao", div: 0, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Olympic_rings_without_rims.svg/250px-Olympic_rings_without_rims.svg.png" },
+   
     { id: "sel_euro", nome: "Eurocopa", tipo: "selecao", div: 1, logo: "https://imgs.search.brave.com/wYZ-hTdsFy_ivTeIgumjBKicssr0dMM8s0RhZ7SlQEs/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/Mi8yNi9VRUZBX0V1/cm9fMjAyNF9Mb2dv/LnN2Zy8yNTBweC1V/RUZBX0V1cm9fMjAy/NF9Mb2dvLnN2Zy5w/bmc" },
     { id: "sel_copa_america", nome: "Copa América", tipo: "selecao", div: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Copa_Am%C3%A9rica_logo.svg/250px-Copa_Am%C3%A9rica_logo.svg.png" },
+   
     { id: "sel_euro_qualy", nome: "Eliminatórias da Eurocopa", tipo: "selecao", div: 0, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/UEFA_Euro_2024_Logo.svg/250px-UEFA_Euro_2024_Logo.svg.png" },
     { id: "sel_nations_a", nome: "Nations League A", tipo: "selecao", div: 1, logo: "https://imgs.search.brave.com/QM-F1qzO3iVbd_ti0jF0x2SUwcnXTcKilDfMzHwrSvQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/OC84MC9VRUZBX05h/dGlvbnNfTGVhZ3Vl/LnN2Zy8yNTBweC1V/RUZBX05hdGlvbnNf/TGVhZ3VlLnN2Zy5w/bmc" },
     { id: "sel_nations_b", nome: "Nations League B", tipo: "selecao", div: 2, logo: "https://imgs.search.brave.com/QM-F1qzO3iVbd_ti0jF0x2SUwcnXTcKilDfMzHwrSvQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/OC84MC9VRUZBX05h/dGlvbnNfTGVhZ3Vl/LnN2Zy8yNTBweC1V/RUZBX05hdGlvbnNf/TGVhZ3VlLnN2Zy5w/bmc" },
     { id: "sel_nations_c", nome: "Nations League C", tipo: "selecao", div: 3, logo: "https://imgs.search.brave.com/QM-F1qzO3iVbd_ti0jF0x2SUwcnXTcKilDfMzHwrSvQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/OC84MC9VRUZBX05h/dGlvbnNfTGVhZ3Vl/LnN2Zy8yNTBweC1V/RUZBX05hdGlvbnNf/TGVhZ3VlLnN2Zy5w/bmc" },
-    { id: "sel_nations_d", nome: "Nations League D", tipo: "selecao", div: 4, logo: "https://imgs.search.brave.com/QM-F1qzO3iVbd_ti0jF0x2SUwcnXTcKilDfMzHwrSvQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/OC84MC9VRUZBX05h/dGlvbnNfTGVhZ3Vl/LnN2Zy8yNTBweC1V/RUZBX05hdGlvbnNf/TGVhZ3VlLnN2Zy5w/bmc" }
+    { id: "sel_nations_d", nome: "Nations League D", tipo: "selecao", div: 4, logo: "https://imgs.search.brave.com/QM-F1qzO3iVbd_ti0jF0x2SUwcnXTcKilDfMzHwrSvQ/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvZW4vdGh1bWIv/OC84MC9VRUZBX05h/dGlvbnNfTGVhZ3Vl/LnN2Zy8yNTBweC1V/RUZBX05hdGlvbnNf/TGVhZ3VlLnN2Zy5w/bmc" },
+   
+    { id: "sel_gold_cup", nome: "Copa Ouro", tipo: "selecao", div: 1, logo: "" },
+    
+    { id: "sel_copa_africa", nome: "Copa Africana de Nações", tipo: "selecao", div: 1, logo: "" },
+    { id: "sel_copa_asia", nome: "Copa da Ásia", tipo: "selecao", div: 1, logo: "" },
+
+    { id: "sel_elim_uefa", nome: "Eliminatórias da Copa do Mundo (UEFA)", tipo: "selecao", div: 0, logo: "" },
+    { id: "sel_elim_conmebol", nome: "Eliminatórias da Copa do Mundo (CONMEBOL)", tipo: "selecao", div: 0, logo: "" },
+    { id: "sel_elim_concacaf", nome: "Eliminatórias da Copa do Mundo (CONCACAF)", tipo: "selecao", div: 0, logo: "" },
+    { id: "sel_elim_caf", nome: "Eliminatórias da Copa do Mundo (CAF)", tipo: "selecao", div: 0, logo: "" },
+    { id: "sel_elim_afc", nome: "Eliminatórias da Copa do Mundo (AFC)", tipo: "selecao", div: 0, logo: "" }
 ];
