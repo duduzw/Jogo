@@ -1,5 +1,5 @@
 ﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
-import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO } from './engine/match.js';
+import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO, PERFIS_ATRIBUTOS_POSICAO, gerarAtributosParaJogador } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
 // Make jogadoresIA available globally for Firebase integration
@@ -856,6 +856,7 @@ function carregarJogo() {
             window.firebaseIntegration.activateSharedWorld(dados.lobbyPlayerId, dados.onlinePartnerId || null);
         }
         normalizarElencosEPosicoes();
+        sincronizarTodosOversComAtributos();
         aplicarHistoricosReaisIniciais();
         for (let key in tabelasLigas) delete tabelasLigas[key]; Object.assign(tabelasLigas, dados.tabelas);
         
@@ -974,9 +975,30 @@ const PESO_COMPETICAO = {
 };
 // Peso genérico por tipo de competição, usado quando o id não está no mapa acima
 // (ligas nacionais, copas nacionais, etc., que têm um id diferente por país).
+// 🆕 PRESTÍGIO DE LIGA (Bola de Ouro / Gala): antes, qualquer liga de divisão
+// 1 valia o mesmo (1.00) pra pontuação de prêmios individuais — um artilheiro
+// da Saudi Pro League competia de igual pra igual com um da Premier League.
+// Agora cada liga div-1 tem seu próprio peso de prestígio: quanto mais longe
+// do top 5 europeu (e principalmente fora da Europa), menor a pontuação que
+// os gols/assistências daquele jogador valem na disputa da Gala — do jeito
+// que realmente funciona o debate do prêmio no mundo real.
+const PESO_LIGA_PRESTIGIO = {
+    // Top 5 europeu
+    eng_1: 1.35, esp_1: 1.35, ita_1: 1.30, ger_1: 1.30, fra_1: 1.20,
+    // Outras ligas europeias tradicionais/fortes
+    pt_1: 1.10, nl_1: 1.05,
+    tr_1: 0.95, be_1: 0.90, sco_1: 0.85, sui_1: 0.85, aut_1: 0.80, gre_1: 0.80, nor_1: 0.75,
+    // Sul-americanas de maior destaque (ainda abaixo da Europa)
+    br_1: 0.85, arg_1: 0.80, uy_1: 0.65,
+    // Resto do mundo (fora da Europa e das duas grandes sul-americanas)
+    ara_1: 0.55, usa_1: 0.55, mx_1: 0.55, nga_1: 0.45, civ_1: 0.45
+};
 function pesoCompeticaoPorTipo(comp) {
     if (!comp) return 1.00;
-    if (comp.tipo === "liga") return comp.div === 1 ? 1.00 : 0.55;
+    if (comp.tipo === "liga") {
+        if (comp.div !== 1) return 0.55;
+        return PESO_LIGA_PRESTIGIO[comp.id] ?? 0.50; // ligas não listadas: tratadas como "menor prestígio"
+    }
     if (comp.tipo === "copa") return 0.80;
     if (comp.tipo === "supercopa") return 0.60;
     if (comp.tipo === "supercopa_continental") return 0.60;
@@ -1153,7 +1175,35 @@ const SELECOES = [
     { id:"sel_ksa", pais:"Arabia Saudita", nome:"Arábia Saudita", conf:"AFC", logo:"https://flagcdn.com/w160/sa.png", cor:"#22c55e" },
     { id:"sel_irn", pais:"Ira", nome:"Irã", conf:"AFC", logo:"https://flagcdn.com/w160/ir.png", cor:"#22c55e" },
     { id:"sel_qat", pais:"Catar", nome:"Catar", conf:"AFC", logo:"https://flagcdn.com/w160/qa.png", cor:"#ef4444" },
-    { id:"sel_costmf", pais:"Costa do Marfim", nome:"Costa do Marfim", conf:"CAF", logo:"https://upload.wikimedia.org/wikipedia/pt/a/a1/F%C3%A9d%C3%A9ration_Ivorienne_de_Football.png?_=20151125183758", cor:"#ef4444" }
+    { id:"sel_costmf", pais:"Costa do Marfim", nome:"Costa do Marfim", conf:"CAF", logo:"https://upload.wikimedia.org/wikipedia/pt/a/a1/F%C3%A9d%C3%A9ration_Ivorienne_de_Football.png?_=20151125183758", cor:"#ef4444" },
+    { id:"sel_chn", pais:"China", nome:"China", conf:"AFC", logo:"https://flagcdn.com/w160/cn.png", cor:"#ef4444" },
+    { id:"sel_irq", pais:"Iraque", nome:"Iraque", conf:"AFC", logo:"https://flagcdn.com/w160/iq.png", cor:"#22c55e" },
+    { id:"sel_uae", pais:"Emirados Arabes Unidos", nome:"Emirados Árabes Unidos", conf:"AFC", logo:"https://flagcdn.com/w160/ae.png", cor:"#ef4444" },
+    { id:"sel_ind", pais:"India", nome:"Índia", conf:"AFC", logo:"https://flagcdn.com/w160/in.png", cor:"#f59e0b" },
+    { id:"sel_tha", pais:"Tailandia", nome:"Tailândia", conf:"AFC", logo:"https://flagcdn.com/w160/th.png", cor:"#2563eb" },
+    { id:"sel_idn", pais:"Indonesia", nome:"Indonésia", conf:"AFC", logo:"https://flagcdn.com/w160/id.png", cor:"#ef4444" },
+    { id:"sel_nzl", pais:"Nova Zelandia", nome:"Nova Zelândia", conf:"OFC", logo:"https://flagcdn.com/w160/nz.png", cor:"#111827" },
+    // 🌊 OCEANIA (OFC) — as demais seleções da confederação, além da Nova
+    // Zelândia que já existia.
+    { id:"sel_fij", pais:"Fiji", nome:"Fiji", conf:"OFC", logo:"https://flagcdn.com/w160/fj.png", cor:"#60a5fa" },
+    { id:"sel_png", pais:"Papua Nova Guine", nome:"Papua Nova Guiné", conf:"OFC", logo:"https://flagcdn.com/w160/pg.png", cor:"#ef4444" },
+    { id:"sel_sol", pais:"Ilhas Salomao", nome:"Ilhas Salomão", conf:"OFC", logo:"https://flagcdn.com/w160/sb.png", cor:"#22c55e" },
+    { id:"sel_tah", pais:"Taiti", nome:"Taiti", conf:"OFC", logo:"https://flagcdn.com/w160/pf.png", cor:"#ef4444" },
+    { id:"sel_nca", pais:"Nova Caledonia", nome:"Nova Caledônia", conf:"OFC", logo:"https://flagcdn.com/w160/nc.png", cor:"#60a5fa" },
+    { id:"sel_van", pais:"Vanuatu", nome:"Vanuatu", conf:"OFC", logo:"https://flagcdn.com/w160/vu.png", cor:"#22c55e" },
+    { id:"sel_tun", pais:"Tunisia", nome:"Tunísia", conf:"CAF", logo:"https://flagcdn.com/w160/tn.png", cor:"#ef4444" },
+    { id:"sel_rsa", pais:"Africa do Sul", nome:"África do Sul", conf:"CAF", logo:"https://flagcdn.com/w160/za.png", cor:"#22c55e" },
+    { id:"sel_eth", pais:"Etiopia", nome:"Etiópia", conf:"CAF", logo:"https://flagcdn.com/w160/et.png", cor:"#22c55e" },
+    { id:"sel_ken", pais:"Quenia", nome:"Quênia", conf:"CAF", logo:"https://flagcdn.com/w160/ke.png", cor:"#111827" },
+    { id:"sel_pan", pais:"Panama", nome:"Panamá", conf:"CONCACAF", logo:"https://flagcdn.com/w160/pa.png", cor:"#ef4444" },
+    { id:"sel_hon", pais:"Honduras", nome:"Honduras", conf:"CONCACAF", logo:"https://flagcdn.com/w160/hn.png", cor:"#2563eb" },
+    { id:"sel_slv", pais:"El Salvador", nome:"El Salvador", conf:"CONCACAF", logo:"https://flagcdn.com/w160/sv.png", cor:"#2563eb" },
+    { id:"sel_cze", pais:"Republica Checa", nome:"República Checa", conf:"UEFA", logo:"https://flagcdn.com/w160/cz.png", cor:"#2563eb" },
+    { id:"sel_fin", pais:"Finlandia", nome:"Finlândia", conf:"UEFA", logo:"https://flagcdn.com/w160/fi.png", cor:"#2563eb" },
+    { id:"sel_gre", pais:"Grecia", nome:"Grécia", conf:"UEFA", logo:"https://flagcdn.com/w160/gr.png", cor:"#2563eb" },
+    { id:"sel_rus", pais:"Russia", nome:"Rússia", conf:"UEFA", logo:"https://flagcdn.com/w160/ru.png", cor:"#2563eb" },
+    { id:"sel_sco", pais:"Escocia", nome:"Escócia", conf:"UEFA", logo:"https://flagcdn.com/w160/gb-sct.png", cor:"#2563eb" },
+    { id:"sel_irl", pais:"Irlanda", nome:"Irlanda", conf:"UEFA", logo:"https://flagcdn.com/w160/ie.png", cor:"#22c55e" },
 ];
 const COMPETICOES_SELECOES = [
     { id:"amistoso", nome:"Amistosos Internacionais", conf:"GLOBAL", ciclo:"Data FIFA", jogos:1 },
@@ -1162,14 +1212,18 @@ const COMPETICOES_SELECOES = [
     { id:"eliminatorias_concacaf", nome:"Eliminatórias CONCACAF", conf:"CONCACAF", ciclo:"regular", jogos:6 },
     { id:"eliminatorias_caf", nome:"Eliminatórias CAF", conf:"CAF", ciclo:"regular", jogos:6 },
     { id:"eliminatorias_afc", nome:"Eliminatórias AFC", conf:"AFC", ciclo:"regular", jogos:6 },
+    { id:"eliminatorias_ofc", nome:"Eliminatórias OFC", conf:"OFC", ciclo:"regular", jogos:10 },
     { id:"eliminatorias_wc", nome:"Eliminatórias da Copa do Mundo", conf:"GLOBAL", ciclo:"regular", jogos:2 },
     { id:"copa_mundo", nome:"Copa do Mundo", conf:"GLOBAL", ciclo:"mundial", jogos:7 },
     { id:"olimpiadas", nome:"Olimpíadas (Sub-23)", conf:"GLOBAL", ciclo:"olimpico", jogos:6, sub23:true },
+    { id:"mundial_sub17", nome:"Mundial Sub-17", conf:"GLOBAL", ciclo:"base", jogos:6, sub17:true },
+    { id:"mundial_sub21", nome:"Mundial Sub-21", conf:"GLOBAL", ciclo:"base", jogos:6, sub21:true },
     { id:"euro", nome:"Eurocopa", conf:"UEFA", ciclo:"continental", jogos:7 },
     { id:"copa_america", nome:"Copa América", conf:"CONMEBOL", ciclo:"continental", jogos:6 },
     { id:"gold_cup", nome:"Gold Cup", conf:"CONCACAF", ciclo:"continental", jogos:5 },
     { id:"copa_africa", nome:"Copa Africana de Nações", conf:"CAF", ciclo:"continental", jogos:5 },
     { id:"copa_asia", nome:"Copa da Ásia", conf:"AFC", ciclo:"continental", jogos:5 },
+    { id:"oceania_cup", nome:"Copa das Nações da Oceania", conf:"OFC", ciclo:"continental", jogos:4 },
     { id:"euro_qualy", nome:"Eliminatórias da Eurocopa", conf:"UEFA", ciclo:"regular", jogos:8 },
     { id:"nations_a", nome:"Nations League — Divisão A", conf:"UEFA", ciclo:"nations", jogos:6, div:"A" },
     { id:"nations_b", nome:"Nations League — Divisão B", conf:"UEFA", ciclo:"nations", jogos:6, div:"B" },
@@ -1273,23 +1327,29 @@ const CALENDARIO_COMPETICOES_REALISTAS = {
 };
 
 const CALENDARIO_SELECOES_REALISTA = {
+    // 🤝 Só os amistosos continuam espalhados ao longo do ano (janelas normais
+    // de "Data FIFA"). Tudo o resto — eliminatórias, Nations League, e todos
+    // os torneios continentais — agora fica concentrado no FINAL da
+    // temporada, sem competições internacionais "a sério" no meio do ano.
     amistoso: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Data FIFA" },
-    eliminatorias_uefa: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Eliminatorias UEFA" },
-    eliminatorias_conmebol: { modelo: "ano", slots: [11, 19, 31, 39, 45], janela: "Eliminatorias CONMEBOL" },
-    eliminatorias_concacaf: { modelo: "ano", slots: [11, 19, 31, 39, 45], janela: "Eliminatorias CONCACAF" },
-    eliminatorias_caf: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Eliminatorias CAF" },
-    eliminatorias_afc: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Eliminatorias AFC" },
-    euro_qualy: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Eliminatorias da Euro" },
-    nations_a: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Nations League" },
-    nations_b: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Nations League" },
-    nations_c: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Nations League" },
-    nations_d: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Nations League" },
+    eliminatorias_uefa: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias UEFA" },
+    eliminatorias_conmebol: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CONMEBOL" },
+    eliminatorias_concacaf: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CONCACAF" },
+    eliminatorias_caf: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CAF" },
+    eliminatorias_afc: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias AFC" },
+    eliminatorias_ofc: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias OFC" },
+    euro_qualy: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias da Euro" },
+    nations_a: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
+    nations_b: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
+    nations_c: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
+    nations_d: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
     copa_mundo: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50, 51], janela: "Copa do Mundo" },
     euro: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50, 51], janela: "Eurocopa" },
-    copa_america: { modelo: "ano", slots: [23, 24, 25, 26, 27, 28], janela: "Copa America" },
-    gold_cup: { modelo: "ano", slots: [23, 24, 25, 26, 27], janela: "Gold Cup" },
-    copa_africa: { modelo: "europeu", slots: [22, 23, 24, 25, 26], janela: "Copa Africana" },
-    copa_asia: { modelo: "europeu", slots: [22, 23, 24, 25, 26], janela: "Copa da Asia" },
+    copa_america: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50], janela: "Copa America" },
+    gold_cup: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Gold Cup" },
+    copa_africa: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Copa Africana" },
+    copa_asia: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Copa da Asia" },
+    oceania_cup: { modelo: "europeu", slots: [45, 46, 47, 48], janela: "Copa das Nacoes da Oceania" },
     olimpiadas: { modelo: "europeu", slots: [49, 50, 51, 52], janela: "Olimpiadas" }
 };
 
@@ -1483,7 +1543,7 @@ function normalizarNacionalidade(valor) {
     if(n.includes("boliv")) return "Bolivia";
     if(n.includes("croac")) return "Croacia";
     if(n.includes("suic")) return "Suica";
-    if(n.includes("aust")) return "Austria";
+    if(n.includes("austri")) return "Austria";
     if(n.includes("polon")) return "Polonia";
     if(n.includes("suec")) return "Suecia";
     if(n.includes("norue")) return "Noruega";
@@ -1498,7 +1558,7 @@ function normalizarNacionalidade(valor) {
     if(n.includes("camar")) return "Camaroes";
     if(n.includes("gana")) return "Gana";
     if(n.includes("argel")) return "Argelia";
-    if(n.includes("austr")) return "Australia";
+    if(n.includes("austral")) return "Australia";
     if(n.includes("arab") || n.includes("saud")) return "Arabia Saudita";
     if(n.includes("ira") && !n.includes("irland")) return "Ira";
     if(n.includes("cata")) return "Catar";
@@ -1535,13 +1595,14 @@ function obterCompeticaoSelecao(selecao, ano = anoAtual, rodada = rodadaAtual) {
     if(ano % 4 === 0 && janelaMeioAno && selecao.conf === "CONCACAF") return COMPETICOES_SELECOES.find(c => c.id === "gold_cup");
     if(ano % 4 === 0 && slotAtual >= 22 && slotAtual <= 26 && selecao.conf === "CAF") return COMPETICOES_SELECOES.find(c => c.id === "copa_africa");
     if(ano % 4 === 0 && slotAtual >= 22 && slotAtual <= 26 && selecao.conf === "AFC") return COMPETICOES_SELECOES.find(c => c.id === "copa_asia");
+    if(ano % 4 === 0 && janelaMeioAno && selecao.conf === "OFC") return COMPETICOES_SELECOES.find(c => c.id === "oceania_cup");
     if(selecao.conf === "UEFA" && ano % 2 === 1 && ehJanelaSelecaoCalendario(slotAtual)) {
         const div = (obterDivisaoNations(selecao) || "C").toLowerCase();
         return COMPETICOES_SELECOES.find(c => c.id === `nations_${div}`) || COMPETICOES_SELECOES.find(c => c.id === "nations_c");
     }
     if(selecao.conf === "UEFA" && ano % 4 === 3 && ehJanelaSelecaoCalendario(slotAtual)) return COMPETICOES_SELECOES.find(c => c.id === "euro_qualy");
     if(ano % 4 === 1 && ehJanelaSelecaoCalendario(slotAtual)) {
-        const mapElim = { UEFA:"eliminatorias_uefa", CONMEBOL:"eliminatorias_conmebol", CONCACAF:"eliminatorias_concacaf", CAF:"eliminatorias_caf", AFC:"eliminatorias_afc" };
+        const mapElim = { UEFA:"eliminatorias_uefa", CONMEBOL:"eliminatorias_conmebol", CONCACAF:"eliminatorias_concacaf", CAF:"eliminatorias_caf", AFC:"eliminatorias_afc", OFC:"eliminatorias_ofc" };
         return COMPETICOES_SELECOES.find(c => c.id === (mapElim[selecao.conf] || "eliminatorias_uefa"));
     }
     if(ehJanelaSelecaoCalendario(slotAtual)) return COMPETICOES_SELECOES.find(c => c.id === "amistoso");
@@ -1550,7 +1611,16 @@ function obterCompeticaoSelecao(selecao, ano = anoAtual, rodada = rodadaAtual) {
 
 function obterJogadoresNacionalidade(pais) {
     const alvo = normalizarNacionalidade(pais);
-    return [jogador, ...jogadoresIA.filter(j => !j.aposentado && normalizarNacionalidade(j.nacionalidade) === alvo)];
+    // 🛡️ FIX: antes o jogador humano entrava no plantel de QUALQUER país
+    // (mesmo não sendo da nacionalidade dele), pois era sempre colocado à
+    // frente do array sem checar a nacionalidade. Isso fazia com que, toda
+    // vez que a IA simulava um jogo de OUTRA seleção qualquer, o motor de
+    // estatísticas (obterPlantelSelecaoParaStatsIA/atribuirStatsPartidaSelecaoIA)
+    // pudesse sortear o próprio jogador como autor de jogo/gol/assistência
+    // daquele país, inflando jogos/gols da seleção do jogador para valores
+    // absurdos (ex: 500 jogos, 700 gols) mesmo tendo jogado só 1 partida real.
+    const souDesseTime = jogador && normalizarNacionalidade(jogador.nacionalidade) === alvo;
+    return [...(souDesseTime ? [jogador] : []), ...jogadoresIA.filter(j => !j.aposentado && normalizarNacionalidade(j.nacionalidade) === alvo)];
 }
 
 function calcularForcaSelecao(selecaoId, sub23 = false) {
@@ -1944,6 +2014,20 @@ function shouldTournamentAdvanceThisRound(compId, estado, maxRod) {
     return Math.random() < 0.25;
 }
 
+// 🛡️ FIX: verifica se o jogador ainda tem algum jogo AGENDADO (mas ainda não
+// disputado) nesta competição de seleções. Usado para impedir que a fase de
+// grupos/liga feche e elimine o jogador antes que os seus jogos marcados no
+// calendário (que seguem as janelas internacionais reais, bem mais espaçadas
+// que o ritmo semanal da simulação da IA) cheguem a ser disputados.
+function existePendenteJogadorNoTorneio(compId) {
+    if (!jogador?.selecaoId) return false;
+    return agendaTemporada.some((a, idx) =>
+        idx >= (rodadaAtual - 1) &&
+        a.isSelecao && a.compId === compId &&
+        (a.adversarioId === jogador.selecaoId || a.mandanteId === jogador.selecaoId)
+    );
+}
+
 function simularTorneiosInternacionais() {
     for (const [key, estado] of Object.entries(selecoesEstado.torneios || {})) {
         if (["Campeão Definido", "Classificação Definida", "Vagas Definidas"].includes(estado.fase)) continue;
@@ -1959,7 +2043,13 @@ function simularTorneiosInternacionais() {
         if (estado.tipo === "grupos" && estado.grupos && estado.rodadaAtual <= maxRod) {
             simularRodadaGruposInt(estado);
             estado.rodadaAtual++;
-            if (estado.rodadaAtual > maxRod) processarFimGruposInternacional(key, estado, fmt);
+            // 🛡️ FIX: só fecha a fase de grupos quando o jogador não tiver mais
+            // nenhum jogo agendado e por disputar nesta competição — antes disso,
+            // a simulação da IA fica "em espera" (sem avançar mais rodadas) até
+            // que o jogo marcado no calendário realmente aconteça.
+            if (estado.rodadaAtual > maxRod && (!existePendenteJogadorNoTorneio(key) || Math.floor(obterSlotCalendarioAtual()) >= 51)) {
+                processarFimGruposInternacional(key, estado, fmt);
+            }
         } else if (estado.tipo === "liga" && estado.tabela) {
             
             // 👇 ESCUDO ANTI-CRASH: Se a liga estiver vazia (ex: Nations D), encerra ela silenciosamente
@@ -1969,21 +2059,28 @@ function simularTorneiosInternacionais() {
                 continue; 
             }
 
-            const tab = [...estado.tabela].sort(() => Math.random() - 0.5);
-            for (let i = 0; i < tab.length - 1; i += 2) {
-                if (!tab[i] || !tab[i+1]) continue; // Escudo extra de segurança na rodada
-                if (tab[i].id === jogador?.selecaoId || tab[i + 1].id === jogador?.selecaoId) continue;
-                const fA = calcularForcaSelecao(tab[i].id), fB = calcularForcaSelecao(tab[i + 1].id);
-                const { gA, gB } = simularPlacarSelecao(fA, fB);
-                tab[i].j++; tab[i + 1].j++;
-                tab[i].gf += gA; tab[i].gs += gB; tab[i + 1].gf += gB; tab[i + 1].gs += gA;
-                if (gA > gB) tab[i].pts += 3; else if (gB > gA) tab[i + 1].pts += 3; else { tab[i].pts++; tab[i + 1].pts++; }
-                // 🛡️ FIX: atribui o jogo/gols/assistências a jogadores reais de cada seleção.
-                atribuirStatsPartidaSelecaoIA(tab[i].id, tab[i + 1].id, gA, gB);
+            const maxRodLiga = estado.maxRodadas || 4;
+            if ((estado.rodadaAtual || 1) <= maxRodLiga) {
+                const tab = [...estado.tabela].sort(() => Math.random() - 0.5);
+                for (let i = 0; i < tab.length - 1; i += 2) {
+                    if (!tab[i] || !tab[i+1]) continue; // Escudo extra de segurança na rodada
+                    if (tab[i].id === jogador?.selecaoId || tab[i + 1].id === jogador?.selecaoId) continue;
+                    const fA = calcularForcaSelecao(tab[i].id), fB = calcularForcaSelecao(tab[i + 1].id);
+                    const { gA, gB } = simularPlacarSelecao(fA, fB);
+                    tab[i].j++; tab[i + 1].j++;
+                    tab[i].gf += gA; tab[i].gs += gB; tab[i + 1].gf += gB; tab[i + 1].gs += gA;
+                    if (gA > gB) tab[i].pts += 3; else if (gB > gA) tab[i + 1].pts += 3; else { tab[i].pts++; tab[i + 1].pts++; }
+                    // 🛡️ FIX: atribui o jogo/gols/assistências a jogadores reais de cada seleção.
+                    atribuirStatsPartidaSelecaoIA(tab[i].id, tab[i + 1].id, gA, gB);
+                }
+                estado.rodadaAtual = (estado.rodadaAtual || 1) + 1;
             }
-            estado.rodadaAtual = (estado.rodadaAtual || 1) + 1;
             
-            if (estado.rodadaAtual > (estado.maxRodadas || 4)) {
+            // 🛡️ FIX: só fecha/coroa a liga quando o jogador não tiver mais jogo
+            // agendado e por disputar nesta competição (mesmo motivo do fix acima
+            // na fase de grupos — evita eliminar o jogador antes da hora real do
+            // seu jogo marcado no calendário).
+            if (estado.rodadaAtual > maxRodLiga && (!existePendenteJogadorNoTorneio(key) || Math.floor(obterSlotCalendarioAtual()) >= 51)) {
                 estado.tabela.sort((a, b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs));
                 const fmtLiga = FORMATOS_INT[estado.compConfigId] || {};
                 
@@ -2088,11 +2185,20 @@ function agendarJogosInternacionais() {
     const conf = estado.confrontos.find(c => c.timeA && c.timeB && (c.timeA.id === selecao.id || c.timeB.id === selecao.id) && !c.vencedorId);
         if(conf) {
             const adv = conf.timeA.id === selecao.id ? conf.timeB : conf.timeA;
-            const idxFase = indiceFaseCalendario(estado.fase);
-            adicionarEventoCalendario({
-                tipo: `${comp.nome} (${estado.fase})`, compId: key, compConfigId: comp.id,
-                adversarioId: adv.id, isSelecao: true, isMataMata: true, fase: estado.fase, mandanteId: selecao.id, isFinal: estado.fase === "Final"
-            }, cfgCal.slots?.[Math.min(idxFase + 3, cfgCal.slots.length - 1)] || obterProximoSlotSelecao(comp.id), cfgCal.janela, cfgCal.modelo);
+            // 🐛 FIX: faltava esta trava de duplicado — as ramificações "grupos" e
+            // "liga" logo acima já verificavam antes de adicionar, mas esta não.
+            // Como este mesmo confronto de mata-mata fica "pendente" (sem
+            // vencedorId) durante várias semanas até ser disputado, cada chamada
+            // de agendarJogosInternacionais() nesse meio tempo empurrava outra
+            // cópia do MESMO jogo pro calendário — daí aparecerem 3, 4, 5 linhas
+            // idênticas de "Quartos de Final vs Fulano" na agenda.
+            if(!agendaTemporada.find(a => a.isSelecao && a.adversarioId === adv.id && a.compId === key && a.fase === estado.fase)) {
+                const idxFase = indiceFaseCalendario(estado.fase);
+                adicionarEventoCalendario({
+                    tipo: `${comp.nome} (${estado.fase})`, compId: key, compConfigId: comp.id,
+                    adversarioId: adv.id, isSelecao: true, isMataMata: true, fase: estado.fase, mandanteId: selecao.id, isFinal: estado.fase === "Final"
+                }, cfgCal.slots?.[Math.min(idxFase + 3, cfgCal.slots.length - 1)] || obterProximoSlotSelecao(comp.id), cfgCal.janela, cfgCal.modelo);
+            }
         }
     } else if(estado.tipo === "liga" && estado.tabela) {
         const rivais = estado.tabela.filter(t => t.id !== selecao.id).slice(0, 2);
@@ -2130,7 +2236,7 @@ function premiarLigasTemporada() {
             if (art.p.historicoCarreira?.[0]) art.p.historicoCarreira[0].trofeus = art.p.historicoCarreira[0].trofeus === "-" ? nomePremio : art.p.historicoCarreira[0].trofeus + ", " + nomePremio;
             registrarNoticia(nomePremio, `${art.p.nome} foi o artilheiro da ${liga.nome} com ${art.g} gols.`, "Prémios", { nome: art.p.nome, foto: art.p.foto }, "jogador");
             if ((art.p.id || "player") === "player") {
-                jogador.geral = Math.min(99, jogador.geral + 2);
+                evoluirAtributosEGeral(jogador, 2);
                 jogador.moral = Math.min(100, jogador.moral + 12);
                 jogador.pontosPremio = (jogador.pontosPremio || 0) + 18;
                 jogador.valorMercadoNum = calcularValorMercadoJogador(jogador);
@@ -2144,7 +2250,7 @@ function premiarLigasTemporada() {
             if (ast.p.historicoCarreira?.[0]) ast.p.historicoCarreira[0].trofeus = ast.p.historicoCarreira[0].trofeus === "-" ? nomePremio : ast.p.historicoCarreira[0].trofeus + ", " + nomePremio;
             registrarNoticia(nomePremio, `${ast.p.nome} liderou as assistências da ${liga.nome} com ${ast.a}.`, "Prémios", { nome: ast.p.nome, foto: ast.p.foto }, "jogador");
             if ((ast.p.id || "player") === "player") {
-                jogador.geral = Math.min(99, jogador.geral + 1);
+                evoluirAtributosEGeral(jogador, 1);
                 jogador.moral = Math.min(100, jogador.moral + 8);
                 jogador.pontosPremio = (jogador.pontosPremio || 0) + 14;
                 mostrarToast("Garçom da Liga", `Líder de assistências da ${liga.nome}!`, "success");
@@ -2258,15 +2364,29 @@ function renderClassificadosElim(tor, cor) {
     </div>`;
 }
 
+// 🏆 Logo oficial de uma competição internacional, para usar no lugar dos
+// emojis genéricos. Tenta primeiro o nome exato da competição (usa o mesmo
+// catálogo de obterUrlImagem já usado para troféus de clube); eliminatórias
+// não têm um logo próprio "oficial" de verdade, então cai para o logo do
+// torneio de destino (ex: "Eliminatórias AFC" usa o logo da Copa do Mundo).
+// Se mesmo assim não encontrar nada catalogado, devolve null (quem chama
+// decide o fallback visual, normalmente meta.icon).
+function obterLogoTorneioInternacional(nome, meta) {
+    let url = obterUrlImagem(nome, 'trofeu');
+    if (!url && meta?.destinoNome) url = obterUrlImagem(meta.destinoNome, 'trofeu');
+    return url || null;
+}
+
 function renderTorneioInternacionalCompleto(tor, key) {
     const cor = tor.cor || CORES_COMP[tor.compConfigId] || CORES_COMP.default;
     const meta = metaCompeticao(tor.compConfigId, tor.ano);
+    const logoTorneio = obterLogoTorneioInternacional(tor.nome, meta);
     const elim = isEliminatoria(tor.compConfigId);
     const prog = tor.tipo === "grupos" && tor.maxRodadas ? Math.min(100, Math.round(((tor.rodadaAtual || 1) - 1) / tor.maxRodadas * 100)) : (["Vagas Definidas", "Classificação Definida", "Campeão Definido"].includes(tor.fase) ? 100 : 50);
     let html = `<div class="comp-int-card comp-int-premium" style="--comp-cor:${cor}">
         <div class="comp-int-header">
             <div class="comp-int-title-block">
-                <span class="comp-int-icon">${meta.icon}</span>
+                ${logoTorneio ? `<img class="comp-int-icon" src="${logoTorneio}" alt="${tor.nome}" onerror="this.outerHTML='<span class=&quot;comp-int-icon&quot;>${meta.icon}</span>'">` : `<span class="comp-int-icon">${meta.icon}</span>`}
                 <div><h3>${tor.nome}</h3>
                 <p>${meta.subtitulo || `Temporada ${tor.ano}`}${elim ? " • Sem troféu — apenas vagas" : ""}</p></div>
             </div>
@@ -2375,9 +2495,10 @@ function renderizarCompeticoesInternacionais() {
                     const done = ["Vagas Definidas", "Classificação Definida"].includes(t.tor.fase) || (t.tor.fase === "Campeão Definido" && !elim);
                     const camp = !elim && t.tor.campeaoId ? SELECOES.find(s => s.id === t.tor.campeaoId)?.nome : null;
                     const prog = t.tor.tipo === "grupos" && t.tor.maxRodadas ? Math.min(100, Math.round(((t.tor.rodadaAtual || 1) - 1) / t.tor.maxRodadas * 100)) : (done ? 100 : 50);
+                    const logoCard = obterLogoTorneioInternacional(t.comp.nome, t.meta);
                     return `<button type="button" class="comp-tournament-card ${t.comp.id === compAtual?.comp.id ? "ativo" : ""}" data-comp="${t.comp.id}" style="--comp-cor:${t.tor.cor || CORES_COMP.default}">
                         <div class="comp-tournament-card-top">
-                            <span class="comp-tournament-icon">${t.meta.icon}</span>
+                            ${logoCard ? `<img class="comp-tournament-icon" src="${logoCard}" alt="${t.comp.nome}" onerror="this.outerHTML='<span class=&quot;comp-tournament-icon&quot;>${t.meta.icon}</span>'">` : `<span class="comp-tournament-icon">${t.meta.icon}</span>`}
                             ${camp ? `<span class="comp-tournament-crown" title="${camp}">👑</span>` : ""}
                         </div>
                         <strong>${t.comp.nome.replace("Eliminatórias ", "").replace(" — Divisão ", " Div. ")}</strong>
@@ -2772,6 +2893,7 @@ styleOverrides.innerHTML = `
     .comp-int-premium { border-left-width:4px; }
     .comp-int-title-block { display:flex; gap:14px; align-items:center; }
     .comp-int-icon { font-size:2rem; line-height:1; }
+    img.comp-int-icon { width:2.4rem; height:2.4rem; object-fit:contain; background:rgba(255,255,255,0.06); border-radius:8px; padding:4px; flex-shrink:0; }
     .comp-int-title-block h3 { margin:0; font-size:1.35rem; }
     .comp-int-title-block p { margin:4px 0 0; color:#888; font-size:0.85rem; }
     .comp-fase-pill { background:rgba(0,0,0,0.4) !important; border-color:var(--comp-cor, var(--theme-primary)) !important; color:var(--comp-cor, var(--theme-primary)) !important; }
@@ -3070,7 +3192,11 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Gold Cup") || entidade.includes("concacaf_gold_cup"))  return "https://upload.wikimedia.org/wikipedia/en/thumb/c/cf/2025_CONCACAF_Gold_Cup_logo.svg/512px-2025_CONCACAF_Gold_Cup_logo.svg.png";
         if(entidade.includes("Copa Africana") || entidade.includes("afcon")) return "https://upload.wikimedia.org/wikipedia/en/thumb/3/31/Africa_Cup_of_Nations_logo.svg/512px-Africa_Cup_of_Nations_logo.svg.png";
         if(entidade.includes("Copa da Ásia") || entidade.includes("asian_cup")) return "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/AFC_Asian_Cup_logo.svg/512px-AFC_Asian_Cup_logo.svg.png";
-        if(entidade.includes("Oceania Cup") || entidade.includes("ofc_nations_cup")) return "https://upload.wikimedia.org/wikipedia/en/thumb/9/95/OFC_Nations_Cup_logo.svg/512px-OFC_Nations_Cup_logo.svg.png";
+        if(entidade.includes("Oceania Cup") || entidade.includes("ofc_nations_cup") || entidade.includes("Copa das Nações da Oceania") || entidade.includes("oceania_cup")) return "https://tmssl.akamaized.net//images/erfolge/medium/108.png?lm=1461847499";
+
+        if(entidade.includes("Mundial Sub17") || entidade.includes("mundial_sub17")) return "https://i.ibb.co/8ngb5Csz/031efcc4-f6b7-422f-8e52-9d252579b9b2.png";
+        if(entidade.includes("Mundial Sub21") || entidade.includes("mundial_sub21")) return "https://tmssl.akamaized.net//images/erfolge/medium/158.png?lm=1657627706";
+
 
         if(entidade.includes("Libertadores") || entidade.includes("conmebol_lib")) return "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/328-3287452_copa-libertadores-primer-trofeo-hd-png-download.png/250px-328-3287452_copa-libertadores-primer-trofeo-hd-png-download.png";
         if(entidade.includes("Sulamericana") || entidade.includes("conmebol_sul")) return "https://tmssl.akamaized.net//images/erfolge/medium/154.png?lm=1520606999";
@@ -3086,7 +3212,7 @@ function obterUrlImagem(entidade, tipo) {
     
     
        
-                //AMERICA SUL
+        //AMERICA SUL
         if(entidade.includes("Brasileirão Série A") || entidade.includes("br_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/262.png?lm=1466586549";
         if(entidade.includes("Brasileirão Série B") || entidade.includes("br_2")) return "https://tmssl.akamaized.net//images/erfolge/medium/462.png?lm=1466588515";
         if(entidade.includes("Brasileirão Série C") || entidade.includes("br_3")) return "https://i.ibb.co/1J8Mxb0y/ec693812-f11f-4a50-9424-4a319cfb05c6.png";
@@ -3180,7 +3306,7 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Leagues Cup") || entidade.includes("Supercopa_usa")) return "https://tmssl.akamaized.net//images/erfolge/medium/604.png?lm=1606063811";
 
         if(entidade == ("Liga MX Apertura") || entidade.includes("mx_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/153.png?lm=1461847499";
-        if(entidade == ("Copa Mexico") || entidade.includes("copa_mx")) return 
+        if(entidade == ("Copa Mexico") || entidade.includes("copa_mx")) return "";
 
     }
     let entidadex = entidade;
@@ -3610,6 +3736,84 @@ window.tocarSom = function(nome, volume = 0.55) {
     } catch (e) { /* nunca deixar um som quebrar o jogo */ }
 };
 
+// ==========================================
+// 🎵 MÚSICA DE FUNDO
+// ==========================================
+// Mesmo esquema dos efeitos sonoros (SONS_JOGO): ficheiros .mp3 opcionais,
+// desta vez em assets/music/ — o jogador coloca as próprias faixas com
+// exatamente estes nomes. Se um ficheiro não existir, o navegador dispara
+// "error" nesse <audio> e o motor simplesmente pula para a próxima faixa da
+// lista, sem travar nem mostrar erro nenhum.
+const MUSICAS_JOGO = [
+    "assets/music/tema1.mp3",
+    "assets/music/tema2.mp3",
+    "assets/music/tema3.mp3",
+    "assets/music/tema4.mp3",       
+    "assets/music/tema5.mp3",
+    "assets/music/tema6.mp3",
+];
+let _audioMusica = null;
+let _ordemMusicas = [];
+let _indiceMusicaAtual = 0;
+
+// Preferência do jogador para a música (independente da preferência de sons/SFX).
+function musicaAtivada() { return localStorage.getItem("rumo_estrelato_pro_musica") !== "off"; }
+function volumeMusica() { const v = parseFloat(localStorage.getItem("rumo_estrelato_pro_musica_vol")); return isNaN(v) ? 0.25 : v; }
+window.definirVolumeMusica = function(v) {
+    const vol = Math.max(0, Math.min(1, Number(v)));
+    localStorage.setItem("rumo_estrelato_pro_musica_vol", String(vol));
+    if (_audioMusica) _audioMusica.volume = vol;
+};
+
+function _embaralharOrdemMusicas() {
+    _ordemMusicas = MUSICAS_JOGO.map((_, i) => i).sort(() => Math.random() - 0.5);
+    _indiceMusicaAtual = 0;
+}
+
+function _tocarProximaMusica() {
+    if (!musicaAtivada() || MUSICAS_JOGO.length === 0) return;
+    if (!_ordemMusicas.length) _embaralharOrdemMusicas();
+    if (_indiceMusicaAtual >= _ordemMusicas.length) _embaralharOrdemMusicas(); // recomeça a lista embaralhada de novo
+    const faixa = MUSICAS_JOGO[_ordemMusicas[_indiceMusicaAtual]];
+    _indiceMusicaAtual++;
+    if (!_audioMusica) {
+        _audioMusica = new Audio();
+        _audioMusica.volume = volumeMusica();
+        // Se a faixa atual não existir/falhar, tenta a próxima em vez de parar a música de vez.
+        _audioMusica.addEventListener("error", () => { if (musicaAtivada()) _tocarProximaMusica(); });
+        _audioMusica.addEventListener("ended", () => { if (musicaAtivada()) _tocarProximaMusica(); });
+    }
+    _audioMusica.src = faixa;
+    _audioMusica.volume = volumeMusica();
+    _audioMusica.play().catch(() => {}); // navegador pode bloquear até haver interação do jogador — ver iniciarMusicaFundo()
+}
+
+// Chamado uma única vez (após o primeiro clique do jogador, para respeitar a
+// política de autoplay dos navegadores) para começar a tocar a playlist.
+window.iniciarMusicaFundo = function() {
+    if (!musicaAtivada()) return;
+    if (_audioMusica && !_audioMusica.paused) return; // já está tocando, não reinicia
+    if (_audioMusica) { _audioMusica.play().catch(() => {}); }
+    else _tocarProximaMusica();
+};
+
+window.alternarMusica = function() {
+    const ativa = musicaAtivada();
+    localStorage.setItem("rumo_estrelato_pro_musica", ativa ? "off" : "on");
+    if (ativa) { _audioMusica?.pause(); }
+    else { window.iniciarMusicaFundo(); }
+    mostrarToast("Música", ativa ? "Música de fundo desativada." : "Música de fundo ativada.", "info");
+};
+
+// A maioria dos navegadores só deixa tocar áudio com som depois de uma
+// interação real do jogador — por isso ficamos à escuta do primeiro
+// clique/toque na página inteira para então começar a playlist.
+(function aguardarPrimeiraInteracaoParaMusica() {
+    const iniciar = () => { window.iniciarMusicaFundo(); document.removeEventListener("click", iniciar); document.removeEventListener("touchstart", iniciar); };
+    document.addEventListener("click", iniciar, { once: true });
+    document.addEventListener("touchstart", iniciar, { once: true });
+})();
+
 function mostrarToast(titulo, mensagem, tipo = 'info') {
     const container = document.getElementById('toastContainer'); if(!container) return;
     const toast = document.createElement('div'); toast.className = `toast ${tipo === 'gold' ? 'gold-anim' : ''}`;
@@ -3739,7 +3943,23 @@ function normalizarElencosEPosicoes() {
     const template = ["Goleiro","Zagueiro","Zagueiro","Lateral","Lateral","Volante","Meio-Campista","Meia Ofensivo","Ponta","Ponta","Atacante","Atacante"];
     Object.values(porClube).forEach(lista => {
         lista.sort((a,b) => (b.geral || 0) - (a.geral || 0));
-        lista.forEach((j, idx) => { if(!j.posicao || j.posicao === "Base") j.posicao = template[idx % template.length]; });
+        lista.forEach((j, idx) => {
+            if(!j.posicao || j.posicao === "Base") j.posicao = template[idx % template.length];
+            // ⚙️ ATRIBUTOS INDIVIDUAIS: todo jogador (não só o teu) passa a ter
+            // finalização, velocidade, passe, defesa ("carrinho"), cabeceamento,
+            // drible, resistência e força próprios — gerados a partir da posição
+            // e do OVR, com uma pitada de variação individual. Isto é o que o
+            // motor de partida (match.js) usa para decidir quem marca, quem
+            // assiste e quem defende, em vez de só olhar pro OVR genérico.
+            // 🆕 Preenche só o que ESTIVER FALTANDO em cada jogador, um campo de
+            // cada vez — nunca sobrescreve um atributo que já exista. Isso é o
+            // que permite fixar atributos específicos direto em jogadores.js
+            // (ex: Harry Kane sempre com 96 de finalização em todo save): antes,
+            // definir só 1 campo fazia o motor pular o jogador inteiro e deixar
+            // os outros 8 atributos undefined pro resto do jogo.
+            const gerados = gerarAtributosParaJogador(j.posicao, j.geral || 60);
+            Object.keys(gerados).forEach(attr => { if (typeof j[attr] === "undefined") j[attr] = gerados[attr]; });
+        });
     });
 }
 
@@ -3926,7 +4146,7 @@ function montarEscalacaoSelecao(pool, titularesIds) {
 // de pesos por posição usada em simularPartidasSelecao, só que aplicada a
 // qualquer confronto simulado pelo motor de torneios internacionais.
 function atribuirStatsPartidaSelecaoIA(paisAId, paisBId, gA, gB) {
-    const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.36, "Volante":0.18, "Lateral":0.14, "Zagueiro":0.08, "Goleiro":0.01 };
+    const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.30, "Volante":0.10, "Lateral":0.06, "Zagueiro":0.03, "Goleiro":0.002 };
     const pesosAst = { "Atacante":0.36, "Ponta":0.70, "Meia Ofensivo":0.86, "Meio-Campista":0.70, "Volante":0.42, "Lateral":0.48, "Zagueiro":0.10, "Goleiro":0.02 };
     const sortear = (pool, campo) => {
         const pesos = campo === "gols" ? pesosGol : pesosAst;
@@ -3957,7 +4177,7 @@ function atribuirStatsPartidaSelecaoIA(paisAId, paisBId, gA, gB) {
 
 function simularPartidasSelecao(convocacao) {
     const jogos = Math.max(1, convocacao.competicao?.jogos || 1);
-    const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.36, "Volante":0.18, "Lateral":0.14, "Zagueiro":0.08, "Goleiro":0.01 };
+    const pesosGol = { "Atacante":0.95, "Ponta":0.72, "Meia Ofensivo":0.58, "Meio-Campista":0.30, "Volante":0.10, "Lateral":0.06, "Zagueiro":0.03, "Goleiro":0.002 };
     const pesosAst = { "Atacante":0.36, "Ponta":0.70, "Meia Ofensivo":0.86, "Meio-Campista":0.70, "Volante":0.42, "Lateral":0.48, "Zagueiro":0.10, "Goleiro":0.02 };
     const poolTotal = convocacao.convocados;
     if(poolTotal.length === 0) return;
@@ -4342,6 +4562,7 @@ function gerarJovensGenericos(qtd = 34) {
         const potencialLiga = clube.reputacao >= 85 ? 70 : clube.reputacao >= 78 ? 66 : 61;
         const geral = Math.max(50, Math.min(76, potencialLiga + Math.floor(Math.random() * 11) - 5));
         const nome = `${nomes[Math.floor(Math.random()*nomes.length)]} ${sobrenomes[Math.floor(Math.random()*sobrenomes.length)]}`;
+        const posicaoJovem = posicoes[Math.floor(Math.random()*posicoes.length)];
         jogadoresIA.push({
             id:`j_newgen_${anoAtual}_${criados}_${Date.now().toString(36)}`,
             nome,
@@ -4349,11 +4570,14 @@ function gerarJovensGenericos(qtd = 34) {
             geral,
             clubeId:clube.id,
             nacionalidade:nacionalidades[Math.floor(Math.random()*nacionalidades.length)],
-            posicao:posicoes[Math.floor(Math.random()*posicoes.length)],
+            posicao:posicaoJovem,
             foto:"",
             contrato:Math.floor(Math.random()*3)+2,
             felicidade:60 + Math.floor(Math.random()*25),
             inteligencia:45 + Math.floor(Math.random()*28),
+            potencial: gerarPotencialJogador(geral),
+            // ⚙️ Atributos individuais desde a estreia — mesmo critério (posição + OVR) usado para todo o resto do elenco.
+            ...gerarAtributosParaJogador(posicaoJovem, geral),
             statsTemporada:{ jogos:0, gols:0, assistencias:0, notas:[] },
             statsSelecao:{ jogos:0, gols:0, assistencias:0, convocacoes:0 },
             historicoCarreira:[]
@@ -4652,6 +4876,34 @@ function inicializarEstadoCarreiraJogador() {
     if(typeof jogador.moral === "undefined") jogador.moral = 55;
     if(typeof jogador.felicidade === "undefined") jogador.felicidade = 60;
     if(typeof jogador.inteligencia === "undefined") jogador.inteligencia = Math.max(45, Math.min(95, (jogador.geral || 60) + 4));
+    // ⚙️ ATRIBUTOS INDIVIDUAIS: mesma migração aplicada aos jogadores de IA
+    // (ver normalizarElencosEPosicoes) — se por algum motivo ainda faltar
+    // algum destes 8 atributos (save antigo, criação de personagem), gera-os
+    // a partir da posição/OVR do próprio jogador.
+    if(typeof jogador.finalizacao === "undefined" || typeof jogador.velocidade === "undefined" || typeof jogador.passe === "undefined" ||
+       typeof jogador.defesa === "undefined" || typeof jogador.cabeceamento === "undefined" || typeof jogador.drible === "undefined" ||
+       typeof jogador.resistencia === "undefined" || typeof jogador.forca === "undefined") {
+        const gerados = gerarAtributosParaJogador(jogador.posicao, jogador.geral || 60);
+        if(typeof jogador.finalizacao === "undefined") jogador.finalizacao = gerados.finalizacao;
+        if(typeof jogador.velocidade === "undefined") jogador.velocidade = gerados.velocidade;
+        if(typeof jogador.passe === "undefined") jogador.passe = gerados.passe;
+        if(typeof jogador.defesa === "undefined") jogador.defesa = gerados.defesa;
+        if(typeof jogador.cabeceamento === "undefined") jogador.cabeceamento = gerados.cabeceamento;
+        if(typeof jogador.drible === "undefined") jogador.drible = gerados.drible;
+        if(typeof jogador.resistencia === "undefined") jogador.resistencia = gerados.resistencia;
+        if(typeof jogador.forca === "undefined") jogador.forca = gerados.forca;
+        if(typeof jogador.reflexos === "undefined") jogador.reflexos = gerados.reflexos;
+        if(typeof jogador.reposicao === "undefined") jogador.reposicao = gerados.reposicao;
+        if(typeof jogador.jogoAereo === "undefined") jogador.jogoAereo = gerados.jogoAereo;
+    }
+    // 🧤 Migração incremental para quem já tinha os 8 atributos base mas ainda
+    // não tinha os 3 exclusivos de guarda-redes.
+    if(typeof jogador.reflexos === "undefined") {
+        const gerados = gerarAtributosParaJogador(jogador.posicao, jogador.geral || 60);
+        jogador.reflexos = gerados.reflexos;
+        jogador.reposicao = gerados.reposicao;
+        jogador.jogoAereo = gerados.jogoAereo;
+    }
     if(typeof jogador.titularidade === "undefined") jogador.titularidade = 48;
     if(typeof jogador.lesaoRodadas === "undefined") jogador.lesaoRodadas = 0;
     if(typeof jogador.entrevistasRespondidas === "undefined") jogador.entrevistasRespondidas = 0;
@@ -4697,6 +4949,13 @@ function inicializarEstadoCarreiraJogador() {
             if(typeof t.interceptions === "undefined") t.interceptions = 0;
             if(typeof t.longShots === "undefined") t.longShots = 0;
             if(typeof t.acceleration === "undefined") t.acceleration = 0;
+            // 🧤 FIX: os 3 treinos novos de guarda-redes (reflexos/reposição/jogo
+            // aéreo) precisam existir aqui como contador — sem isto,
+            // upgradeTrainingSkill() faria "undefined++" (vira NaN) na primeira
+            // vez que o jogador tentasse treiná-los.
+            if(typeof t.reflexes === "undefined") t.reflexes = 0;
+            if(typeof t.distribution === "undefined") t.distribution = 0;
+            if(typeof t.aerialCommand === "undefined") t.aerialCommand = 0;
         }
         const l = jogador.lifestyle.upgrades?.lifestyle;
         if(l) { if(typeof l.personalChef === "undefined") l.personalChef = false; if(typeof l.mediaTraining === "undefined") l.mediaTraining = false; if(typeof l.eliteAgent === "undefined") l.eliteAgent = false; }
@@ -5332,6 +5591,28 @@ window.abrirPerfilJogador = function(id) {
     
     // (O resto da função continua exatamente igual a partir daqui, começando por let st = id === "player"...)
 
+    // ⚙️ ATRIBUTOS INDIVIDUAIS: barras com os 8 atributos do jogador. Cada
+    // barra mostra o valor real e é colorida conforme o nível (vermelho fraco
+    // → verde/dourado elite), para ficar fácil bater o olho e ver o perfil.
+    const corBarraAtributo = (v) => v >= 85 ? "#facc15" : v >= 75 ? "#22c55e" : v >= 60 ? "#3b82f6" : v >= 45 ? "#f97316" : "#ef4444";
+    const ATRIBUTOS_LABEL = j.posicao === "Goleiro"
+        ? { reflexos: "🧤 Reflexos", jogoAereo: "🙌 Jogo Aéreo", reposicao: "🚀 Reposição", velocidade: "💨 Velocidade", passe: "🎯 Passe (curto)", resistencia: "🔋 Resistência", forca: "💪 Força" }
+        : { finalizacao: "⚽ Finalização", velocidade: "💨 Velocidade", passe: "🎯 Passe", defesa: "🛡️ Carrinho", cabeceamento: "🦸 Cabeceamento", drible: "🌀 Drible", resistencia: "🔋 Resistência", forca: "💪 Força" };
+    const htmlAtributos = `
+        <div style="margin-top:18px; background:rgba(0,0,0,0.32); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px;">
+            <h3 style="margin:0 0 14px; color:var(--theme-primary);">⚙️ Atributos</h3>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px 20px;">
+                ${Object.entries(ATRIBUTOS_LABEL).map(([campo, label]) => {
+                    const v = Math.round(j[campo] ?? j.geral ?? 60);
+                    const cor = corBarraAtributo(v);
+                    return `<div>
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;"><span style="color:#ccc; font-weight:700;">${label}</span><span style="color:${cor}; font-weight:900;">${v}</span></div>
+                        <div style="height:8px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden;"><div style="height:100%; width:${v}%; background:${cor}; border-radius:4px;"></div></div>
+                    </div>`;
+                }).join("")}
+            </div>
+        </div>`;
+
     let st = id === "player" ? j.estatisticasAtuais : (j.statsTemporada || {jogos:0, gols:0, assistencias:0});
     let carreiraTotal = obterEstatisticasCarreira(j);
     let compStatsHTML = j.statsCompeticoes ? Object.entries(j.statsCompeticoes).map(([cid, stc]) => {
@@ -5395,11 +5676,13 @@ window.abrirPerfilJogador = function(id) {
     conteudoHTML += `
         <div style="display:flex; gap:15px; margin-top:10px; border-bottom:2px solid #333; padding-bottom:15px; flex-wrap:wrap;">
             <button id="btn-aba-stats" class="tab-btn-modal" onclick="mudarAbaModal('stats')" style="background:rgba(0, 255, 136, 0.1); color:var(--theme-primary); border:none; padding:12px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:1.1rem; text-transform:uppercase;">Estatísticas Atuais</button>
+            <button id="btn-aba-atributos" class="tab-btn-modal" onclick="mudarAbaModal('atributos')" style="background:none; color:#aaa; border:none; padding:12px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:1.1rem; text-transform:uppercase;">⚙️ Atributos</button>
             <button id="btn-aba-selecao" class="tab-btn-modal" onclick="mudarAbaModal('selecao')" style="background:none; color:#aaa; border:none; padding:12px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:1.1rem; text-transform:uppercase;">🌍 Seleção</button>
             <button id="btn-aba-hist" class="tab-btn-modal" onclick="mudarAbaModal('hist')" style="background:none; color:#aaa; border:none; padding:12px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:1.1rem; text-transform:uppercase;">Histórico de Épocas</button>
             <button id="btn-aba-premios" class="tab-btn-modal" onclick="mudarAbaModal('premios')" style="background:none; color:#aaa; border:none; padding:12px 25px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:1.1rem; text-transform:uppercase;">🏆 Sala de Troféus</button>
         </div>
         <div id="aba-stats" class="aba-conteudo" style="margin-top:20px; overflow-y:auto; padding:0 10px;">${htmlStats}</div>
+        <div id="aba-atributos" class="aba-conteudo" style="display:none; margin-top:20px; overflow-y:auto; padding:0 10px;">${htmlAtributos}</div>
         <div id="aba-selecao" class="aba-conteudo" style="display:none; margin-top:20px; overflow-y:auto; padding:0 10px;">${htmlSelecao}</div>
         <div id="aba-hist" class="aba-conteudo" style="display:none; margin-top:20px; overflow-y:auto; padding:0 10px;">${histHTML}</div>
         <div id="aba-premios" class="aba-conteudo" style="display:none; margin-top:20px; overflow-y:auto; padding:0 10px;">${premeadosHTML || `<p style="color:#aaa; font-size:1.2rem; text-align:center; padding:30px;">O museu particular está vazio.</p>`}</div>
@@ -6131,6 +6414,105 @@ function verificarJanelaMeioAno() {
 // ==========================================
 // 🌍 MOTOR DE ESTATÍSTICAS E COPAS GLOBAIS
 // ==========================================
+// Compara um atributo real do jogador com o que seria "esperado" pela sua
+// posição/OVR (mesmo conceito usado no motor de partida) — usado para que
+// estatísticas defensivas (desarmes, interceptações, defesas) variem de
+// verdade conforme o atributo "defesa" de cada jogador, não só o OVR genérico.
+function fatorAtributoIndividual(j, campo) {
+    const perfil = PERFIS_ATRIBUTOS_POSICAO[j.posicao] || PERFIS_ATRIBUTOS_POSICAO["Meio-Campista"];
+    const esperado = (j.geral || 60) * (perfil[campo] || 1);
+    const real = j[campo] ?? esperado;
+    return esperado > 0 ? Math.max(0.4, Math.min(1.9, real / esperado)) : 1;
+}
+
+// Recalcula o OVR (geral) de QUALQUER jogador a partir dos seus atributos
+// individuais — mas agora PONDERADO pela posição: cada atributo pesa
+// conforme a sua relevância real pra posição do jogador (os mesmos
+// multiplicadores de PERFIS_ATRIBUTOS_POSICAO usados para gerar os
+// atributos). Antes era uma média simples dos 8 atributos, o que castigava
+// injustamente um atacante com carrinho fraco (correto pra posição dele) e
+// achatava o OVR dele mesmo com finalização/velocidade excelentes.
+function calcularGeralDeAtributos(j) {
+    const perfil = PERFIS_ATRIBUTOS_POSICAO[j.posicao] || PERFIS_ATRIBUTOS_POSICAO["Meio-Campista"];
+    const campos = j.posicao === "Goleiro"
+        ? ["reflexos", "reposicao", "jogoAereo", "velocidade", "resistencia", "forca"]
+        : ["finalizacao", "velocidade", "passe", "defesa", "cabeceamento", "drible", "resistencia", "forca"];
+    let somaValor = 0, somaPeso = 0;
+    campos.forEach(campo => {
+        let peso = perfil[campo] || 1;
+        if (j.posicao === "Goleiro" && campo === "reflexos") peso *= 2; // reflexos é o atributo decisivo de um goleiro
+        somaValor += (j[campo] ?? 60) * peso;
+        somaPeso += peso;
+    });
+    return Math.max(40, Math.min(99, Math.floor(somaValor / somaPeso)));
+}
+
+// 📈📉 Evolui (ou regride) um jogador: em vez de só mexer no número do OVR
+// (o que deixava o OVR "solto", sem refletir em nenhum atributo real), isto
+// sobe/desce TODOS os atributos individuais dele de forma proporcional ao
+// delta — com uma variação própria por atributo, pra não parecer um bloco
+// monolítico subindo/descendo igual — e só DEPOIS recalcula o OVR a partir
+// deles. Assim um jogador que sobe de OVR fica de verdade mais rápido/melhor
+// finalizador/etc, e um que cai perde atributos de verdade (não só o rótulo).
+// 🆕 TETO DE POTENCIAL: sem isto, todo jovem crescia na mesma taxa até 99,
+// então com o tempo o mundo inteiro ficava cheio de craques (nada de jogador
+// que "não vingou"). Agora cada jovem tem um teto pessoal, sorteado de forma
+// enviesada — a maioria mal evolui mais do que já tem, e só uma fração bem
+// pequena tem margem pra virar um jogador de elite. Reflete a realidade: a
+// maioria das promessas de base nunca vira craque.
+function gerarPotencialJogador(geralAtual) {
+    const r = Math.random();
+    let bonus;
+    if (r < 0.60) bonus = Math.floor(Math.random() * 6);            // 60%: quase não evolui (+0 a +5)
+    else if (r < 0.88) bonus = 6 + Math.floor(Math.random() * 9);   // 28%: evolução moderada (+6 a +14)
+    else if (r < 0.98) bonus = 15 + Math.floor(Math.random() * 11); // 10%: boa evolução (+15 a +25)
+    else bonus = 26 + Math.floor(Math.random() * 15);               // 2%: craque em formação (+26 a +40)
+    return Math.min(99, (geralAtual || 60) + bonus);
+}
+// Para jogadores que já existiam sem "potencial" definido (ex: elenco real
+// inicial do jogo, sem esse campo em jogadores.js): joga em cima de idade —
+// quem já é veterano não tem mais teto a explorar; quem é jovem ganha um teto
+// gerado agora mesmo (guardado, pra não sortear de novo toda temporada).
+function obterOuGerarPotencial(j) {
+    if (typeof j.potencial === "number") return j.potencial;
+    if ((j.idade || 24) >= 27) { j.potencial = j.geral || 60; return j.potencial; }
+    j.potencial = gerarPotencialJogador(j.geral || 60);
+    return j.potencial;
+}
+
+function evoluirAtributosEGeral(j, delta) {
+    if (!delta) { j.geral = Math.max(40, Math.min(99, j.geral)); return; }
+    const campos = j.posicao === "Goleiro"
+        ? ["reflexos", "reposicao", "jogoAereo", "velocidade", "resistencia", "forca"]
+        : ["finalizacao", "velocidade", "passe", "defesa", "cabeceamento", "drible", "resistencia", "forca"];
+    campos.forEach(campo => {
+        if (typeof j[campo] !== "number") return;
+        const variacao = delta + (Math.random() - 0.5) * Math.abs(delta) * 0.7;
+        j[campo] = Math.max(28, Math.min(99, Math.round(j[campo] + variacao)));
+    });
+    j.geral = calcularGeralDeAtributos(j);
+}
+
+// 🔧 RECONCILIAÇÃO OVR ↔ ATRIBUTOS
+// Corrige jogadores cujo OVR e atributos ficaram dessincronizados — por
+// exemplo, saves antigos onde uma queda de OVR por idade aconteceu ANTES de
+// evoluirAtributosEGeral() existir, deixando o número do OVR baixo mas os
+// atributos individuais ainda "ótimos" (sem terem caído junto). A partir de
+// agora o OVR é sempre um resumo dos atributos — então, se um jogador teve
+// uma queda de OVR, os atributos TÊM de acompanhar essa queda (e vice-versa
+// se o OVR ficou pra trás de atributos que já subiram).
+function sincronizarAtributosComOver(j) {
+    if (typeof j.finalizacao !== "number" && typeof j.reflexos !== "number") return;
+    const geralEsperado = calcularGeralDeAtributos(j);
+    const diff = (j.geral || 60) - geralEsperado;
+    if (Math.abs(diff) < 2) return; // já está coerente, não mexe
+    evoluirAtributosEGeral(j, diff);
+}
+function sincronizarTodosOversComAtributos() {
+    sincronizarAtributosComOver(jogador);
+    jogadoresIA.forEach(j => { if (!j.aposentado) sincronizarAtributosComOver(j); });
+}
+
 function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null, golsSofridos = 0) {
     let elenco = montarEscalacaoJogo(clubeId);
     if(elenco.length === 0) return;
@@ -6151,11 +6533,13 @@ function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null, golsSofridos
             if (!j.statsTemporada.jogosSemSofrerGol) j.statsTemporada.jogosSemSofrerGol = 0;
             const fatorOvr = Math.max(0, ((j.geral || 60) - 58)) / 100;
             if (j.posicao === "Goleiro") {
-                // Defesas aproximadas a partir de quantos gols o adversário quase fez (proxy: golsSofridos + variação).
-                j.statsTemporada.defesas += Math.round(1.5 + fatorOvr * 3.2 + Math.random() * 2 - golsSofridos * 0.3);
+                // 🧤 Goleiros usam o atributo "reflexos" (próprio deles), não "defesa".
+                const fatorReflexos = fatorAtributoIndividual(j, "reflexos");
+                j.statsTemporada.defesas += Math.round((1.5 + fatorOvr * 3.2) * fatorReflexos + Math.random() * 2 - golsSofridos * 0.3);
             } else {
-                j.statsTemporada.desarmes += Math.round(0.6 + fatorOvr * 2.0 + Math.random() * 1.4);
-                j.statsTemporada.interceptacoes += Math.round(0.5 + fatorOvr * 1.6 + Math.random() * 1.2);
+                const fatorDefesa = fatorAtributoIndividual(j, "defesa");
+                j.statsTemporada.desarmes += Math.round((0.6 + fatorOvr * 2.0) * fatorDefesa + Math.random() * 1.4);
+                j.statsTemporada.interceptacoes += Math.round((0.5 + fatorOvr * 1.6) * fatorDefesa + Math.random() * 1.2);
             }
             if (jogoLimpo) j.statsTemporada.jogosSemSofrerGol++;
         });
@@ -6175,13 +6559,22 @@ function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null, golsSofridos
         return pool[0]?.jogador;
     };
 
-    const pesoGolPorPosicao = { "Atacante":0.82, "Ponta":0.62, "Meia Ofensivo":0.46, "Meio-Campista":0.28, "Volante":0.14, "Lateral":0.12, "Zagueiro":0.08, "Goleiro":0.01 };
+    const pesoGolPorPosicao = { "Atacante":0.82, "Ponta":0.62, "Meia Ofensivo":0.46, "Meio-Campista":0.22, "Volante":0.08, "Lateral":0.05, "Zagueiro":0.025, "Goleiro":0.002 };
     const pesoAssistPorPosicao = { "Atacante":0.30, "Ponta":0.58, "Meia Ofensivo":0.74, "Meio-Campista":0.62, "Volante":0.34, "Lateral":0.42, "Zagueiro":0.10, "Goleiro":0.02 };
+    // 🛡️ TETO REALISTA POR POSIÇÃO: mesmo com peso baixo, ao longo de uma
+    // temporada inteira (dezenas de jogos, em centenas de clubes simulados no
+    // mundo todo) a sorte eventualmente favorece alguém demais — sem isto, de
+    // vez em quando um zagueiro ou goleiro acabava com 30-50 gols na temporada,
+    // o que não faz sentido nenhum. Isto é uma trava dura: ninguém nessas
+    // posições pode passar do teto, não importa o quão "sortudo" o sorteio for.
+    const TETO_GOLS_TEMPORADA_POSICAO = { "Goleiro": 2, "Zagueiro": 6, "Lateral": 10, "Volante": 10, "Meio-Campista": 16, "Meia Ofensivo": 26, "Ponta": 30, "Atacante": 38 };
     let poolFinalGolos = elenco.map(j => ({ jogador:j, peso:getPeso(j) * (pesoGolPorPosicao[j.posicao] || 0.25) }));
     let poolFinalAssist = elenco.map(j => ({ jogador:j, peso:getPeso(j) * (pesoAssistPorPosicao[j.posicao] || 0.25) }));
 
     for(let i = 0; i < golsFeitos; i++) {
-        let artilheiro = sortear(poolFinalGolos);
+        // Sorteia excluindo quem já bateu o teto de gols da posição naquela temporada.
+        let poolDisponivel = poolFinalGolos.filter(p => (p.jogador.statsTemporada.gols || 0) < (TETO_GOLS_TEMPORADA_POSICAO[p.jogador.posicao] ?? 45));
+        let artilheiro = sortear(poolDisponivel.length > 0 ? poolDisponivel : poolFinalGolos);
         if (artilheiro) {
             artilheiro.statsTemporada.gols++;
             registrarEstatisticaCompeticao(artilheiro, compId, 0, 1, 0);
@@ -7008,18 +7401,23 @@ window.avancarTemporada = function() {
             jogador.jogosNoClubeAtual = 0; jogador.tecnicoConhecido = null; jogador.statusEscalacaoAnterior = null;
         }
         jogador.idade = (jogador.idade || 17) + 1;
-        if(jogador.idade <= 22) jogador.geral += Math.floor(Math.random() * 2) + 1;
-        else if(jogador.idade <= 27 && Math.random() > 0.55) jogador.geral += 1;
-        
+        {
+            // 📈📉 Delta anual de OVR por idade — igual ao critério de antes,
+            // só que agora aplicado através de evoluirAtributosEGeral() para
+            // também mexer nos atributos individuais, não só no número do OVR.
+            let deltaJogador = 0;
+            if(jogador.idade <= 22) deltaJogador += Math.floor(Math.random() * 2) + 1;
+            else if(jogador.idade <= 27 && Math.random() > 0.55) deltaJogador += 1;
+            if(jogador.idade >= 32 && jogador.idade <= 35 && Math.random() > 0.55) deltaJogador -= 1;
+            else if(jogador.idade >= 36) deltaJogador -= Math.floor(Math.random() * 2) + 1;
+            evoluirAtributosEGeral(jogador, deltaJogador);
+        }
+
         // Clear rejected clubs at start of new season (fresh start)
         if(jogador.clubesRejeitados) jogador.clubesRejeitados = [];
         
         // Increment years at current club
         jogador.anoNoClubeAtual = (jogador.anoNoClubeAtual || 0) + 1;
-        
-        if(jogador.idade >= 32 && jogador.idade <= 35 && Math.random() > 0.55) jogador.geral -= 1;
-        else if(jogador.idade >= 36) jogador.geral -= Math.floor(Math.random() * 2) + 1;
-        jogador.geral = Math.max(40, Math.min(99, jogador.geral));
 
         jogadoresIA.forEach(j => {
             if(j.aposentado) return;
@@ -7029,9 +7427,20 @@ window.avancarTemporada = function() {
                 j.clubeId = j.clubeOrigemEmprestimo; delete j.clubeOrigemEmprestimo; delete j.emprestadoAte;
             }
             j.idade = (j.idade || 20) + 1;
-            if (j.idade <= 22) j.geral += Math.floor(Math.random() * 3) + 1; else if (j.idade <= 25 && Math.random() > 0.6) j.geral += 1;
-            else if (j.idade >= 31 && j.idade <= 34) j.geral -= Math.floor(Math.random() * 2); else if (j.idade >= 35) j.geral -= Math.floor(Math.random() * 3) + 1;
-            j.geral = Math.max(40, Math.min(99, j.geral));
+            {
+                let deltaJ = 0;
+                if (j.idade <= 22) deltaJ += Math.floor(Math.random() * 3) + 1; else if (j.idade <= 25 && Math.random() > 0.6) deltaJ += 1;
+                if (j.idade >= 31 && j.idade <= 34) deltaJ -= Math.floor(Math.random() * 2); else if (j.idade >= 35) deltaJ -= Math.floor(Math.random() * 3) + 1;
+                // 🆕 Desacelera perto do teto de potencial — sem isto, um jovem
+                // "mediano" continuava subindo até virar craque só por causa da
+                // idade, sem nenhum limite pessoal de talento.
+                if (deltaJ > 0) {
+                    const potencial = obterOuGerarPotencial(j);
+                    const margem = potencial - (j.geral || 60);
+                    deltaJ = margem <= 0 ? 0 : Math.min(deltaJ, Math.max(1, Math.ceil(margem * 0.5)));
+                }
+                evoluirAtributosEGeral(j, deltaJ);
+            }
             j.valorMercadoNum = calcularValorMercadoJogador(j);
             if (Math.random() < (j.idade >= 39 ? 1.0 : (j.idade >= 36 ? 0.45 : 0))) { j.aposentado = true; j.clubeId = "aposentado"; j.valorMercadoNum = 0; j.contrato = 0; }
         });
@@ -7282,7 +7691,7 @@ function processarFimTemporada() {
 
         let bonusUser = 0; if (jogador.estatisticasAtuais.gols + jogador.estatisticasAtuais.assistencias > 20) bonusUser += 2;
         if (jogador.idade < 24) bonusUser += 2; if (jogador.idade > 31) bonusUser -= 2;
-        jogador.geral = Math.max(40, Math.min(99, jogador.geral + bonusUser)); 
+        evoluirAtributosEGeral(jogador, bonusUser);
         jogador.valorMercadoNum = calcularValorMercadoJogador(jogador);
         
         registrarNoticia("Fim de temporada", "A grande janela de transferências vai abrir junto com a nova época.", "Mercado");
@@ -7388,7 +7797,7 @@ window.processarFimTemporadaOnline = async function() {
             let bonusUser = 0;
             if (jogador.estatisticasAtuais.gols + jogador.estatisticasAtuais.assistencias > 20) bonusUser += 2;
             if (jogador.idade < 24) bonusUser += 2; if (jogador.idade > 31) bonusUser -= 2;
-            jogador.geral = Math.max(40, Math.min(99, jogador.geral + bonusUser));
+            evoluirAtributosEGeral(jogador, bonusUser);
             jogador.valorMercadoNum = calcularValorMercadoJogador(jogador);
 
             registrarNoticia("Fim de temporada", "A grande janela de transferências vai abrir junto com a nova época.", "Mercado");
@@ -9408,8 +9817,10 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                     const souMandante = engine.clubeMandanteId === meuTimeId;
                     let pGolo = ({ "Atacante":0.65, "Ponta":0.48, "Meia Ofensivo":0.34, "Meio-Campista":0.22, "Volante":0.10, "Lateral":0.08, "Zagueiro":0.05, "Goleiro":0.01 })[jogador.posicao] ?? 0.25;
                     let pAssist = ({ "Atacante":0.25, "Ponta":0.42, "Meia Ofensivo":0.58, "Meio-Campista":0.50, "Volante":0.26, "Lateral":0.32, "Zagueiro":0.08, "Goleiro":0.02 })[jogador.posicao] ?? 0.25;
-                    if(jogador.geral >= 84 && ["Atacante","Ponta","Meia Ofensivo"].includes(jogador.posicao)) pGolo += 0.10;
-                    if(jogador.geral >= 84 && ["Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao)) pAssist += 0.10;
+                    // ⚙️ Atributos individuais (finalização/passe) escalam estas chances
+                    // continuamente, em vez de um bônus fixo só para quem tem OVR≥84.
+                    pGolo = Math.min(0.9, pGolo * fatorAtributoIndividual(jogador, "finalizacao"));
+                    pAssist = Math.min(0.9, pAssist * fatorAtributoIndividual(jogador, "passe"));
 
                     let golosAAtribuir = entrouEmCampo ? Math.max(0, Math.floor((souMandante ? gc : gv) * fatorParticipacao)) : 0;
                     let golsJogadorPartida = 0; let assistsJogadorPartida = 0;
@@ -9429,23 +9840,26 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                             if(!jogador.estatisticasAtuais.jogosSemSofrerGol) jogador.estatisticasAtuais.jogosSemSofrerGol = 0;
                             const fatorOvr = Math.max(0, (jogador.geral - 58)) / 100;
                             if (jogador.posicao === "Goleiro") {
-                                jogador.estatisticasAtuais.defesas += Math.max(0, Math.round((1.5 + fatorOvr * 3.2 + Math.random() * 2 - golsSofridosNoJogo * 0.3) * fatorParticipacao));
+                                const fatorReflexos = fatorAtributoIndividual(jogador, "reflexos");
+                                jogador.estatisticasAtuais.defesas += Math.max(0, Math.round(((1.5 + fatorOvr * 3.2) * fatorReflexos + Math.random() * 2 - golsSofridosNoJogo * 0.3) * fatorParticipacao));
                             } else {
-                                jogador.estatisticasAtuais.desarmes += Math.round((0.6 + fatorOvr * 2.0 + Math.random() * 1.4) * fatorParticipacao);
-                                jogador.estatisticasAtuais.interceptacoes += Math.round((0.5 + fatorOvr * 1.6 + Math.random() * 1.2) * fatorParticipacao);
+                                const fatorDefesa = fatorAtributoIndividual(jogador, "defesa");
+                                jogador.estatisticasAtuais.desarmes += Math.round(((0.6 + fatorOvr * 2.0) * fatorDefesa + Math.random() * 1.4) * fatorParticipacao);
+                                jogador.estatisticasAtuais.interceptacoes += Math.round(((0.5 + fatorOvr * 1.6) * fatorDefesa + Math.random() * 1.2) * fatorParticipacao);
                             }
                             if (golsSofridosNoJogo === 0) jogador.estatisticasAtuais.jogosSemSofrerGol++;
                         }
                         if(golosAAtribuir > 0) { for(let i=0; i<golosAAtribuir; i++) { if(Math.random() < pGolo) { jogador.estatisticasAtuais.gols++; golsJogadorPartida++; } else if(Math.random() < pAssist) { jogador.estatisticasAtuais.assistencias++; assistsJogadorPartida++; } } }
                         if(entrouEmCampo) registrarEstatisticaCompeticao(jogador, comp.compId, 1, golsJogadorPartida, assistsJogadorPartida);
                     } else {
-                        // International stats tracking
-                        if(!jogador.statsSelecao) jogador.statsSelecao = { jogos: 0, gols: 0, assistencias: 0 };
-                        jogador.statsSelecao.jogos++;
+                        // 🛡️ FIX: NÃO incrementa jogador.statsSelecao aqui — isso já é
+                        // feito uma única vez em resolverLogicaPosPartida() via
+                        // atualizarStatsSelecao(). Incrementar nos dois lugares
+                        // duplicava jogos/gols/assistências da seleção a cada partida.
                         if(golosAAtribuir > 0) {
                             for(let i=0; i<golosAAtribuir; i++) {
-                                if(Math.random() < pGolo) { jogador.statsSelecao.gols++; golsJogadorPartida++; }
-                                else if(Math.random() < pAssist) { jogador.statsSelecao.assistencias++; assistsJogadorPartida++; }
+                                if(Math.random() < pGolo) { golsJogadorPartida++; }
+                                else if(Math.random() < pAssist) { assistsJogadorPartida++; }
                             }
                         }
                     }
@@ -9646,7 +10060,7 @@ document.getElementById("btnTreinar")?.addEventListener("click", () => {
     if(jogador.xpAtual >= (jogador.xpNecessario || 100)) {
         jogador.xpAtual -= (jogador.xpNecessario || 100);
         jogador.xpNecessario = Math.floor((jogador.xpNecessario || 100) * 1.18);
-        jogador.geral = Math.min(99, jogador.geral + 1);
+        evoluirAtributosEGeral(jogador, 1);
         registrarNoticia("Evolução nos treinos", `${jogador.nome} subiu para OVR ${jogador.geral} após uma sequência forte de trabalho.`, "Treino");
         mostrarToast("Evolução", `OVR subiu para ${jogador.geral}!`, "success");
     } else {
@@ -9732,9 +10146,13 @@ async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
             const zonaAdversario = zonas[Math.floor(Math.random() * zonas.length)];
             const acertou = zonaEscolhida === zonaAdversario;
             if (souEuQueBato) {
-                converteu = Math.random() < (acertou ? 0.30 : 0.90);
+                const finalizacaoAtributo = jogador.finalizacao ?? jogador.geral ?? 65;
+                const chanceConverter = (acertou ? 0.30 : 0.90) + Math.max(0, (finalizacaoAtributo - 65)) * 0.004;
+                converteu = Math.random() < Math.min(0.97, chanceConverter);
             } else {
-                converteu = !(Math.random() < (acertou ? 0.58 : 0.10));
+                const defesaAtributo = jogador.reflexos ?? jogador.defesa ?? jogador.geral ?? 65;
+                const chanceDefesa = (acertou ? 0.58 : 0.10) + Math.max(0, (defesaAtributo - 65)) * 0.006;
+                converteu = !(Math.random() < Math.min(0.9, chanceDefesa));
             }
         } else {
             const forcaLado = (ladoSou ? forcaA : forcaB);
@@ -10194,7 +10612,11 @@ document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
                 defending: 0,
                 pace: 0,
                 strength: 0,
-                vision: 0
+                vision: 0,
+                // 🧤 Exclusivos de guarda-redes.
+                reflexes: 0,
+                distribution: 0,
+                aerialCommand: 0
             },
             lifestyle: {
                 personalTrainer: false,
@@ -10345,13 +10767,23 @@ function applyTrainingSkillBoost(skill) {
         case 'acceleration':
             jogador.velocidade = (jogador.velocidade || 60) + boostAmount;
             break;
+        // 🧤 Treinos exclusivos de guarda-redes.
+        case 'reflexes':
+            jogador.reflexos = (jogador.reflexos || 60) + boostAmount;
+            break;
+        case 'distribution':
+            jogador.reposicao = (jogador.reposicao || 60) + boostAmount;
+            break;
+        case 'aerialCommand':
+            jogador.jogoAereo = (jogador.jogoAereo || 60) + boostAmount;
+            break;
     }
 
     // 🛡️ FIX: sem isto, um atributo treinado repetidamente (ex: finalizacao)
     // podia passar de 99 sem limite, e como recalcularGeral() é só a média
     // dos atributos, isso inflava o Overall (OVR) de forma repentina e sem
     // aviso — o jogador "do nada" aparecia com 99 geral numa nova temporada.
-    ["finalizacao","passe","drible","defesa","resistencia","cabeceamento","velocidade","forca","inteligencia"].forEach(attr => {
+    ["finalizacao","passe","drible","defesa","resistencia","cabeceamento","velocidade","forca","inteligencia","reflexos","reposicao","jogoAereo"].forEach(attr => {
         if (jogador[attr] != null) jogador[attr] = Math.min(99, jogador[attr]);
     });
 
@@ -10491,29 +10923,34 @@ window.renderLifestyleSystem = function() {
 };
 
 function renderTrainingNodes() {
+    const ehGoleiro = jogador.posicao === "Goleiro";
     const skills = [
-        { id: 'freeKicks', name: 'Faltas', icon: '⚽', cost: 3 },
-        { id: 'penalties', name: 'Penáltis', icon: '🎯', cost: 3 },
+        { id: 'freeKicks', name: 'Faltas', icon: '⚽', cost: 3, apenasLinha: true },
+        { id: 'penalties', name: 'Penáltis', icon: '🎯', cost: 3, apenasLinha: true },
         { id: 'stamina', name: 'Resistência', icon: '⚡', cost: 4 },
-        { id: 'heading', name: 'Cabeceamento', icon: '🏆', cost: 3 },
-        { id: 'dribbling', name: 'Drible', icon: '🎨', cost: 4 },
-        { id: 'passing', name: 'Passe', icon: '📡', cost: 3 },
-        { id: 'shooting', name: 'Finalização', icon: '🔥', cost: 4 },
-        { id: 'defending', name: 'Defesa', icon: '🛡️', cost: 3 },
+        { id: 'heading', name: 'Cabeceamento', icon: '🏆', cost: 3, apenasLinha: true },
+        { id: 'dribbling', name: 'Drible', icon: '🎨', cost: 4, apenasLinha: true },
+        { id: 'passing', name: 'Passe', icon: '📡', cost: 3, apenasLinha: true },
+        { id: 'shooting', name: 'Finalização', icon: '🔥', cost: 4, apenasLinha: true },
+        { id: 'defending', name: 'Defesa', icon: '🛡️', cost: 3, apenasLinha: true },
         { id: 'pace', name: 'Velocidade', icon: '💨', cost: 4 },
         { id: 'strength', name: 'Força Física', icon: '💪', cost: 3 },
-        { id: 'vision', name: 'Visão de Jogo', icon: '🧠', cost: 4 },
-        { id: 'crossing', name: 'Cruzamento', icon: '🎯', cost: 3 },
-        { id: 'ballControl', name: 'Controle de Bola', icon: '✨', cost: 4 },
+        { id: 'vision', name: 'Visão de Jogo', icon: '🧠', cost: 4, apenasLinha: true },
+        { id: 'crossing', name: 'Cruzamento', icon: '🎯', cost: 3, apenasLinha: true },
+        { id: 'ballControl', name: 'Controle de Bola', icon: '✨', cost: 4, apenasLinha: true },
         { id: 'agility', name: 'Agilidade', icon: '🌀', cost: 4 },
         { id: 'composure', name: 'Frieza', icon: '❄️', cost: 4 },
         { id: 'positioning', name: 'Posicionamento', icon: '📍', cost: 3 },
         { id: 'leadership', name: 'Liderança', icon: '👑', cost: 3 },
         { id: 'workRate', name: 'Intensidade', icon: '🔋', cost: 3 },
-        { id: 'interceptions', name: 'Interceptações', icon: '🚧', cost: 3 },
-        { id: 'longShots', name: 'Chutes de Longe', icon: '🚀', cost: 4 },
-        { id: 'acceleration', name: 'Aceleração', icon: '🏃', cost: 4 }
-    ];
+        { id: 'interceptions', name: 'Interceptações', icon: '🚧', cost: 3, apenasLinha: true },
+        { id: 'longShots', name: 'Chutes de Longe', icon: '🚀', cost: 4, apenasLinha: true },
+        { id: 'acceleration', name: 'Aceleração', icon: '🏃', cost: 4 },
+        // 🧤 Exclusivos de guarda-redes — só aparecem pra quem joga no gol.
+        { id: 'reflexes', name: 'Reflexos', icon: '🧤', cost: 4, apenasGoleiro: true },
+        { id: 'distribution', name: 'Reposição', icon: '🚀', cost: 3, apenasGoleiro: true },
+        { id: 'aerialCommand', name: 'Jogo Aéreo (Área)', icon: '🙌', cost: 3, apenasGoleiro: true }
+    ].filter(s => ehGoleiro ? !s.apenasLinha : !s.apenasGoleiro);
     
     return skills.map(skill => {
         const level = jogador.lifestyle?.upgrades?.training?.[skill.id] || 0;
@@ -10615,18 +11052,10 @@ window.applyEnergyRecovery = function(baseRecovery) {
 };
 
 function recalcularGeral() {
-    const stats = [
-        jogador.finalizacao || 60,
-        jogador.passe || 60,
-        jogador.drible || 60,
-        jogador.defesa || 60,
-        jogador.resistencia || 60,
-        jogador.cabeceamento || 60,
-        jogador.velocidade || 60,
-        jogador.forca || 60
-    ];
-    
-    jogador.geral = Math.max(40, Math.min(99, Math.floor(stats.reduce((a, b) => a + b, 0) / stats.length)));
+    // Reaproveita a mesma fórmula ponderada por posição usada para todos os
+    // jogadores (ver calcularGeralDeAtributos) — assim o jogador real e os
+    // de IA nunca ficam com critérios de OVR diferentes entre si.
+    jogador.geral = calcularGeralDeAtributos(jogador);
 }
 
 window.assinarPrimeiroClube = function(clubeId) {
@@ -11212,4 +11641,35 @@ aplicarHistoricosReaisIniciais();
     atualizarIcone();
     btn.onclick = () => { window.alternarSons(); atualizarIcone(); };
     document.body.appendChild(btn);
+})();
+
+// 🎵 Botão flutuante para ligar/desligar a música de fundo + controle de
+// volume (aparece ao passar o mouse/tocar no botão). Fica ao lado do botão
+// de efeitos sonoros, mesmo estilo visual.
+(function criarBotaoMusica() {
+    const wrap = document.createElement("div");
+    wrap.id = "wrapMusica";
+    wrap.style.cssText = "position:fixed; bottom:14px; right:66px; z-index:9999; display:flex; align-items:center; gap:8px;";
+
+    const painelVolume = document.createElement("input");
+    painelVolume.type = "range"; painelVolume.min = "0"; painelVolume.max = "1"; painelVolume.step = "0.05";
+    painelVolume.value = String(volumeMusica());
+    painelVolume.title = "Volume da música";
+    painelVolume.style.cssText = "width:0px; opacity:0; transition:width .25s ease, opacity .25s ease; accent-color:#00ff88; cursor:pointer;";
+    painelVolume.oninput = () => window.definirVolumeMusica(painelVolume.value);
+
+    const btn = document.createElement("button");
+    btn.id = "btnAlternarMusica";
+    btn.title = "Ligar/desligar música de fundo";
+    btn.style.cssText = "width:44px; height:44px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.65); color:#fff; font-size:1.2rem; cursor:pointer; backdrop-filter:blur(6px); flex-shrink:0;";
+    const atualizarIcone = () => { btn.textContent = musicaAtivada() ? "🎵" : "🔕"; };
+    atualizarIcone();
+    btn.onclick = () => { window.alternarMusica(); atualizarIcone(); };
+
+    wrap.addEventListener("mouseenter", () => { painelVolume.style.width = "80px"; painelVolume.style.opacity = "1"; });
+    wrap.addEventListener("mouseleave", () => { painelVolume.style.width = "0px"; painelVolume.style.opacity = "0"; });
+
+    wrap.appendChild(painelVolume);
+    wrap.appendChild(btn);
+    document.body.appendChild(wrap);
 })();

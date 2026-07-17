@@ -41,7 +41,7 @@
 <div id="modalPartida" class="modal oculto">
     <div class="modal-content slide-in" style="background: var(--bg-dark); border: 1px solid var(--theme-primary);">
         <div class="modal-header">
-            <h3 style="margin:0; font-weight:800;">📻 RELATO EM DIRETO</h3>
+            <h3 style="margin:0; font-weight:800;"> RELATO EM DIRETO</h3>
             <span id="uiMinutoJogo" class="badge-time">0'</span>
         </div>
         <div class="match-scoreboard">
@@ -242,52 +242,151 @@
 </div>
 
 <div id="telaCriacao" class="tela full-screen flex-center oculto">
-    <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
-        <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
-        <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:25px;">Gere a tua carreira e entra para o hall da fama internacional.</p>
+    <div class="card-criacao-enhanced slide-in">
+        <div class="creation-header">
+            <div class="creation-icon">⚽</div>
+            <h1 class="glow-title">PRO PLAYER ELITE</h1>
+            <p class="creation-subtitle">Cria a tua lenda e entra para o hall da fama internacional</p>
+        </div>
         
-        <div class="form-group">
-            <label>Nome Completo:</label>
-            <input type="text" id="inputNome" value="Memarkez">
+        <div class="creation-form">
+            <div class="form-section">
+                <div class="form-icon">👤</div>
+                <div class="form-content">
+                    <label>Nome Completo</label>
+                    <input type="text" id="inputNome" value="Memarkez" placeholder="Digite o teu nome">
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-icon">🌍</div>
+                <div class="form-content">
+                    <label>Nacionalidade</label>
+                    <select id="selectNacionalidade">
+                        <optgroup label="América do Sul">
+                            <option value="Brasil">Brasil 🇧🇷</option>
+                            <option value="Argentina">Argentina 🇦🇷</option>
+                            <option value="Uruguai">Uruguai 🇺🇾</option>
+                            <option value="Chile">Chile 🇨🇱</option>
+                            <option value="Colombia">Colombia 🇨🇴</option>
+                            <option value="Peru">Peru 🇵🇪</option>
+                            <option value="Equador">Equador 🇪🇨</option>
+                            <option value="Paraguai">Paraguai 🇵🇾</option>
+                            <option value="Bolivia">Bolívia 🇧🇴</option>
+                            <option value="Venezuela">Venezuela 🇻🇪</option>
+                        </optgroup>
+                        <optgroup label="Europa">
+                            <option value="Portugal">Portugal 🇵🇹</option>
+                            <option value="Espanha">Espanha 🇪🇸</option>
+                            <option value="Italia">Itália 🇮🇹</option>
+                            <option value="Inglaterra">Inglaterra 🏴󠁧󠁢󠁥󠁮󠁧󠁿</option>
+                            <option value="Alemanha">Alemanha 🇩🇪</option>
+                            <option value="França">França 🇫🇷</option>
+                            <option value="Holanda">Holanda 🇳🇱</option>
+                            <option value="Belgica">Bélgica 🇧🇪</option>
+                            <option value="Suiça">Suíça 🇨🇭</option>
+                            <option value="Austria">Áustria 🇦🇹</option>
+                            <option value="Croacia">Croácia 🇭🇷</option>
+                            <option value="Polonia">Polónia 🇵🇱</option>
+                            <option value="Republica Checa">República Checa 🇨🇿</option>
+                            <option value="Suecia">Suécia 🇸🇪</option>
+                            <option value="Dinamarca">Dinamarca 🇩🇰</option>
+                            <option value="Noruega">Noruega 🇳🇴</option>
+                            <option value="Finlandia">Finlândia 🇫🇮</option>
+                            <option value="Grecia">Grécia 🇬🇷</option>
+                            <option value="Turquia">Turquia 🇹🇷</option>
+                            <option value="Russia">Rússia 🇷🇺</option>
+                            <option value="Ucrania">Ucrânia 🇺🇦</option>
+                            <option value="Serbia">Sérvia 🇷🇸</option>
+                            <option value="Escocia">Escócia 🏴󠁧󠁢󠁳󠁣󠁴󠁿</option>
+                            <option value="Irlanda">Irlanda 🇮🇪</option>
+                            <option value="Paises Baixos">Países Baixos 🇳🇱</option>
+                        </optgroup>
+                        <optgroup label="América do Norte e Central">
+                            <option value="Estados Unidos">Estados Unidos 🇺🇸</option>
+                            <option value="Mexico">México 🇲🇽</option>
+                            <option value="Canada">Canadá 🇨🇦</option>
+                            <option value="Costa Rica">Costa Rica 🇨🇷</option>
+                            <option value="Panama">Panamá 🇵🇦</option>
+                            <option value="Jamaica">Jamaica 🇯🇲</option>
+                            <option value="Honduras">Honduras 🇭🇳</option>
+                            <option value="El Salvador">El Salvador 🇸🇻</option>
+                        </optgroup>
+                        <optgroup label="África">
+                            <option value="Nigeria">Nigéria 🇳🇬</option>
+                            <option value="Costa do Marfim">Costa do Marfim 🇨🇮</option>
+                            <option value="Gana">Gana 🇬🇭</option>
+                            <option value="Senegal">Senegal 🇸🇳</option>
+                            <option value="Camaroes">Camarões 🇨🇲</option>
+                            <option value="Argelia">Argélia 🇩🇿</option>
+                            <option value="Marrocos">Marrocos 🇲🇦</option>
+                            <option value="Tunisia">Tunísia 🇹🇳</option>
+                            <option value="Egito">Egito 🇪🇬</option>
+                            <option value="Africa do Sul">África do Sul 🇿🇦</option>
+                            <option value="Etiopia">Etiópia 🇪🇹</option>
+                            <option value="Quenia">Quénia 🇰🇪</option>
+                        </optgroup>
+                        <optgroup label="Ásia">
+                            <option value="Arabia">Arábia Saudita 🇸🇦</option>
+                            <option value="Japao">Japão 🇯🇵</option>
+                            <option value="Coreia do Sul">Coreia do Sul 🇰🇷</option>
+                            <option value="China">China 🇨🇳</option>
+                            <option value="Irã">Irão 🇮🇷</option>
+                            <option value="Iraque">Iraque 🇮🇶</option>
+                            <option value="Emirados Arabes">Emirados Árabes 🇦🇪</option>
+                            <option value="Qatar">Catar 🇶🇦</option>
+                            <option value="India">Índia 🇮🇳</option>
+                            <option value="Tailândia">Tailândia 🇹🇭</option>
+                            <option value="Indonesia">Indonésia 🇮🇩</option>
+                        </optgroup>
+                        <optgroup label="Oceania">
+                            <option value="Australia">Austrália 🇦🇺</option>
+                            <option value="Nova Zelandia">Nova Zelândia 🇳🇿</option>
+                            <option value="Nova Caledônia">Nova Caledônia 🇳cl</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-icon">⚽</div>
+                <div class="form-content">
+                    <label>Estilo / Posição</label>
+                    <select id="selectPosicao">
+                        <optgroup label="Ataque">
+                            <option value="Atacante">Centroavante (Finalizador) ⚽</option>
+                            <option value="Ponta">Ponta (Velocidade e 1x1) 🏃</option>
+                            <option value="Segundo Atacante">Segundo Atacante (Criador) 🎯</option>
+                            <option value="Extremo">Extremo (Cruzamentos) 🅰️</option>
+                        </optgroup>
+                        <optgroup label="Meio-Campo">
+                            <option value="Meia Ofensivo">Meia Ofensivo (Criador) 🎨</option>
+                            <option value="Meio-Campista">Meio-Campista (Organizador) 🧠</option>
+                            <option value="Volante">Volante (Marcação e saída) 🛡️</option>
+                            <option value="Meia Defensivo">Meia Defensivo (Interceptador) 🔒</option>
+                            <option value="Box-to-Box">Box-to-Box (Completo) ⚡</option>
+                        </optgroup>
+                        <optgroup label="Defesa">
+                            <option value="Lateral Direito">Lateral Direito (Apoio e defesa) ➡️</option>
+                            <option value="Lateral Esquerdo">Lateral Esquerdo (Apoio e defesa) ⬅️</option>
+                            <option value="Zagueiro">Zagueiro Central (Muralha) 🧱</option>
+                            <option value="Libero">Líbero (Saída jogada) 🎖️</option>
+                            <option value="Lateral Ala">Lateral Ala (Ofensivo) 🚀</option>
+                        </optgroup>
+                        <optgroup label="Guarda-Redes">
+                            <option value="Goleiro">Guarda-Redes (Última linha) 🧤</option>
+                            <option value="Goleiro Libero">Guarda-Redes Líbero (Jogo com pés) 🦶</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
         </div>
-        <div class="form-group">
-            <label>Nacionalidade:</label>
-            <select id="selectNacionalidade">
-                <option value="Brasil">Brasil </option>
-                <option value="Portugal">Portugal </option>
-                <option value="Argentina">Argentina </option>
-                <option value="Espanha">Espanha </option>
-                <option value="Italia">Italia </option>
-                <option value="Inglaterra">Inglaterra </option>
-                <option value="Alemanha">Alemanha </option>
-                <option value="Turquia">Turquia </option>
-                <option value="Arabia">Arabia </option>
-                <option value="Uruguai">Uruguai </option>
-                <option value="Holanda">Holanda </option>
-                <option value="Belgica">Belgica </option>
-                <option value="França">França </option>
-                <option value="Estados Unidos">Estados Unidos </option>
-                <option value="Mexico">Mexico </option>
-                <option value="Nigeria">Nigeria </option>
-                <option value="Costa do Marfim">Costa do Marfim</option>
-                <option value="Noruega">Noruega </option>
-                <option value="Suiça">Suiça </option>
-            </select>
-        </div>
-        <div class="form-group" style="margin-bottom: 25px;">
-            <label>Estilo / Posição:</label>
-            <select id="selectPosicao">
-                <option value="Atacante">Atacante (Finalizador)</option>
-                <option value="Ponta">Ponta (Velocidade e 1x1)</option>
-                <option value="Meia Ofensivo">Meia Ofensivo (Criador)</option>
-                <option value="Meio-Campista">Meio-Campista (Organizador)</option>
-                <option value="Volante">Volante (Marcação e saída)</option>
-                <option value="Lateral">Lateral (Apoio e defesa)</option>
-                <option value="Zagueiro">Zagueiro (Muralha)</option>
-                <option value="Goleiro">Goleiro (Última linha)</option>
-            </select>
-        </div>
-        <button class="btn btn-primary btn-block pulse" id="btnIniciarCarreira" style="font-size:1.1rem; padding:15px;">Assinar Primeiro Contrato ➔</button>
+        
+        <button class="btn btn-primary btn-block pulse enhanced-btn" id="btnIniciarCarreira">
+            <span class="btn-icon">✍️</span>
+            Assinar Primeiro Contrato
+            <span class="btn-arrow">➔</span>
+        </button>
     </div>
 </div>
 
