@@ -1,4 +1,4 @@
-﻿import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
+import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
 import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO, PERFIS_ATRIBUTOS_POSICAO, gerarAtributosParaJogador } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
 
@@ -3687,7 +3687,14 @@ function preencherDropdowns() {
 }
 
 function setText(id, value) { const el = document.getElementById(id); if (el) el.innerHTML = value; }
-function mudarTela(id) { document.querySelectorAll(".tela").forEach(t => t.classList.add("oculto")); let tela = document.getElementById(id); if (tela) tela.classList.remove("oculto"); }
+function mudarTela(id) {
+    document.querySelectorAll(".tela").forEach(t => t.classList.add("oculto"));
+    let tela = document.getElementById(id);
+    if (tela) tela.classList.remove("oculto");
+    // 🎵 Música fixa na tela de criação de jogador; qualquer outra tela usa a playlist normal.
+    if (id === "telaCriacao") window.tocarMusicaTelaCriacao?.();
+    else window.retomarPlaylistNormal?.();
+}
 // 🛡️ FIX: expõe no window — firebase-integration.js (script clássico) chama
 // mudarTela(...) diretamente e sem isto o lobby online travava em silêncio.
 window.mudarTela = mudarTela;
@@ -3736,6 +3743,18 @@ window.tocarSom = function(nome, volume = 0.55) {
     } catch (e) { /* nunca deixar um som quebrar o jogo */ }
 };
 
+// 🖱️ Som de clique GLOBAL: em vez de adicionar tocarSom('clique') botão por
+// botão (o jogo tem centenas, muitos criados dinamicamente por HTML/JS), um
+// único listener delegado no document pega qualquer clique em <button>, em
+// qualquer elemento com classe .btn (padrão usado em todo o jogo) ou que
+// termine em "-btn", e toca o som — inclusive em botões criados depois,
+// sem precisar mexer em cada tela.
+document.addEventListener("click", (e) => {
+    const el = e.target.closest('button, .btn, [class*="-btn"], [role="button"]');
+    if (!el || el.disabled || el.classList.contains("oculto")) return;
+    window.tocarSom('clique', 0.3);
+}, true);
+
 // ==========================================
 // 🎵 MÚSICA DE FUNDO
 // ==========================================
@@ -3744,17 +3763,26 @@ window.tocarSom = function(nome, volume = 0.55) {
 // exatamente estes nomes. Se um ficheiro não existir, o navegador dispara
 // "error" nesse <audio> e o motor simplesmente pula para a próxima faixa da
 // lista, sem travar nem mostrar erro nenhum.
+// Cada faixa tem um "nome" de exibição — pode editar à vontade, é só o que
+// aparece na bolinha de configurações.
 const MUSICAS_JOGO = [
-    "assets/music/tema1.mp3",
-    "assets/music/tema2.mp3",
-    "assets/music/tema3.mp3",
-    "assets/music/tema4.mp3",       
-    "assets/music/tema5.mp3",
-    "assets/music/tema6.mp3",
+    { arquivo: "assets/music/tema1.mp3", nome: "Tema 1" },
+    { arquivo: "assets/music/tema2.mp3", nome: "Tema 2" },
+    { arquivo: "assets/music/tema3.mp3", nome: "Tema 3" },
+    { arquivo: "assets/music/tema4.mp3", nome: "Tema 4" },
+     { arquivo: "assets/music/tema5.mp3", nome: "Tema 5" },
+      { arquivo: "assets/music/tema6.mp3", nome: "Tema 6" },
 ];
+// 🆕 Faixa fixa e exclusiva da tela de criação de nome/jogador (telaCriacao):
+// toca sempre essa mesma música enquanto essa tela estiver aberta, e ao sair
+// dela a playlist normal (MUSICAS_JOGO) volta a tocar de onde parou.
+const MUSICA_TELA_CRIACAO = { arquivo: "assets/music/tema6.mp3", nome: "Tema 6" };
+
 let _audioMusica = null;
 let _ordemMusicas = [];
 let _indiceMusicaAtual = 0;
+let _faixaAtual = null;       // { arquivo, nome } da faixa tocando agora
+let _emMusicaFixa = false;    // true enquanto a MUSICA_TELA_CRIACAO estiver ativa
 
 // Preferência do jogador para a música (independente da preferência de sons/SFX).
 function musicaAtivada() { return localStorage.getItem("rumo_estrelato_pro_musica") !== "off"; }
@@ -3765,35 +3793,99 @@ window.definirVolumeMusica = function(v) {
     if (_audioMusica) _audioMusica.volume = vol;
 };
 
+// Nome da faixa tocando agora (ou null se não houver nenhuma), para a UI mostrar.
+window.obterNomeMusicaAtual = function() { return _faixaAtual?.nome || null; };
+
+// Dispara um evento customizado sempre que a faixa muda, pra bolinha de
+// configurações (ou qualquer outro painel) atualizar o texto sem precisar
+// ficar checando em loop.
+function _avisarTrocaDeMusica() {
+    document.dispatchEvent(new CustomEvent("musicaTrocou", { detail: { ...( _faixaAtual || {}) } }));
+}
+
 function _embaralharOrdemMusicas() {
     _ordemMusicas = MUSICAS_JOGO.map((_, i) => i).sort(() => Math.random() - 0.5);
     _indiceMusicaAtual = 0;
 }
 
+let _avisouFalhaFixa = false; // evita repetir o toast de erro toda vez que a faixa fixa falha
+
+function _garantirAudioMusica() {
+    if (_audioMusica) return;
+    _audioMusica = new Audio();
+    _audioMusica.volume = volumeMusica();
+    // Se a faixa atual não existir/falhar, tenta a próxima em vez de parar a música de vez
+    // — EXCETO na tela de criação, onde a faixa é fixa de propósito: se ela falhar, avisa
+    // uma vez (em vez de trocar silenciosamente pra playlist geral, o que ia parecer que o
+    // recurso "música fixa" nem estava funcionando).
+    _audioMusica.addEventListener("error", () => {
+        console.warn("[música] falha ao carregar:", _audioMusica.src);
+        if (!musicaAtivada()) return;
+        if (_emMusicaFixa) {
+            if (!_avisouFalhaFixa) {
+                _avisouFalhaFixa = true;
+                mostrarToast("Música", `Não encontrei o arquivo "${MUSICA_TELA_CRIACAO.arquivo}". Confira o nome e o local dele na pasta assets/music/.`, "danger");
+            }
+            return; // não cai pra playlist geral — a fixa continua fixa, só fica em silêncio até o arquivo existir
+        }
+        _tocarProximaMusica();
+    });
+    _audioMusica.addEventListener("ended", () => {
+        if (!musicaAtivada()) return;
+        if (_emMusicaFixa) _tocarFaixa(MUSICA_TELA_CRIACAO); // a faixa fixa repete em loop, não entra na playlist
+        else _tocarProximaMusica();
+    });
+}
+
+function _tocarFaixa(faixaObj) {
+    _garantirAudioMusica();
+    _faixaAtual = faixaObj;
+    _audioMusica.src = faixaObj.arquivo;
+    _audioMusica.volume = volumeMusica();
+    _audioMusica.play().then(() => {
+        console.log("[música] tocando:", faixaObj.arquivo);
+    }).catch((err) => {
+        console.warn("[música] play() bloqueado/rejeitado para", faixaObj.arquivo, "-", err?.name || err);
+    });
+    _avisarTrocaDeMusica();
+}
+
 function _tocarProximaMusica() {
     if (!musicaAtivada() || MUSICAS_JOGO.length === 0) return;
+    _emMusicaFixa = false;
     if (!_ordemMusicas.length) _embaralharOrdemMusicas();
     if (_indiceMusicaAtual >= _ordemMusicas.length) _embaralharOrdemMusicas(); // recomeça a lista embaralhada de novo
-    const faixa = MUSICAS_JOGO[_ordemMusicas[_indiceMusicaAtual]];
+    const faixaObj = MUSICAS_JOGO[_ordemMusicas[_indiceMusicaAtual]];
     _indiceMusicaAtual++;
-    if (!_audioMusica) {
-        _audioMusica = new Audio();
-        _audioMusica.volume = volumeMusica();
-        // Se a faixa atual não existir/falhar, tenta a próxima em vez de parar a música de vez.
-        _audioMusica.addEventListener("error", () => { if (musicaAtivada()) _tocarProximaMusica(); });
-        _audioMusica.addEventListener("ended", () => { if (musicaAtivada()) _tocarProximaMusica(); });
-    }
-    _audioMusica.src = faixa;
-    _audioMusica.volume = volumeMusica();
-    _audioMusica.play().catch(() => {}); // navegador pode bloquear até haver interação do jogador — ver iniciarMusicaFundo()
+    _tocarFaixa(faixaObj);
 }
+
+// 🆕 Troca para a música fixa da tela de criação (chamado pelo mudarTela()).
+window.tocarMusicaTelaCriacao = function() {
+    if (!musicaAtivada()) return;
+    _emMusicaFixa = true;
+    _tocarFaixa(MUSICA_TELA_CRIACAO);
+};
+
+// 🆕 Sai da música fixa e retoma a playlist normal (chamado pelo mudarTela()
+// ao trocar para qualquer outra tela que não seja a de criação).
+window.retomarPlaylistNormal = function() {
+    if (!_emMusicaFixa) return; // já estava na playlist normal, nada a fazer
+    _emMusicaFixa = false;
+    _tocarProximaMusica();
+};
 
 // Chamado uma única vez (após o primeiro clique do jogador, para respeitar a
 // política de autoplay dos navegadores) para começar a tocar a playlist.
 window.iniciarMusicaFundo = function() {
     if (!musicaAtivada()) return;
     if (_audioMusica && !_audioMusica.paused) return; // já está tocando, não reinicia
-    if (_audioMusica) { _audioMusica.play().catch(() => {}); }
+    if (_audioMusica) {
+        _audioMusica.play().then(() => console.log("[música] retomada após interação:", _audioMusica.src))
+            .catch((err) => console.warn("[música] ainda bloqueada:", err?.name || err));
+        _avisarTrocaDeMusica();
+    }
+    else if (_emMusicaFixa) _tocarFaixa(MUSICA_TELA_CRIACAO);
     else _tocarProximaMusica();
 };
 
@@ -3803,6 +3895,16 @@ window.alternarMusica = function() {
     if (ativa) { _audioMusica?.pause(); }
     else { window.iniciarMusicaFundo(); }
     mostrarToast("Música", ativa ? "Música de fundo desativada." : "Música de fundo ativada.", "info");
+};
+
+// Pula manualmente para a próxima faixa da playlist (a setinha ⏭️ no menu
+// de configurações). Se a música estiver desligada, liga automaticamente —
+// faz sentido, já que o jogador está pedindo explicitamente pra trocar de música.
+// Na tela de criação (música fixa) a setinha não pula, já que ali a faixa é fixa de propósito.
+window.proximaMusica = function() {
+    if (_emMusicaFixa) return;
+    if (!musicaAtivada()) localStorage.setItem("rumo_estrelato_pro_musica", "on");
+    _tocarProximaMusica();
 };
 
 // A maioria dos navegadores só deixa tocar áudio com som depois de uma
@@ -11629,47 +11731,96 @@ if (document.readyState === 'loading') {
 
 aplicarHistoricosReaisIniciais();
 
-// 🔊 Botão flutuante para ligar/desligar os efeitos sonoros — injetado por
-// JS para não precisar mexer no index.html. Fica sempre visível, num canto,
-// sem atrapalhar o resto da interface.
-(function criarBotaoSom() {
-    const btn = document.createElement("button");
-    btn.id = "btnAlternarSom";
-    btn.title = "Ligar/desligar efeitos sonoros";
-    btn.style.cssText = "position:fixed; bottom:14px; right:14px; z-index:9999; width:44px; height:44px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.65); color:#fff; font-size:1.2rem; cursor:pointer; backdrop-filter:blur(6px);";
-    const atualizarIcone = () => { btn.textContent = somAtivado() ? "🔊" : "🔇"; };
-    atualizarIcone();
-    btn.onclick = () => { window.alternarSons(); atualizarIcone(); };
-    document.body.appendChild(btn);
-})();
+// ⚙️ Bolinha flutuante de configurações — reúne efeitos sonoros, música de
+// fundo, volume e "próxima faixa" num único botão, pra não poluir a tela com
+// vários botões soltos. Clique na bolinha pra abrir/fechar o painel.
+(function criarBolinhaConfig() {
+    const bolinha = document.createElement("button");
+    bolinha.id = "btnConfigBolinha";
+    bolinha.title = "Configurações";
+    bolinha.textContent = "⚙️";
+    bolinha.style.cssText = "position:fixed; bottom:14px; right:14px; z-index:9999; width:48px; height:48px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.7); color:#fff; font-size:1.3rem; cursor:pointer; backdrop-filter:blur(6px); box-shadow:0 2px 10px rgba(0,0,0,0.4); transition:transform .2s ease;";
+    bolinha.onmouseenter = () => bolinha.style.transform = "scale(1.08)";
+    bolinha.onmouseleave = () => bolinha.style.transform = "scale(1)";
 
-// 🎵 Botão flutuante para ligar/desligar a música de fundo + controle de
-// volume (aparece ao passar o mouse/tocar no botão). Fica ao lado do botão
-// de efeitos sonoros, mesmo estilo visual.
-(function criarBotaoMusica() {
-    const wrap = document.createElement("div");
-    wrap.id = "wrapMusica";
-    wrap.style.cssText = "position:fixed; bottom:14px; right:66px; z-index:9999; display:flex; align-items:center; gap:8px;";
+    const painel = document.createElement("div");
+    painel.id = "painelConfigBolinha";
+    painel.style.cssText = "position:fixed; bottom:70px; right:14px; z-index:9999; display:none; flex-direction:column; gap:10px; background:rgba(15,15,15,0.92); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:14px; width:210px; backdrop-filter:blur(8px); box-shadow:0 4px 18px rgba(0,0,0,0.5);";
 
+    // --- Linha: efeitos sonoros ---
+    const linhaSons = document.createElement("div");
+    linhaSons.style.cssText = "display:flex; align-items:center; justify-content:space-between; color:#fff; font-size:0.85rem;";
+    const btnSons = document.createElement("button");
+    btnSons.style.cssText = "width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); color:#fff; font-size:1.05rem; cursor:pointer;";
+    const atualizarIconeSons = () => { btnSons.textContent = somAtivado() ? "🔊" : "🔇"; };
+    atualizarIconeSons();
+    btnSons.onclick = () => { window.alternarSons(); atualizarIconeSons(); };
+    linhaSons.innerHTML = `<span>Efeitos sonoros</span>`;
+    linhaSons.appendChild(btnSons);
+
+    // --- Linha: música (liga/desliga + pular faixa) ---
+    const linhaMusica = document.createElement("div");
+    linhaMusica.style.cssText = "display:flex; align-items:center; justify-content:space-between; color:#fff; font-size:0.85rem;";
+    const grupoBotoesMusica = document.createElement("div");
+    grupoBotoesMusica.style.cssText = "display:flex; gap:6px;";
+    const btnMusica = document.createElement("button");
+    btnMusica.style.cssText = "width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); color:#fff; font-size:1.05rem; cursor:pointer;";
+    const atualizarIconeMusica = () => { btnMusica.textContent = musicaAtivada() ? "🎵" : "🔕"; };
+    atualizarIconeMusica();
+    btnMusica.title = "Ligar/desligar música";
+    btnMusica.onclick = () => { window.alternarMusica(); atualizarIconeMusica(); atualizarNomeFaixa(); };
+    // Setinha para pular para a próxima faixa da playlist.
+    const btnProxima = document.createElement("button");
+    btnProxima.textContent = "⏭️";
+    btnProxima.title = "Próxima música";
+    btnProxima.style.cssText = "width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.06); color:#fff; font-size:1rem; cursor:pointer;";
+    btnProxima.onclick = () => { window.proximaMusica(); atualizarIconeMusica(); };
+    grupoBotoesMusica.appendChild(btnMusica);
+    grupoBotoesMusica.appendChild(btnProxima);
+    linhaMusica.innerHTML = `<span>Música de fundo</span>`;
+    linhaMusica.appendChild(grupoBotoesMusica);
+
+    // --- Linha: nome da faixa tocando agora ---
+    const linhaFaixaAtual = document.createElement("div");
+    linhaFaixaAtual.id = "linhaFaixaAtualBolinha";
+    linhaFaixaAtual.style.cssText = "color:#00ff88; font-size:0.78rem; font-style:italic; text-align:center; min-height:1em;";
+    const atualizarNomeFaixa = () => {
+        const nome = window.obterNomeMusicaAtual?.();
+        linhaFaixaAtual.textContent = musicaAtivada() && nome ? `🎶 Tocando: ${nome}` : "";
+    };
+    atualizarNomeFaixa();
+    // Atualiza sozinha sempre que a faixa trocar (troca automática, pular, ou entrar/sair da tela de criação).
+    document.addEventListener("musicaTrocou", atualizarNomeFaixa);
+
+    // --- Linha: volume da música ---
+    const linhaVolume = document.createElement("div");
+    linhaVolume.style.cssText = "display:flex; flex-direction:column; gap:4px; color:#fff; font-size:0.8rem;";
     const painelVolume = document.createElement("input");
     painelVolume.type = "range"; painelVolume.min = "0"; painelVolume.max = "1"; painelVolume.step = "0.05";
     painelVolume.value = String(volumeMusica());
-    painelVolume.title = "Volume da música";
-    painelVolume.style.cssText = "width:0px; opacity:0; transition:width .25s ease, opacity .25s ease; accent-color:#00ff88; cursor:pointer;";
+    painelVolume.style.cssText = "width:100%; accent-color:#00ff88; cursor:pointer;";
     painelVolume.oninput = () => window.definirVolumeMusica(painelVolume.value);
+    linhaVolume.innerHTML = `<span>Volume da música</span>`;
+    linhaVolume.appendChild(painelVolume);
 
-    const btn = document.createElement("button");
-    btn.id = "btnAlternarMusica";
-    btn.title = "Ligar/desligar música de fundo";
-    btn.style.cssText = "width:44px; height:44px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(0,0,0,0.65); color:#fff; font-size:1.2rem; cursor:pointer; backdrop-filter:blur(6px); flex-shrink:0;";
-    const atualizarIcone = () => { btn.textContent = musicaAtivada() ? "🎵" : "🔕"; };
-    atualizarIcone();
-    btn.onclick = () => { window.alternarMusica(); atualizarIcone(); };
+    painel.appendChild(linhaSons);
+    painel.appendChild(linhaMusica);
+    painel.appendChild(linhaFaixaAtual);
+    painel.appendChild(linhaVolume);
 
-    wrap.addEventListener("mouseenter", () => { painelVolume.style.width = "80px"; painelVolume.style.opacity = "1"; });
-    wrap.addEventListener("mouseleave", () => { painelVolume.style.width = "0px"; painelVolume.style.opacity = "0"; });
+    let aberto = false;
+    bolinha.onclick = () => {
+        aberto = !aberto;
+        painel.style.display = aberto ? "flex" : "none";
+    };
+    // Fecha o painel se o jogador clicar fora dele.
+    document.addEventListener("click", (e) => {
+        if (aberto && !painel.contains(e.target) && e.target !== bolinha) {
+            aberto = false;
+            painel.style.display = "none";
+        }
+    });
 
-    wrap.appendChild(painelVolume);
-    wrap.appendChild(btn);
-    document.body.appendChild(wrap);
+    document.body.appendChild(painel);
+    document.body.appendChild(bolinha);
 })();
