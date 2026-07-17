@@ -7,6 +7,12 @@ export const FORMATOS_INT = {
     eliminatorias_concacaf: { formato: "grupos", conf: "CONCACAF", grupos: 3, porGrupo: 4, avancam: 1, jogosGrupo: 6, eliminatoria: true, destino: "copa_mundo" },
     eliminatorias_caf: { formato: "grupos", conf: "CAF", grupos: 5, porGrupo: 4, avancam: 1, jogosGrupo: 6, eliminatoria: true, destino: "copa_mundo" },
     eliminatorias_afc: { formato: "grupos", conf: "AFC", grupos: 4, porGrupo: 4, avancam: 1, jogosGrupo: 6, eliminatoria: true, destino: "copa_mundo" },
+    // 🌊 OFC (Oceania) — confederação pequena, então as eliminatórias são uma
+    // liguinha única (todos contra todos) em vez de vários grupos, e a Copa
+    // das Nações da Oceania (oceania_cup) segue o mesmo formato "grupos_mata"
+    // dos outros campeonatos continentais.
+    eliminatorias_ofc: { formato: "liga", conf: "OFC", maxTimes: 6, jogosRound: 2, eliminatoria: true, destino: "copa_mundo", vagas: 1 },
+    oceania_cup: { formato: "grupos_mata", grupos: 2, porGrupo: 3, avancam: 2, mataLegs: 1, conf: "OFC", jogosGrupo: 2 },
     copa_mundo: { formato: "grupos_mata", grupos: 8, porGrupo: 4, avancam: 2, mataLegs: 1, jogosGrupo: 3 },
     olimpiadas: { formato: "grupos_mata", grupos: 4, porGrupo: 4, avancam: 2, mataLegs: 1, sub23: true, jogosGrupo: 3 },
     euro: { formato: "grupos_mata", grupos: 6, porGrupo: 4, avancam: 2, mataLegs: 1, conf: "UEFA", jogosGrupo: 3 },
@@ -62,7 +68,7 @@ export function idsCompeticoesAtivas(ano) {
     const ids = [];
     // Eliminatórias Copa (ex: 2025 → Copa 2026)
     if (ano % 4 === 1) {
-        ids.push("eliminatorias_uefa", "eliminatorias_conmebol", "eliminatorias_concacaf", "eliminatorias_caf", "eliminatorias_afc");
+        ids.push("eliminatorias_uefa", "eliminatorias_conmebol", "eliminatorias_concacaf", "eliminatorias_caf", "eliminatorias_afc", "eliminatorias_ofc");
     }
     // Copa do Mundo (ex: 2026)
     if (ano % 4 === 2) ids.push("copa_mundo");
@@ -72,7 +78,7 @@ export function idsCompeticoesAtivas(ano) {
     if (ano % 4 === 3) ids.push("euro_qualy");
     // Torneios continentais (ex: 2028 Euro, Copa América)
     if (ano % 4 === 0) {
-        ids.push("euro", "copa_america", "gold_cup", "copa_africa", "copa_asia");
+        ids.push("euro", "copa_america", "gold_cup", "copa_africa", "copa_asia", "oceania_cup");
     }
     // Nations League (anos ímpares: 2025, 2027)
     if (ano % 2 === 1) ids.push("nations_a", "nations_b", "nations_c", "nations_d");
@@ -106,7 +112,8 @@ export function metaCompeticao(compId, ano) {
         copa_america: "Copa América",
         gold_cup: "Gold Cup",
         copa_africa: "Copa Africana",
-        copa_asia: "Copa da Ásia"
+        copa_asia: "Copa da Ásia",
+        oceania_cup: "Copa das Nações da Oceania"
     };
     const destinoNome = dest && FORMATOS_INT[compId]?.destino ? nomes[FORMATOS_INT[compId].destino] : null;
     return {
@@ -114,7 +121,9 @@ export function metaCompeticao(compId, ano) {
         destinoAno: dest,
         destinoNome,
         subtitulo: destinoNome ? `Classificatório • Rumo à ${destinoNome} ${dest}` : null,
-        icon: cat === "eliminatorias" ? "🛤️" : cat === "mundial" ? "🌍" : cat === "continental" ? "🏆" : cat === "nations" ? "⚔️" : cat === "base" ? "🧒" : "🤝"
+        // Usado só como ÚLTIMO recurso quando nenhum logo oficial é encontrado
+        // (ver obterUrlImagem/obterLogoTorneioInternacional no main.js).
+        icon: cat === "eliminatorias" ? "🎫" : cat === "mundial" ? "🌍" : cat === "continental" ? "🏆" : cat === "nations" ? "⚔️" : cat === "base" ? "🧒" : "🤝"
     };
 }
 
@@ -179,5 +188,7 @@ export const CORES_COMP = {
     euro_qualy: "#818cf8",
     mundial_sub17: "#2dd4bf",
     mundial_sub21: "#38bdf8",
+    oceania_cup: "#0ea5e9",
+    eliminatorias_ofc: "#0ea5e9",
     default: "#00ff88"
 };
