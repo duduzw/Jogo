@@ -157,24 +157,54 @@ export function resolverVencedorMataMata(idA, idB, golsA, golsB, forcaA = 75, fo
 }
 
 // Simula o placar de um jogo entre duas seleções, a partir da força (0-100)
-// de cada lado. Em mata-mata, garante que não fica empatado (soma +1 gol
-// aleatório a favor de quem tem mais força/sorte para desempatar).
+// de cada lado.
+// 🛡️ FIX (seleções fracas vencendo gigantes com frequência normal demais): a
+// versão antiga usava uma proporção LINEAR (forcaA/(forcaA+forcaB)) pra
+// decidir a chance de gol de cada lado — então uma diferença grande de força
+// (ex: 88 vs 52) virava só uns 63% vs 37%, quase um "cara ou coroa" mais
+// inclinado. No futebol de verdade, esse tipo de diferença de nível deveria
+// dominar a partida na imensa maioria das vezes, com zebra ocasional (não
+// impossível, só rara). Agora a diferença de força vira uma vantagem
+// exponencial nos gols esperados (no espírito do Elo do xadrez: quanto maior
+// a diferença, mais desproporcional a vantagem), e os gols de cada lado saem
+// de uma distribuição de Poisson em cima dessa expectativa — jogos parelhos
+// continuam parelhos (perto de 50/50), mas um favorito claro passa a
+// realmente favorito.
+function golsEsperados(forcaA, forcaB) {
+    const diff = forcaA - forcaB;
+    // Escala calibrada para o intervalo típico de "força" (~50 a ~95): uma
+    // diferença extrema (~35-40, tipo potência x seleção fraquinha) já basta
+    // pra deixar o favorito com uns 3x mais gols esperados, sem virar 10-0.
+    const fatorA = Math.pow(10, diff / 140);
+    const baseGols = 1.35; // média de gols por seleção num jogo internacional equilibrado
+    return { expA: baseGols * fatorA, expB: baseGols / fatorA };
+}
+
+// Amostra um inteiro de uma distribuição de Poisson com média `lambda`
+// (algoritmo padrão de Knuth) — dá uma contagem de gols realista (a maioria
+// das partidas com poucos gols, mas com cauda pra goleadas ocasionais).
+function amostraPoisson(lambda) {
+    const L = Math.exp(-lambda);
+    let k = 0, p = 1;
+    do { k++; p *= Math.random(); } while (p > L);
+    return k - 1;
+}
+
 export function simularPlacarSelecao(forcaA, forcaB, isMataMata = false) {
-    const total = forcaA + forcaB;
-    let chanceA = (forcaA / total) * 0.05 + 0.008;
-    let chanceB = (forcaB / total) * 0.05;
-    let gA = 0, gB = 0;
-    for (let i = 0; i < 90; i += 8) {
-        const r = Math.random();
-        if (r < chanceA) gA++;
-        else if (r < chanceA + chanceB) gB++;
-    }
+    const { expA, expB } = golsEsperados(forcaA, forcaB);
+    let gA = amostraPoisson(expA);
+    let gB = amostraPoisson(expB);
     if (isMataMata && gA === gB) {
-        if (Math.random() < forcaA / total) gA++;
+        // Em mata-mata não pode empatar — desempata a favor de quem tem mais
+        // força, com a mesma curva exponencial (não 50/50 nem linear).
+        const diff = forcaA - forcaB;
+        const chanceA = 1 / (1 + Math.pow(10, -diff / 140));
+        if (Math.random() < chanceA) gA++;
         else gB++;
     }
     return { gA, gB };
 }
+
 
 // Cores de destaque usadas na UI para cada competição (barras, badges, etc.).
 export const CORES_COMP = {
