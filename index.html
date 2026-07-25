@@ -1,9 +1,28 @@
-﻿﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pro Player Simulator Elite</title>
+
+    <!-- 🚀 OTIMIZAÇÃO DE IMAGENS: preconnect nos CDNs mais usados (logos de
+         clube/competição, bandeiras, troféus) — resolve DNS + handshake TLS
+         antes da primeira imagem de cada um ser pedida, então quando o <img>
+         real aparece na tela, a conexão já está pronta. dns-prefetch cobre os
+         navegadores que não suportam preconnect. -->
+    <link rel="preconnect" href="https://tmssl.akamaized.net" crossorigin>
+    <link rel="dns-prefetch" href="https://tmssl.akamaized.net">
+    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
+    <link rel="dns-prefetch" href="https://flagcdn.com">
+    <link rel="preconnect" href="https://i.ibb.co" crossorigin>
+    <link rel="dns-prefetch" href="https://i.ibb.co">
+    <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin>
+    <link rel="dns-prefetch" href="https://upload.wikimedia.org">
+    <link rel="preconnect" href="https://ui-avatars.com" crossorigin>
+    <link rel="dns-prefetch" href="https://ui-avatars.com">
+    <link rel="dns-prefetch" href="https://pt.wikipedia.org">
+    <link rel="dns-prefetch" href="https://en.wikipedia.org">
+
     <link rel="stylesheet" href="styles.css">
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
@@ -18,7 +37,7 @@
             <div class="boladeouro-icon">🏆</div>
             <h1>GALA BOLA DE OURO</h1>
             <p style="color: white; font-size: 1.1rem;">O prémio de melhor futebolista do planeta este ano vai para...</p>
-            <img id="imgVencedorOuro" src="" class="golden-avatar" alt="Vencedor">
+            <img loading="lazy" decoding="async" id="imgVencedorOuro" src="" class="golden-avatar" alt="Vencedor">
             <h2 id="nomeVencedorOuro" class="gold-text-glow" style="margin-top:10px;">NOME</h2>
             <p id="statsVencedorOuro" style="color: var(--gold); font-size: 1.2rem;">Golos Marcados: 0</p>
             <button class="btn btn-warning pulse" style="margin-top: 25px;" id="btnFecharGala">Avançar para Nova Época ➔</button>
@@ -39,25 +58,43 @@
 </div>
 
 <div id="modalPartida" class="modal oculto">
-    <div class="modal-content slide-in" style="background: var(--bg-dark); border: 1px solid var(--theme-primary);">
+    <div class="modal-content match-modal-content slide-in" style="background: var(--bg-dark); border: 1px solid var(--theme-primary);">
         <div class="modal-header">
             <h3 style="margin:0; font-weight:800;"> RELATO EM DIRETO</h3>
-            <span id="uiMinutoJogo" class="badge-time">0'</span>
-        </div>
-        <div class="match-scoreboard">
-            <div style="display:flex; flex-direction:column; align-items:center;">
-                <img id="imgTimeCasa" src="" class="match-logo">
-                <h2 id="placarTimeCasa">CASA</h2>
-                <span id="placarMarcadorCasa" class="score-number">0</span>
-            </div>
-            <div style="font-size:1.5rem; font-weight:bold; color:var(--text-muted);">X</div>
-            <div style="display:flex; flex-direction:column; align-items:center;">
-                <img id="imgTimeVisita" src="" class="match-logo">
-                <h2 id="placarTimeVisita">VISITA</h2>
-                <span id="placarMarcadorVisita" class="score-number">0</span>
+            <div class="match-header-actions">
+                <button id="btnAlternarVisualPartida" class="match-visual-toggle" type="button" aria-pressed="true">◉ Visual ligado</button>
             </div>
         </div>
-        <div id="uiConsolePartida" class="match-log">
+        <div class="match-scoreboard-compact">
+            <div class="match-score-row">
+                <div class="match-score-team esquerda">
+                    <img loading="lazy" decoding="async" id="imgTimeCasa" src="" class="match-logo">
+                    <span class="nome-time" id="placarTimeCasa">CASA</span>
+                </div>
+                <div class="match-score-central">
+                    <span id="placarMarcadorCasa" class="score-number">0</span>
+                    <span class="match-score-x">x</span>
+                    <span id="placarMarcadorVisita" class="score-number">0</span>
+                </div>
+                <div class="match-score-team direita">
+                    <img loading="lazy" decoding="async" id="imgTimeVisita" src="" class="match-logo">
+                    <span class="nome-time" id="placarTimeVisita">VISITA</span>
+                </div>
+            </div>
+            <div class="match-sub-row">
+                <span id="uiMinutoJogo" class="badge-time">0'</span>
+                <div class="match-speed-controls" id="matchSpeedControls">
+                    <button type="button" class="match-speed-btn" id="matchBtnPlayPause" data-playing="1" title="Pausar/retomar">⏸</button>
+                    <button type="button" class="match-speed-btn ativo" data-speed="1">1x</button>
+                    <button type="button" class="match-speed-btn" data-speed="2">2x</button>
+                    <button type="button" class="match-speed-btn" data-speed="4">4x</button>
+                    <button type="button" class="match-speed-btn" data-speed="8">8x</button>
+                </div>
+            </div>
+        </div>
+        <!-- Campo da transmissão: os tokens são criados pelo simulador a cada partida. -->
+        <div id="matchVisualContainer" class="match-visual-container" aria-label="Visualização tática da partida"></div>
+        <div id="uiConsolePartida" class="central-partida">
             <div>O árbitro prepara o apito inicial...</div>
         </div>
         <div style="padding: 15px; text-align:right; border-top: 1px solid var(--border);">
@@ -121,7 +158,7 @@
         </div>
         <div style="padding: 20px; display: flex; gap: 20px;">
             <div style="flex: 1; text-align: center;">
-                <img id="mpImagem" src="" class="profile-avatar-large">
+                <img loading="lazy" decoding="async" id="mpImagem" src="" class="profile-avatar-large">
                 <h3 style="color: var(--warning); font-size: 2.2rem; margin: 10px 0;">OVR <span id="mpGeral">--</span></h3>
             </div>
             <div style="flex: 2; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; border: 1px solid var(--border);">
@@ -148,14 +185,32 @@
 </div>
 
 <div id="telaModoSelecao" class="tela full-screen flex-center">
-    <div class="card-criacao slide-in" style="width:100%; max-width:500px;">
-        <h1 class="glow-title">⚽ PRO PLAYER ELITE</h1>
-        <p style="text-align:center; color:var(--text-muted); font-size:0.9rem; margin-bottom:30px;">Escolhe o teu modo de jogo</p>
-        
-        <button class="btn btn-primary btn-block pulse" id="btnJogar" style="font-size:1.1rem; padding:20px;">
-            <div style="font-size:2rem; margin-bottom:10px;">🎮</div>
-            <div>JOGAR</div>
-            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:5px;">Iniciar nova carreira</div>
+    <div class="card-criacao slide-in" style="
+        width: 100%; 
+        max-width: 400px; 
+        padding: 20px;
+        background: rgba(0, 0, 0, 0.35); 
+        backdrop-filter: blur(12px); 
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.1); 
+        border-radius: 20px;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    ">
+        <button class="btn btn-block pulse" id="btnJogar" style="
+            width: 100%;
+            padding: 18px 20px;
+            background: rgba(0, 230, 118, 0.25); 
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(0, 230, 118, 0.6);
+            border-radius: 14px;
+            color: #ffffff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 230, 118, 0.2);
+        ">
+            <div style="font-size: 1.3rem; font-weight: 800; letter-spacing: 1.5px;">JOGAR</div>
+            <div style="font-size: 0.8rem; color: rgba(255, 255, 255, 0.8); margin-top: 4px; font-weight: 500;">INICIAR NOVA CARREIRA</div>
         </button>
     </div>
 </div>
@@ -176,7 +231,7 @@
 
 <div id="telaModo" class="tela full-screen flex-center oculto">
     <div class="card-criacao slide-in" style="width:100%; max-width:600px; text-align:center;">
-        <h1 class="glow-title">🎮 ESCOLHE O TEU MODO</h1>
+        <h1 class="glow-title"> ESCOLHE O TEU MODO</h1>
         <p style="text-align:center; color:var(--text-muted); font-size:1rem; margin-bottom:30px;">Seleciona como queres jogar</p>
         
         <div style="display:grid; gap:20px;">
@@ -189,6 +244,44 @@
         </div>
         
         <button class="btn btn-danger" id="btnVoltarMenu" style="margin-top:30px;">← Voltar ao Menu</button>
+    </div>
+</div>
+
+<div id="telaCriacaoManager" class="tela full-screen flex-center oculto">
+    <div class="card-criacao-enhanced slide-in" style="width:100%; max-width:640px;">
+        <div class="creation-header">
+            <div class="creation-icon">🧠</div>
+            <h1 class="glow-title">CRIA O TEU TREINADOR</h1>
+            <p class="creation-subtitle">Um nome e um clube — o resto da carreira você constrói na beira do campo.</p>
+        </div>
+
+        <div class="creation-form">
+            <div class="form-section">
+                <div class="form-icon">✍️</div>
+                <div class="form-content">
+                    <label>Nome do Treinador</label>
+                    <input type="text" id="inputNomeManager" placeholder="Ex: Mister Almeida" maxlength="26">
+                </div>
+            </div>
+
+            <div class="form-section" style="align-items:flex-start;">
+                <div class="form-icon">🏟️</div>
+                <div class="form-content" style="width:100%;">
+                    <label>Escolhe o clube que vais treinar <span id="clubeEscolhidoManagerLabel" style="float:right; color:var(--theme-primary); font-size:.78rem;">nenhum selecionado</span></label>
+                    <input type="text" id="inputBuscaClubeManager" placeholder="🔎 Procurar clube por nome ou país..." style="margin-bottom:10px;">
+                    <div id="listaClubesCriacaoManager" class="lista-clubes-criacao-manager"></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn" id="btnVoltarCriacaoManager" style="flex:0 0 auto; background:rgba(255,255,255,.08); color:#e5e7eb;">⬅ Voltar</button>
+            <button class="btn btn-primary btn-block pulse enhanced-btn" id="btnConfirmarCriacaoManager" style="flex:1;">
+                <span class="btn-icon">🧠</span>
+                Começar Carreira de Treinador
+                <span class="btn-arrow">➔</span>
+            </button>
+        </div>
     </div>
 </div>
 
@@ -381,12 +474,80 @@
                 </div>
             </div>
         </div>
-        
+
         <button class="btn btn-primary btn-block pulse enhanced-btn" id="btnIniciarCarreira">
-            <span class="btn-icon">✍️</span>
-            Assinar Primeiro Contrato
+            <span class="btn-icon">➔</span>
+            Continuar
             <span class="btn-arrow">➔</span>
         </button>
+    </div>
+</div>
+
+<div id="telaCriacaoManager" class="tela full-screen flex-center oculto">
+    <div class="card-criacao-enhanced slide-in">
+        <div class="creation-header">
+            <div class="creation-icon" style="color: var(--warning);">🧠</div>
+            <h1 class="glow-title" style="text-shadow: 0 0 20px rgba(255,193,7,0.5);">MODO MANAGER</h1>
+            <p class="creation-subtitle">Cria o teu perfil de treinador e assume o comando técnico</p>
+        </div>
+        
+        <div class="creation-form">
+            <div class="form-section">
+                <div class="form-icon">👤</div>
+                <div class="form-content">
+                    <label>Nome do Treinador</label>
+                    <input type="text" id="inputNomeManager" value="Mister" placeholder="Digite o teu nome">
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-icon">🌍</div>
+                <div class="form-content">
+                    <label>Nacionalidade</label>
+                    <select id="selectNacionalidadeManager">
+                        <option value="Brasil">Brasil 🇧🇷</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn btn-warning btn-block pulse enhanced-btn" id="btnIniciarCarreiraManager" style="color: #000; margin-top: 20px;">
+            <span class="btn-icon">➔</span>
+            Assumir Comando
+            <span class="btn-arrow">➔</span>
+        </button>
+    </div>
+</div>
+
+<div id="telaAtributosIniciais" class="tela full-screen flex-center oculto">
+    <div class="card-criacao-enhanced slide-in">
+        <div class="creation-header">
+            <div class="creation-icon">✨</div>
+            <h1 class="glow-title">TEUS ATRIBUTOS INICIAIS</h1>
+            <p class="creation-subtitle">Gerados automaticamente para a tua posição, <strong id="resumoNomeAtributos">craque</strong> — os atributos principais da tua posição saem mais fortes.</p>
+        </div>
+
+        <div class="creation-form">
+            <div class="form-section">
+                <div class="form-icon">✨</div>
+                <div class="form-content">
+                    <label>Atributos gerados <span id="pontosAtributoRestantes" style="float:right; color:var(--theme-primary);">⭐ = atributo principal da posição</span></label>
+                    <p style="margin:2px 0 5px; color:var(--text-muted); font-size:.82rem;">Não gostou do resultado? Gera de novo quantas vezes quiser antes de assinar.</p>
+                    <div id="gridAtributosIniciaisGerados" style="display:grid; grid-template-columns:repeat(2, minmax(150px, 1fr)); gap:8px;">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn" id="btnVoltarCriacao" style="flex:0 0 auto; background:rgba(255,255,255,.08); color:#e5e7eb;">⬅ Voltar</button>
+            <button class="btn" id="btnGerarNovamenteAtributos" style="flex:0 0 auto; background:rgba(255,255,255,.08); color:#e5e7eb;">🎲 Gerar Novamente</button>
+            <button class="btn btn-primary btn-block pulse enhanced-btn" id="btnConfirmarAtributosIniciais" style="flex:1;">
+                <span class="btn-icon">✍️</span>
+                Assinar Primeiro Contrato
+                <span class="btn-arrow">➔</span>
+            </button>
+        </div>
     </div>
 </div>
 
@@ -403,11 +564,11 @@
         <button id="btnFecharSidebarMobile" class="sidebar-close-mobile" onclick="fecharSidebarMobile()" aria-label="Fechar menu">✕</button>
         <div class="sidebar-header">
             <div class="avatar-container">
-                <img id="sidePlayerImg" src="" alt="Jogador" class="player-avatar">
+                <img loading="lazy" decoding="async" id="sidePlayerImg" src="" alt="Jogador" class="player-avatar">
             </div>
             <h2 id="sideNome">Nome Jogador</h2>
             <div class="clube-badge">
-                <img id="sideClubeLogo" src="" alt="Logo" class="clube-logo-small">
+                <img loading="lazy" decoding="async" id="sideClubeLogo" src="" alt="Logo" class="clube-logo-small">
                 <span id="sideClube">Time</span>
             </div>
         </div>
@@ -433,9 +594,13 @@
             <button class="menu-item" data-view="view-selecoes">🌍 Seleções</button>
             <button class="menu-item" data-view="view-comp-int">🏆 Competições INT</button>
             <button class="menu-item" data-view="view-lifestyle">🏆 Lifestyle & Treino</button>
+            <button class="menu-item" data-view="view-atributos">📈 Atributos</button>
             <button class="menu-item" id="btnFalarTecnico">🧑‍💼 Falar com Técnico</button>
+            <button class="menu-item" id="btnAposentarSelecao" onclick="window.abrirConfirmacaoAposentadoriaSelecao?.()">🌍 Aposentar da Seleção</button>
+            <button class="menu-item" id="btnAposentarJogador" onclick="window.abrirConfirmacaoAposentadoria?.()">🏁 Encerrar carreira</button>
             <button class="menu-item" data-view="view-noticias">📰 Notícias</button>
             <button class="menu-item" data-view="view-historico">📜 Hall da Fama</button>
+            <button class="menu-item" data-view="view-tecnicos">👔 Técnicos</button>
         </nav>
         
         <button class="btn btn-danger btn-block" id="btnReset" style="margin-top: auto; background: rgba(239, 68, 68, 0.2); border: 1px solid var(--danger); color: var(--danger);">Sair / Apagar Save</button>
@@ -461,6 +626,8 @@
                     <div id="uiProximoComp" class="next-match-box">Sincronizando competições...</div>
                     <div style="display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap:15px;">
                         <button class="btn btn-success btn-lg glow-btn" id="btnJogarHub">Entrar em Relvado ➔</button>
+                        <!-- Define antes do apito se a partida será acompanhada no campo visual ou só pelo relato. -->
+                        <button class="btn btn-primary btn-lg" id="btnModoVisualHub">🎥 Visual: ligado</button>
                         <button class="btn btn-warning btn-lg" id="btnDescansar" style="color:#000;">🛌 Descansar</button>
                         <button class="btn btn-primary btn-lg" id="btnTreinar">Treinar</button>
                     </div>
@@ -532,9 +699,12 @@
             <div id="view-manager" class="view-section oculto">
                 <div class="manager-dashboard">
                     <div class="manager-dashboard-header">
-                        <div class="manager-dashboard-title">
-                            <h2>🧠 Painel do Treinador</h2>
-                            <p id="manager-club-name">Selecione um clube para começar</p>
+                        <div class="manager-dashboard-title" style="display:flex; align-items:center; gap:16px;">
+                            <img id="manager-header-logo" loading="lazy" decoding="async" src="" alt="" onerror="this.style.visibility='hidden'" style="width:52px; height:52px; object-fit:contain; background:rgba(255,255,255,.06); border-radius:14px; padding:8px; border:1px solid rgba(212,175,55,.28); display:none;">
+                            <div>
+                                <h2>🧠 Painel do Treinador</h2>
+                                <p id="manager-club-name">Selecione um clube para começar</p>
+                            </div>
                         </div>
                         <div class="manager-stats">
                             <div class="manager-stat-box">
@@ -544,10 +714,15 @@
                             <div class="manager-stat-box">
                                 <strong id="manager-confidence">100%</strong>
                                 <span>Confiança</span>
+                                <div class="manager-confidence-track"><div id="manager-confidence-fill" class="manager-confidence-fill" style="width:100%; background:#10b981;"></div></div>
                             </div>
                             <div class="manager-stat-box">
                                 <strong id="manager-squad-size">0</strong>
                                 <span>Elenco</span>
+                            </div>
+                            <div class="manager-stat-box">
+                                <strong id="manager-objetivo" style="font-size:1.05rem;">—</strong>
+                                <span>Objetivo</span>
                             </div>
                         </div>
                     </div>
@@ -555,7 +730,8 @@
                         <button class="manager-tab active" data-view="view-manager-tactics">⚽ Táticas</button>
                         <button class="manager-tab" data-view="view-manager-squad">👥 Elenco</button>
                         <button class="manager-tab" data-view="view-manager-transfers">💼 Transferências</button>
-                        <button class="manager-tab" data-view="view-manager-finance">💰 Finanças</button>
+                        <button class="manager-tab" data-view="view-manager-contracts">📜 Contratos & Propostas <span id="manager-tab-badge-contracts" class="manager-tab-badge oculto">0</span></button>
+                        <button class="manager-tab" data-view="view-manager-finance">💰 Finanças & Base</button>
                     </div>
                     <div class="manager-content">
                         <div id="view-manager-tactics" class="manager-view active">
@@ -628,14 +804,17 @@
                             <h3>Mercado de Transferências</h3>
                             <div class="transfer-market">
                                 <div class="transfer-search">
-                                    <input type="text" id="transfer-search-input" placeholder="Buscar jogadores...">
+                                    <input type="text" id="transfer-search-input" placeholder="Buscar jogadores por nome, posição ou clube...">
                                     <button id="transfer-search-btn">Buscar</button>
                                 </div>
                                 <div id="transfer-results"></div>
                             </div>
                         </div>
+                        <div id="view-manager-contracts" class="manager-view">
+                            <div id="manager-contracts-panel"></div>
+                        </div>
                         <div id="view-manager-finance" class="manager-view">
-                            <h3>Gestão Financeira</h3>
+                            <h3>Gestão Financeira & Base</h3>
                             <div class="finance-overview">
                                 <div class="finance-card">
                                     <h4>Orçamento de Transferências</h4>
@@ -646,7 +825,7 @@
                                     <strong id="finance-wage-budget">€0</strong>
                                 </div>
                                 <div class="finance-card">
-                                    <h4>Folha Salarial Atual</h4>
+                                     <h4>Folha Salarial Atual</h4>
                                     <strong id="finance-current-wages">€0</strong>
                                 </div>
                             </div>
@@ -657,6 +836,7 @@
             <div id="view-lifestyle" class="view-section oculto lifestyle-page">
                 <div id="lifestyle-container"></div>
             </div>
+            <div id="view-atributos" class="view-section oculto"></div>
 
             <div id="view-noticias" class="view-section oculto"></div>
 
@@ -722,8 +902,63 @@
                     </table>
                 </div>
             </div>
+
+            <div id="view-tecnicos" class="view-section oculto"></div>
         </div>
     </main>
+</div>
+
+<!-- Modal Interativo do Minigame de Pênalti -->
+<div id="modalPenaltiMinigame" class="modal oculto">
+    <div class="penalti-modal-content">
+        <div class="penalti-header">
+            <h3 id="penaltiTitulo">⚽ PÊNALTI DECISIVO</h3>
+            <p id="penaltiSubtitulo">Defina o canto e controle a força da sua cobrança!</p>
+        </div>
+        <div class="penalti-stadium-canvas" id="penaltiStadiumCanvas">
+            <div class="penalti-goal-frame">
+                <div class="penalti-net-grid"></div>
+                <div class="penalti-goalkeeper" id="penaltiGoalkeeper">🧤</div>
+            </div>
+            <div class="penalti-target-reticle" id="penaltiTargetReticle"></div>
+            <div class="penalti-ball" id="penaltiBall">⚽</div>
+            <div class="penalti-result-overlay" id="penaltiResultOverlay">
+                <h1 id="penaltiResultTitle">GOOOL!</h1>
+                <p id="penaltiResultDesc"></p>
+            </div>
+        </div>
+        <div class="penalti-controls-container">
+            <div class="penalti-kicker-controls" id="penaltiKickerControls">
+                <label style="color:#fce788; font-weight:800; font-size:0.85rem; display:block; margin-bottom:8px;">1. ESCOLHA O CANTO DO CHUTE:</label>
+                <div class="penalti-aim-buttons">
+                    <button class="btn-canto" data-canto="top-left">↗️ Gaveta Esq.</button>
+                    <button class="btn-canto" data-canto="low-left">↙️ Rasteiro Esq.</button>
+                    <button class="btn-canto active" data-canto="center">🎯 Centro / Cavada</button>
+                    <button class="btn-canto" data-canto="low-right">↘️ Rasteiro Dir.</button>
+                    <button class="btn-canto" data-canto="top-right">↖️ Gaveta Dir.</button>
+                </div>
+                <div class="penalti-power-meter-container" style="margin-top:14px;">
+                    <label style="color:#94a3b8; font-weight:700; font-size:0.78rem; display:block; margin-bottom:6px;">2. FORÇA DO CHUTE (Clique quando estiver na zona verde):</label>
+                    <div class="penalti-power-bar">
+                        <div class="penalti-power-green-zone"></div>
+                        <div class="penalti-power-indicator" id="penaltiPowerIndicator"></div>
+                    </div>
+                </div>
+                <button class="btn btn-warning btn-block btn-lg" id="btnChutarPenalti" style="margin-top:16px; font-weight:900; font-size:1.1rem; padding:14px;">⚽ COBRAR PÊNALTI</button>
+            </div>
+            <div class="penalti-keeper-controls oculto" id="penaltiKeeperControls">
+                <label style="color:#fce788; font-weight:800; font-size:0.9rem; display:block; margin-bottom:12px;">ESCOLHA O CANTO DO SALTO DO GOLEIRO:</label>
+                <div class="penalti-aim-buttons">
+                    <button class="btn-canto-gk" data-defesa="top-left">🧤 Salto Alto Esq.</button>
+                    <button class="btn-canto-gk" data-defesa="low-left">🧤 Rasteiro Esq.</button>
+                    <button class="btn-canto-gk active" data-defesa="center">🛑 Ficar no Meio</button>
+                    <button class="btn-canto-gk" data-defesa="low-right">🧤 Rasteiro Dir.</button>
+                    <button class="btn-canto-gk" data-defesa="top-right">🧤 Salto Alto Dir.</button>
+                </div>
+                <button class="btn btn-success btn-block btn-lg" id="btnDefenderPenalti" style="margin-top:16px; font-weight:900; font-size:1.1rem; padding:14px;">🧤 TENTAR A DEFESA</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="firebase-integration.js"></script>
