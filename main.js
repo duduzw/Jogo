@@ -1,6 +1,7 @@
 import { jogadorModelo, competicoes, clubes, jogadoresIA, tabelasLigas, feedNoticias, preencherLigasVazias } from './data/database.js';
-import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO, PERFIS_ATRIBUTOS_POSICAO, gerarAtributosParaJogador } from './engine/match.js';
+import { MatchEngine, MORAL_TECNICO_MINIMA_PENALTI, NIVEL_PENALTIS_MINIMO, PERFIS_ATRIBUTOS_POSICAO, gerarAtributosParaJogador, PESO_GOL_POS, PESO_AST_POS, sortearPonderado } from './engine/match.js';
 import { FORMATOS_INT, resolverVencedorMataMata, simularPlacarSelecao, criarTimeTorneio, chaveTorneio, idsCompeticoesAtivas, CORES_COMP, isEliminatoria, metaCompeticao, categoriaComp, anoTorneioDestino } from './engine/selecoes.js';
+import { TECNICOS_REAIS } from './data/tecnicos.js';
 
 // Make jogadoresIA available globally for Firebase integration
 window.jogadoresIA = jogadoresIA;
@@ -189,6 +190,19 @@ window.renderSquadList = function() {
             e.dataTransfer.effectAllowed = "move";
         });
 
+        // Add right-click context menu
+        item.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.abrirMenuContextoJogador(e, player.id);
+        });
+
+        // Add click to open profile
+        item.addEventListener("click", (e) => {
+            e.stopPropagation();
+            abrirPerfilJogador(player.id);
+        });
+
         squadList.appendChild(item);
     });
 };
@@ -248,11 +262,25 @@ window.renderTacticalPitch = function(formation) {
                 `;
                 token.draggable = true;
                 token.dataset.playerId = player.id;
+                token.style.cursor = "pointer";
 
                 // Allow repositioning on pitch
                 token.addEventListener("dragstart", (e) => {
                     e.dataTransfer.setData("text/plain", player.id);
                     e.dataTransfer.effectAllowed = "move";
+                });
+
+                // Add right-click context menu
+                token.addEventListener("contextmenu", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.abrirMenuContextoJogador(e, player.id);
+                });
+
+                // Add click to open profile
+                token.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    abrirPerfilJogador(player.id);
                 });
 
                 position.appendChild(token);
@@ -558,7 +586,7 @@ function renderOnlineLobby() {
             card.className = `lobby-player-card ${isReady ? 'ready' : 'not-ready'}`;
             card.innerHTML = `
                 <div class="lobby-player-info">
-                    <img src="${playerData.foto || ''}" class="lobby-player-avatar" onerror="this.src='https://via.placeholder.com/60'">
+                    <img loading="lazy" decoding="async" src="${playerData.foto || ''}" class="lobby-player-avatar" onerror="this.src='https://via.placeholder.com/60'">
                     <div class="lobby-player-details">
                         <h4>${playerData.nome || 'Jogador'}</h4>
                         <p>${playerData.nacionalidade || '—'} • ${playerData.posicao || '—'}</p>
@@ -675,11 +703,50 @@ let eventosRecentes = [];
 let janelaMeioAnoProcessada = false;
 let copasEstado = {};
 let selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} };
-window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [] };
+window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [], afc_cla2: [] };
 let campeoesAnoAnterior = { ligas: {}, copas: {} };
 let uiFiltroCompInt = "todos";
 let uiSelectCompInt = null;
-let managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [] };
+let managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { 
+    formacao: "4-3-3", 
+    estilo: "pressao", 
+    mentalidade: "equilibrado", 
+    pressao: "média", 
+    largura: "normal",
+    // 🎯 Estilos de posse de bola
+    posseBola: "equilibrado", // contra-ataque, jogo-direto, tiki-taka, vertical, cruzamentos, chutes-longe
+    // 🏗️ Construção
+    construcao: "curta", // curta, longa, mista
+    goleiroConstrucao: false,
+    zagueirosAbertos: false,
+    volanteRecuado: false,
+    // ⚔️ Ataque
+    direcaoAtaque: "meio", // meio, lados, misto
+    inverterJogo: false,
+    sobreposicaoLaterais: true,
+    subidasLaterais: "equilibrado", // nunca, apoio, sempre
+    liberdadeCriativa: false,
+    tipoCruzamento: "misto", // baixo, alto, misto
+    // 🛡️ Defesa
+    linhaDefensiva: "media", // baixa, media, alta
+    linhaPressao: "media", // baixa, media, alta
+    intensidadeMarcacao: "media", // baixa, media, alta
+    pressaoAposPerda: true,
+    recuarAposPerda: false,
+    tipoMarcacao: "zona", // zona, individual, mista
+    armadilhaImpedimento: false
+}, orcamentoTransferencias: 0, folhaSalarial: 0, base: [], propostasRecebidas: [], funcoesJogadores: {}, instrucoesIndividuais: {}, promocoesBaseTemporada: 0, auxiliarTecnico: null, auxiliaresDisponiveis: [] };
+// 🛡️ Limite realista de promoções da base por temporada: sem isto o
+// treinador-jogador podia subir o elenco inteiro da base de uma vez, o que
+// não acontece nem nos maiores clubes do mundo — normalmente só um punhado
+// de jovens sobe ao profissional a cada ano.
+const LIMITE_PROMOCOES_BASE_POR_TEMPORADA = 3;
+// 👔 MERCADO DE TREINADORES — cada clube (e cada seleção) tem um técnico de
+// verdade (nome, estilo de jogo próprio, reputação), não só uma string
+// decorativa. Pode ser demitido e contratado a cada temporada; uma fatia bem
+// pequena de jogadores recém-aposentados pode virar técnico. Ver
+// gerarTreinadoresIniciais / processarCarrosselTreinadores.
+let treinadoresIA = [];
 // Controla quais competições já mostraram o vídeo/cinemática de abertura este ano (chave: `${compId}_${ano}`)
 let introsExibidas = {};
 
@@ -791,6 +858,7 @@ window.salvarJogo = function() {
         transferenciasHistorico: transferenciasHistorico, eventosRecentes: eventosRecentes, janelaMeioAnoProcessada: janelaMeioAnoProcessada,
         selecoesEstado: selecoesEstado,
         managerEstado: managerEstado,
+        treinadoresIA: treinadoresIA,
         introsExibidas: introsExibidas,
         clubesSave: clubes, npcsSave: npcsParaGuardar,
         // 🛡️ FIX: guarda a identidade online (quem sou eu, quem é o meu amigo,
@@ -816,7 +884,7 @@ function carregarJogo() {
         jogador = dados.jogador; anoAtual = dados.ano; rodadaAtual = dados.rodada; agendaTemporada = dados.agenda || []; copasEstado = dados.copas || {};
         window.jogador = jogador; // 🛡️ FIX: mantém window.jogador (usado pelo firebase-integration.js) na mesma referência
         // Backwards compatibility: initialize training flag for existing saves
-        if(typeof jogador.jogouPartidaDesdeUltimoTreino === 'undefined') jogador.jogouPartidaDesdeUltimoTreino = false;
+        if(jogador && typeof jogador.jogouPartidaDesdeUltimoTreino === 'undefined') jogador.jogouPartidaDesdeUltimoTreino = false;
         inicializarEstadoCarreiraJogador();
         if(dados.vagasContinentais) window.vagasContinentais = dados.vagasContinentais;
         if(dados.campeoesAnoAnterior) campeoesAnoAnterior = dados.campeoesAnoAnterior;
@@ -824,7 +892,11 @@ function carregarJogo() {
         if(dados.titulosClubesPendentes) titulosClubesPendentes = dados.titulosClubesPendentes;
         if(dados.transferenciasHistorico) transferenciasHistorico = dados.transferenciasHistorico;
         if(dados.eventosRecentes) eventosRecentes = dados.eventosRecentes;
-        if(dados.managerEstado) managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [], ...dados.managerEstado };
+        if(dados.managerEstado) managerEstado = { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [], propostasRecebidas: [], promocoesBaseTemporada: 0, auxiliarTecnico: null, auxiliaresDisponiveis: [], ...dados.managerEstado };
+        treinadoresIA = dados.treinadoresIA || [];
+        // Um save de treinador deve voltar direto para a navegação exclusiva
+        // do Manager, sem ressuscitar abas pessoais do modo Jogador.
+        if (managerEstado.ativo) window.gameMode = "manager";
         if(dados.introsExibidas) introsExibidas = dados.introsExibidas;
         if(dados.selecoesEstado) {
             selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, ...dados.selecoesEstado };
@@ -857,6 +929,7 @@ function carregarJogo() {
         }
         normalizarElencosEPosicoes();
         sincronizarTodosOversComAtributos();
+        garantirTreinadoresIniciais();
         aplicarHistoricosReaisIniciais();
         for (let key in tabelasLigas) delete tabelasLigas[key]; Object.assign(tabelasLigas, dados.tabelas);
         
@@ -866,10 +939,10 @@ function carregarJogo() {
         if(agendaTemporada.length === 0) gerarAgenda();
         else normalizarAgendaCalendario();
         
-        atualizarHub(); mudarTela("view-hub"); 
+        configurarNavegacaoPorModo(); atualizarHub(); mudarTela("view-hub"); 
         let homeV = document.getElementById("view-home"); if(homeV) { homeV.classList.remove("oculto"); homeV.style.display="block"; }
-        if(!jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
-    if(!jogador.estatisticasAtuais.defesas) jogador.estatisticasAtuais.defesas = 0;
+        if(jogador?.estatisticasAtuais && !jogador.estatisticasAtuais.assistencias) jogador.estatisticasAtuais.assistencias = 0;
+        if(jogador?.estatisticasAtuais && !jogador.estatisticasAtuais.defesas) jogador.estatisticasAtuais.defesas = 0;
         return true;
     } return false;
 }
@@ -886,12 +959,12 @@ const CONFIG_VAGAS_CONTINENTAIS = {
 
     "br_1":  { lib: 6, sul: 6 }, "arg_1": { lib: 5, sul: 6 },"uy_1":  { lib: 4, sul: 4 }, 
 
-    "ara_1": { cla: 4 }, 
+    "ara_1": { cla: 4, cla2: 4 }, 
     
-    "usa_1": { clc: 4 }, "mx_1": { clc: 4 },"nga_1": { clc: 4 },"cvi_1": { clc: 2 },
+    "usa_1": { clc: 4 }, "mx_1": { clc: 4 },"nga_1": { clc: 4 },"civ_1": { clc: 2 },
 
     "default_uefa": { cl: 1, el: 1, col: 1 }, "default_conmebol": { lib: 2, sul: 2 },
-    "default_asia": { cla: 4 }, "default_concacaf": { clc: 4 },
+    "default_asia": { cla: 4, cla2: 4 }, "default_concacaf": { clc: 4 },
 };
 
 // Cores fixas por tipo de zona de qualificação/despromoção nas tabelas de liga
@@ -902,6 +975,7 @@ const CORES_ZONAS_TABELA = {
     libertadores: { cor: "#facc15", label: "" },
     sula: { cor: "#1693f9", label: "" },
     afc: { cor: "#9a10f7", label: "" },
+    afc2: { cor: "#104ef7", label: "" },
     concacaf: { cor: "#7baeff", label: "" },
     rebaixamento: { cor: "#ef4444", label: "" }
 };
@@ -924,24 +998,43 @@ function obterZonasQualificacaoLiga(ligaId, totalClubes) {
             if (rV.lib > 0) { zonas.push({ inicio: idx, fim: idx + rV.lib, ...CORES_ZONAS_TABELA.libertadores }); idx += rV.lib; }
             if (rV.sul > 0) { zonas.push({ inicio: idx, fim: idx + rV.sul, ...CORES_ZONAS_TABELA.sula }); idx += rV.sul; }
         } else if (rV.cla !== undefined) {
-            if (rV.cla > 0) zonas.push({ inicio: idx, fim: idx + rV.cla, ...CORES_ZONAS_TABELA.afc });
+            if (rV.cla > 0) { zonas.push({ inicio: idx, fim: idx + rV.cla, ...CORES_ZONAS_TABELA.afc }); idx += rV.cla; }
+            if (rV.cla2 > 0) { zonas.push({ inicio: idx, fim: idx + rV.cla2, ...CORES_ZONAS_TABELA.afc2 }); idx += rV.cla2; }
         } else if (rV.clc !== undefined) {
             if (rV.clc > 0) zonas.push({ inicio: idx, fim: idx + rV.clc, ...CORES_ZONAS_TABELA.concacaf });
         }
     }
 
-    // Zona de rebaixamento: só existe se houver uma divisão abaixo desta no jogo
+    // --- NOVA LÓGICA DE REBAIXAMENTO DINÂMICO ---
     const matchDiv = ligaId.match(/_(\d+)$/);
-    if (matchDiv && totalClubes > 4) {
+    if (matchDiv) {
         const divAtual = parseInt(matchDiv[1]);
         const proximaDivId = ligaId.replace(`_${divAtual}`, `_${divAtual + 1}`);
-        if (typeof tabelasLigas !== 'undefined' && tabelasLigas[proximaDivId]) {
-            zonas.push({ inicio: totalClubes - 3, fim: totalClubes, ...CORES_ZONAS_TABELA.rebaixamento });
+        
+        // Verifica se existe uma divisão inferior ou se é uma liga que sabemos que rebaixa
+        const existeDivisaoInferior = typeof tabelasLigas !== 'undefined' && tabelasLigas[proximaDivId];
+
+        if (existeDivisaoInferior) {
+            // Busca no config. Se não achar, usa lógica de fallback (Brasil=4, resto=3)
+            let qtdRebaixados = CONFIG_REBAIXAMENTO[ligaId];
+            
+            if (qtdRebaixados === undefined) {
+                qtdRebaixados = ligaId.includes("br") ? 4 : 3; // Fallback inteligente
+            }
+
+            // Só adiciona a zona se a quantidade for maior que zero (evita bugs com MLS ou ligas fechadas)
+            if (qtdRebaixados > 0 && totalClubes > qtdRebaixados) {
+                zonas.push({ 
+                    inicio: totalClubes - qtdRebaixados, 
+                    fim: totalClubes, 
+                    ...CORES_ZONAS_TABELA.rebaixamento 
+                });
+            }
         }
     }
+
     return zonas;
 }
-
 function obterZonaDaPosicao(zonas, indexPos) {
     return zonas.find(z => indexPos >= z.inicio && indexPos < z.fim) || null;
 }
@@ -953,6 +1046,39 @@ function ehLigaEuropeia(ligaId) {
     const prefixo = ligaId.split("_")[0];
     return !PAISES_FORA_DA_UEFA.includes(prefixo);
 }
+const CONFIG_REBAIXAMENTO = {
+    // Brasil (4 rebaixados na Série A e B)
+    "br_1": 4,
+    "br_2": 4,
+    "br_3": 4,
+
+    // Inglaterra (Premier League e Championship caem 3)
+    "eng_1": 3,
+    "eng_2": 3,
+    "eng_3": 4, // League One caem 4
+
+    // Espanha (La Liga cai 3)
+    "esp_1": 3,
+    "esp_2": 4,
+
+    // Itália (Serie A cai 3)
+    "ita_1": 3,
+    "ita_2": 4,
+
+    // Alemanha (Bundesliga caem 2 diretos + 1 playoff, podemos usar 3 como padrão ou 2 diretos)
+    "ger_1": 3, 
+    "ger_2": 3,
+
+    // França (Ligue 1 agora com 18 times caem 2 diretos + 1 playoff)
+    "fra_1": 2,
+
+    // Portugal (Primeira Liga caem 2 diretos + 1 playoff)
+    "por_1": 2,
+    
+    // Arábia Saudita / MLS / Outros
+    "ara_1": 3,
+    "usa_1": 0 // MLS não tem rebaixamento!
+};
 
 // ==========================================
 // 🏅 REALISMO DA BOLA DE OURO — pesos por competição, pontos de título
@@ -962,8 +1088,8 @@ function ehLigaEuropeia(ligaId) {
 // Quanto cada gol/assistência vale, de acordo com a competição em que foi feito.
 // Marcar 10 gols na Champions vale mais do que 10 gols em amistosos.
 const PESO_COMPETICAO = {
-    uefa_cl: 1.50, conmebol_lib: 1.50,
-    uefa_el: 1.15, conmebol_sul: 1.15, concacaf_clc: 1.15, afc_cla: 1.15, uefa_col: 1.00,
+    uefa_cl: 1.50, conmebol_lib: 1.20,
+    uefa_el: 1.15, conmebol_sul: 1.10, concacaf_clc: 1.00, afc_cla: 1.05, afc_cla2: 1.00, uefa_col: 1.00,
     uefa_supercup: 0.60, conmebol_recopa: 0.60,
     intercontinental_cup: 1.50,
     copa_mundo: 1.80, euro: 1.55, copa_america: 1.45,
@@ -1248,7 +1374,7 @@ const COMPETICOES_SELECOES_BASE = [
 // disputar estes torneios de base normalmente.
 function obterCompeticaoSelecaoBase(ano = anoAtual, rodada = rodadaAtual) {
     const slotAtual = Math.floor(obterSlotCalendarioAtual());
-    const janelaFinalTemporada = slotAtual >= 44;
+    const janelaFinalTemporada = slotAtual >= 47; // Ajustado para calendário expandido (60 slots)
     if (ano % 2 === 1 && janelaFinalTemporada) return COMPETICOES_SELECOES_BASE.find(c => c.id === "mundial_sub17");
     if (ano % 2 === 0 && ano % 4 !== 2 && ano % 4 !== 0 && janelaFinalTemporada) return COMPETICOES_SELECOES_BASE.find(c => c.id === "mundial_sub21");
     return null;
@@ -1256,74 +1382,88 @@ function obterCompeticaoSelecaoBase(ano = anoAtual, rodada = rodadaAtual) {
 
 const CALENDARIO_MODELOS = {
     europeu: [
-        { de: 1, ate: 1, mes: "Julho", periodo: "Pre-temporada" },
-        { de: 2, ate: 5, mes: "Agosto", periodo: "Abertura da temporada" },
-        { de: 6, ate: 9, mes: "Setembro", periodo: "Data FIFA e ligas" },
-        { de: 10, ate: 13, mes: "Outubro", periodo: "Grupos continentais" },
-        { de: 14, ate: 17, mes: "Novembro", periodo: "Copas e Data FIFA" },
-        { de: 18, ate: 21, mes: "Dezembro", periodo: "Fecho do ano" },
-        { de: 22, ate: 25, mes: "Janeiro", periodo: "Retorno e supercopas" },
-        { de: 26, ate: 29, mes: "Fevereiro", periodo: "Copas nacionais" },
-        { de: 30, ate: 33, mes: "Marco", periodo: "Data FIFA e oitavas" },
-        { de: 34, ate: 37, mes: "Abril", periodo: "Reta final" },
-        { de: 38, ate: 43, mes: "Maio", periodo: "Finais e ultima rodada" },
-        { de: 44, ate: 48, mes: "Junho", periodo: "Selecoes" },
-        { de: 49, ate: 52, mes: "Julho", periodo: "Torneios de selecoes" }
+        { de: 1, ate: 2, mes: "Julho", periodo: "Pre-temporada" },
+        { de: 3, ate: 6, mes: "Agosto", periodo: "Abertura da temporada" },
+        { de: 7, ate: 10, mes: "Setembro", periodo: "Data FIFA e ligas" },
+        { de: 11, ate: 14, mes: "Outubro", periodo: "Grupos continentais" },
+        { de: 15, ate: 18, mes: "Novembro", periodo: "Copas e Data FIFA" },
+        { de: 19, ate: 22, mes: "Dezembro", periodo: "Fecho do ano" },
+        { de: 23, ate: 26, mes: "Janeiro", periodo: "Retorno e supercopas" },
+        { de: 27, ate: 30, mes: "Fevereiro", periodo: "Copas nacionais" },
+        { de: 31, ate: 34, mes: "Marco", periodo: "Data FIFA e oitavas" },
+        { de: 35, ate: 38, mes: "Abril", periodo: "Quartas e semis" },
+        { de: 39, ate: 44, mes: "Maio", periodo: "Finais e ultima rodada" },
+        { de: 45, ate: 50, mes: "Junho", periodo: "Selecoes" },
+        { de: 51, ate: 54, mes: "Julho", periodo: "Torneios de selecoes" },
+        { de: 55, ate: 58, mes: "Agosto", periodo: "Pre-temporada próxima" },
+        { de: 59, ate: 60, mes: "Agosto", periodo: "Férias e descanso" }
     ],
     ano: [
-        { de: 1, ate: 2, mes: "Janeiro", periodo: "Pre-temporada" },
-        { de: 3, ate: 6, mes: "Fevereiro", periodo: "Supercopas e estaduais" },
-        { de: 7, ate: 10, mes: "Marco", periodo: "Inicio da liga" },
-        { de: 11, ate: 14, mes: "Abril", periodo: "Copas nacionais" },
-        { de: 15, ate: 18, mes: "Maio", periodo: "Liga e copas" },
-        { de: 19, ate: 22, mes: "Junho", periodo: "Data FIFA" },
-        { de: 23, ate: 26, mes: "Julho", periodo: "Meio da temporada" },
-        { de: 27, ate: 30, mes: "Agosto", periodo: "Copas continentais" },
-        { de: 31, ate: 34, mes: "Setembro", periodo: "Data FIFA" },
-        { de: 35, ate: 38, mes: "Outubro", periodo: "Decisoes de copa" },
-        { de: 39, ate: 43, mes: "Novembro", periodo: "Finais continentais" },
-        { de: 44, ate: 48, mes: "Dezembro", periodo: "Ultimas rodadas" }
+        { de: 1, ate: 3, mes: "Janeiro", periodo: "Pre-temporada" },
+        { de: 4, ate: 7, mes: "Fevereiro", periodo: "Supercopas e estaduais" },
+        { de: 8, ate: 11, mes: "Marco", periodo: "Inicio da liga" },
+        { de: 12, ate: 15, mes: "Abril", periodo: "Copas nacionais" },
+        { de: 16, ate: 19, mes: "Maio", periodo: "Liga e copas" },
+        { de: 20, ate: 23, mes: "Junho", periodo: "Data FIFA" },
+        { de: 24, ate: 27, mes: "Julho", periodo: "Meio da temporada" },
+        { de: 28, ate: 31, mes: "Agosto", periodo: "Copas continentais" },
+        { de: 32, ate: 35, mes: "Setembro", periodo: "Data FIFA" },
+        { de: 36, ate: 39, mes: "Outubro", periodo: "Decisoes de copa" },
+        { de: 40, ate: 45, mes: "Novembro", periodo: "Finais continentais" },
+        { de: 46, ate: 50, mes: "Dezembro", periodo: "Ultimas rodadas" },
+        { de: 51, ate: 54, mes: "Dezembro", periodo: "Férias e descanso" }
     ]
 };
 
 const CALENDARIO_PERFIS_PAIS = {
-    default: { modelo: "europeu", ligaInicio: 3, ligaFim: 42, supercopaSlot: 2, copaSlots: [17, 27, 36, 41] },
-    eng: { modelo: "europeu", ligaInicio: 3, ligaFim: 42, supercopaSlot: 2, copaSlots: [18, 27, 35, 40] },
-    esp: { modelo: "europeu", ligaInicio: 3, ligaFim: 42, supercopaSlot: 22, copaSlots: [16, 25, 33, 39] },
-    ita: { modelo: "europeu", ligaInicio: 3, ligaFim: 42, supercopaSlot: 22, copaSlots: [11, 24, 33, 39] },
-    ger: { modelo: "europeu", ligaInicio: 3, ligaFim: 40, supercopaSlot: 2, copaSlots: [13, 23, 34, 41] },
-    fra: { modelo: "europeu", ligaInicio: 3, ligaFim: 41, supercopaSlot: 2, copaSlots: [14, 25, 35, 40] },
-    pt: { modelo: "europeu", ligaInicio: 3, ligaFim: 41, supercopaSlot: 2, copaSlots: [14, 24, 34, 40] },
-    nl: { modelo: "europeu", ligaInicio: 3, ligaFim: 41, supercopaSlot: 2, copaSlots: [13, 24, 34, 40] },
-    br: { modelo: "ano", ligaInicio: 8, ligaFim: 48, supercopaSlot: 4, copaSlots: [12, 22, 34, 42] },
-    arg: { modelo: "ano", ligaInicio: 7, ligaFim: 45, supercopaSlot: 4, copaSlots: [13, 23, 35, 43] },
-    uy: { modelo: "ano", ligaInicio: 7, ligaFim: 45, supercopaSlot: 4, copaSlots: [14, 24, 35, 43] },
-    usa: { modelo: "ano", ligaInicio: 8, ligaFim: 40, supercopaSlot: 23, copaSlots: [14, 22, 31, 36] },
-    mx: { modelo: "ano", ligaInicio: 5, ligaFim: 36, supercopaSlot: 3, copaSlots: [10, 18, 27, 34] }
+    default: { modelo: "europeu", ligaInicio: 3, ligaFim: 50, supercopaSlot: 2, copaSlots: [20, 30, 38, 46] },
+    eng: { modelo: "europeu", ligaInicio: 3, ligaFim: 50, supercopaSlot: 2, copaSlots: [21, 30, 38, 45] },
+    esp: { modelo: "europeu", ligaInicio: 3, ligaFim: 50, supercopaSlot: 24, copaSlots: [19, 28, 36, 44] },
+    ita: { modelo: "europeu", ligaInicio: 3, ligaFim: 50, supercopaSlot: 24, copaSlots: [14, 27, 36, 44] },
+    ger: { modelo: "europeu", ligaInicio: 3, ligaFim: 48, supercopaSlot: 2, copaSlots: [16, 26, 37, 46] },
+    fra: { modelo: "europeu", ligaInicio: 3, ligaFim: 49, supercopaSlot: 2, copaSlots: [17, 28, 38, 45] },
+    pt: { modelo: "europeu", ligaInicio: 3, ligaFim: 49, supercopaSlot: 2, copaSlots: [17, 27, 37, 45] },
+    nl: { modelo: "europeu", ligaInicio: 3, ligaFim: 49, supercopaSlot: 2, copaSlots: [16, 27, 37, 45] },
+    br: { modelo: "ano", ligaInicio: 8, ligaFim: 50, supercopaSlot: 4, copaSlots: [15, 25, 37, 45] },
+    arg: { modelo: "ano", ligaInicio: 7, ligaFim: 48, supercopaSlot: 4, copaSlots: [16, 26, 38, 46] },
+    uy: { modelo: "ano", ligaInicio: 7, ligaFim: 48, supercopaSlot: 4, copaSlots: [17, 27, 38, 46] },
+    usa: { modelo: "ano", ligaInicio: 8, ligaFim: 45, supercopaSlot: 24, copaSlots: [17, 25, 34, 39] },
+    mx: { modelo: "ano", ligaInicio: 5, ligaFim: 42, supercopaSlot: 3, copaSlots: [13, 21, 30, 37] }
 };
 
 const CALENDARIO_COMPETICOES_REALISTAS = {
-    carabao_eng: { modelo: "europeu", slots: [7, 14, 22, 28], janela: "Carabao Cup" },
-    copa_eng: { modelo: "europeu", slots: [18, 27, 35, 40], janela: "FA Cup" },
+    carabao_eng: { modelo: "europeu", slots: [8, 16, 24, 32], janela: "Carabao Cup" },
+    copa_eng: { modelo: "europeu", slots: [21, 30, 38, 45], janela: "FA Cup" },
     supercopa_eng: { modelo: "europeu", slots: [2], janela: "Community Shield" },
-    copa_esp: { modelo: "europeu", slots: [16, 25, 33, 39], janela: "Copa del Rey" },
-    supercopa_esp: { modelo: "europeu", slots: [22], janela: "Supercopa da Espanha" },
-    copa_ita: { modelo: "europeu", slots: [11, 24, 33, 39], janela: "Coppa Italia" },
-    supercopa_ita: { modelo: "europeu", slots: [22], janela: "Supercoppa" },
-    copa_ger: { modelo: "europeu", slots: [13, 23, 34, 41], janela: "DFB-Pokal" },
-    copa_br: { modelo: "ano", slots: [12, 22, 34, 42], janela: "Copa do Brasil" },
-    copa_arg: { modelo: "ano", slots: [13, 23, 35, 43], janela: "Copa Argentina" },
-    copa_usa: { modelo: "ano", slots: [14, 22, 31, 36], janela: "Open Cup" },
-    uefa_cl: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [30, 31], "Oitavos de Final": [34, 35], "Quartas de Final": [37, 38], "Semifinal": [40, 41], "Final": [44] }, janela: "Champions League" },
-    uefa_el: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [29, 30], "Oitavos de Final": [33, 34], "Quartas de Final": [36, 37], "Semifinal": [39, 40], "Final": [43] }, janela: "Europa League" },
-    uefa_col: { modelo: "europeu", liga: [6, 9, 12, 15, 18, 21, 24, 27], mata: { "Playoff": [28, 29], "Oitavos de Final": [32, 33], "Quartas de Final": [35, 36], "Semifinal": [38, 39], "Final": [42] }, janela: "Conference League" },
-    conmebol_lib: { modelo: "ano", grupos: [12, 16, 20, 24, 28, 32], mata: { "Oitavos de Final": [35, 36], "Quartas de Final": [38, 39], "Semifinal": [41, 42], "Final": [43] }, janela: "Libertadores" },
-    conmebol_sul: { modelo: "ano", grupos: [12, 16, 20, 24, 28, 32], mata: { "Oitavos de Final": [34, 35], "Quartas de Final": [37, 38], "Semifinal": [40, 41], "Final": [42] }, janela: "Sul-Americana" },
-    concacaf_clc: { modelo: "ano", grupos: [8, 11, 14, 17, 20, 23], mata: { "Semifinal": [28, 29], "Final": [33] }, janela: "Concacaf Champions Cup" },
-    afc_cla: { modelo: "europeu", grupos: [8, 11, 14, 17, 20, 23], mata: { "Oitavos de Final": [29, 30], "Quartas de Final": [33, 34], "Semifinal": [37, 38], "Final": [41] }, janela: "AFC Champions" },
+    copa_esp: { modelo: "europeu", slots: [19, 28, 36, 44], janela: "Copa del Rey" },
+    supercopa_esp: { modelo: "europeu", slots: [24], janela: "Supercopa da Espanha" },
+    copa_ita: { modelo: "europeu", slots: [14, 27, 36, 44], janela: "Coppa Italia" },
+    supercopa_ita: { modelo: "europeu", slots: [24], janela: "Supercoppa" },
+    copa_ger: { modelo: "europeu", slots: [16, 26, 37, 46], janela: "DFB-Pokal" },
+    copa_fra: { modelo: "europeu", slots: [17, 28, 38, 45], janela: "Coupe de France" },
+    copa_pt: { modelo: "europeu", slots: [17, 27, 37, 45], janela: "Taça de Portugal" },
+    copa_nl: { modelo: "europeu", slots: [16, 27, 37, 45], janela: "KNVB Beker" },
+    copa_br: { modelo: "ano", slots: [15, 25, 37, 45], janela: "Copa do Brasil" },
+    copa_arg: { modelo: "ano", slots: [16, 26, 38, 46], janela: "Copa Argentina" },
+    copa_uy: { modelo: "ano", slots: [17, 27, 38, 46], janela: "Copa Uruguay" },
+    copa_usa: { modelo: "ano", slots: [17, 25, 34, 39], janela: "Open Cup" },
+    copa_mx: { modelo: "ano", slots: [13, 21, 30, 37], janela: "Copa MX" },
+    usa_1: { modelo: "ano", slots: [5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35, 38, 41, 44, 47, 50, 53], janela: "MLS Regular Season" },
+    usa_1_playoffs: { modelo: "ano", mata: { "Wildcard": [55], "Round 1": [57, 58, 59], "Conference Semifinals": [61, 62, 63], "Conference Finals": [65, 66, 67], "MLS Cup": [69] }, janela: "MLS Cup Playoffs" },
+    br_4: { modelo: "ano", grupos: [12, 15, 18, 21, 24, 27, 30, 33, 36, 39], mata: { "1/32 de Final": [41, 42], "1/16 de Final": [44, 45], "Oitavas de Final": [47, 48], "Quartas de Final": [50, 51], "Semifinal": [53, 54], "Final": [56, 57] }, janela: "Série D" },
+    br_4_acesso: { modelo: "ano", slots: [53], mata: { "Repescagem": [53] }, janela: "Repescagem de Acesso Série D" },
+    uefa_cl: { modelo: "europeu", liga: [7, 10, 13, 16, 19, 22, 25, 28], mata: { "Playoff": [32, 33], "Oitavos de Final": [36, 37], "Quartas de Final": [39, 40], "Semifinal": [42, 43], "Final": [46] }, janela: "Champions League" },
+    uefa_el: { modelo: "europeu", liga: [7, 10, 13, 16, 19, 22, 25, 28], mata: { "Playoff": [31, 32], "Oitavos de Final": [35, 36], "Quartas de Final": [38, 39], "Semifinal": [41, 42], "Final": [45] }, janela: "Europa League" },
+    uefa_col: { modelo: "europeu", liga: [7, 10, 13, 16, 19, 22, 25, 28], mata: { "Playoff": [30, 31], "Oitavos de Final": [34, 35], "Quartas de Final": [37, 38], "Semifinal": [40, 41], "Final": [44] }, janela: "Conference League" },
+    conmebol_lib: { modelo: "ano", grupos: [12, 17, 22, 27, 32, 37], mata: { "Oitavos de Final": [40, 41], "Quartas de Final": [43, 44], "Semifinal": [46, 47], "Final": [48] }, janela: "Libertadores" },
+    conmebol_sul: { modelo: "ano", grupos: [12, 17, 22, 27, 32, 37], mata: { "Oitavos de Final": [39, 40], "Quartas de Final": [42, 43], "Semifinal": [45, 46], "Final": [47] }, janela: "Sul-Americana" },
+    concacaf_clc: { modelo: "ano", grupos: [10, 14, 18, 22, 26, 30], mata: { "Semifinal": [34, 35], "Final": [40] }, janela: "Concacaf Champions Cup" },
+    afc_cla: { modelo: "europeu", grupos: [10, 14, 18, 22, 26, 30], mata: { "Oitavos de Final": [33, 34], "Quartas de Final": [37, 38], "Semifinal": [41, 42], "Final": [46] }, janela: "AFC Champions" },
+    afc_cla2: { modelo: "europeu", grupos: [10, 14, 18, 22, 26, 30], mata: { "Oitavos de Final": [33, 34], "Quartas de Final": [37, 38], "Semifinal": [41, 42], "Final": [45] }, janela: "AFC Champions 2" },
+    afc_qualy: { modelo: "europeu", grupos: [6, 9, 12, 15], mata: { "Playoff": [18, 19], "Final": [22] }, janela: "AFC Qualification Zone" },
     uefa_supercup: { modelo: "europeu", slots: [2], mata: { "Final": [2] }, janela: "Supercopa da UEFA" },
-    conmebol_recopa: { modelo: "ano", slots: [5, 6], mata: { "Final": [5, 6] }, janela: "Recopa Sul-Americana" },
-    intercontinental_cup: { modelo: "ano", slots: [44, 45, 46], mata: { "Playoff Intercontinental": [44], "Final do Desafiante": [45], "Final": [46] }, janela: "Copa Intercontinental da FIFA" }
+    conmebol_recopa: { modelo: "ano", slots: [6, 7], mata: { "Final": [6, 7] }, janela: "Recopa Sul-Americana" },
+    intercontinental_cup: { modelo: "ano", slots: [49, 50, 51], mata: { "Playoff Intercontinental": [49], "Final do Desafiante": [50], "Final": [51] }, janela: "Copa Intercontinental da FIFA" }
 };
 
 const CALENDARIO_SELECOES_REALISTA = {
@@ -1331,26 +1471,26 @@ const CALENDARIO_SELECOES_REALISTA = {
     // de "Data FIFA"). Tudo o resto — eliminatórias, Nations League, e todos
     // os torneios continentais — agora fica concentrado no FINAL da
     // temporada, sem competições internacionais "a sério" no meio do ano.
-    amistoso: { modelo: "europeu", slots: [7, 13, 22, 31, 44], janela: "Data FIFA" },
-    eliminatorias_uefa: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias UEFA" },
-    eliminatorias_conmebol: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CONMEBOL" },
-    eliminatorias_concacaf: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CONCACAF" },
-    eliminatorias_caf: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias CAF" },
-    eliminatorias_afc: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias AFC" },
-    eliminatorias_ofc: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias OFC" },
-    euro_qualy: { modelo: "europeu", slots: [44, 45, 46, 47, 48], janela: "Eliminatorias da Euro" },
-    nations_a: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
-    nations_b: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
-    nations_c: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
-    nations_d: { modelo: "europeu", slots: [44, 45, 46, 47], janela: "Nations League" },
-    copa_mundo: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50, 51], janela: "Copa do Mundo" },
-    euro: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50, 51], janela: "Eurocopa" },
-    copa_america: { modelo: "europeu", slots: [45, 46, 47, 48, 49, 50], janela: "Copa America" },
-    gold_cup: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Gold Cup" },
-    copa_africa: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Copa Africana" },
-    copa_asia: { modelo: "europeu", slots: [45, 46, 47, 48, 49], janela: "Copa da Asia" },
-    oceania_cup: { modelo: "europeu", slots: [45, 46, 47, 48], janela: "Copa das Nacoes da Oceania" },
-    olimpiadas: { modelo: "europeu", slots: [49, 50, 51, 52], janela: "Olimpiadas" }
+    amistoso: { modelo: "europeu", slots: [8, 15, 24, 33, 47], janela: "Data FIFA" },
+    eliminatorias_uefa: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias UEFA" },
+    eliminatorias_conmebol: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias CONMEBOL" },
+    eliminatorias_concacaf: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias CONCACAF" },
+    eliminatorias_caf: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias CAF" },
+    eliminatorias_afc: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias AFC" },
+    eliminatorias_ofc: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias OFC" },
+    euro_qualy: { modelo: "europeu", slots: [47, 48, 49, 50, 51], janela: "Eliminatorias da Euro" },
+    nations_a: { modelo: "europeu", slots: [47, 48, 49, 50], janela: "Nations League" },
+    nations_b: { modelo: "europeu", slots: [47, 48, 49, 50], janela: "Nations League" },
+    nations_c: { modelo: "europeu", slots: [47, 48, 49, 50], janela: "Nations League" },
+    nations_d: { modelo: "europeu", slots: [47, 48, 49, 50], janela: "Nations League" },
+    copa_mundo: { modelo: "europeu", slots: [48, 49, 50, 51, 52, 53, 54], janela: "Copa do Mundo" },
+    euro: { modelo: "europeu", slots: [48, 49, 50, 51, 52, 53, 54], janela: "Eurocopa" },
+    copa_america: { modelo: "europeu", slots: [48, 49, 50, 51, 52, 53], janela: "Copa America" },
+    gold_cup: { modelo: "europeu", slots: [48, 49, 50, 51, 52], janela: "Gold Cup" },
+    copa_africa: { modelo: "europeu", slots: [48, 49, 50, 51, 52], janela: "Copa Africana" },
+    copa_asia: { modelo: "europeu", slots: [48, 49, 50, 51, 52], janela: "Copa da Asia" },
+    oceania_cup: { modelo: "europeu", slots: [48, 49, 50, 51], janela: "Copa das Nacoes da Oceania" },
+    olimpiadas: { modelo: "europeu", slots: [52, 53, 54, 55], janela: "Olimpiadas" }
 };
 
 function obterPerfilCalendarioPais(pais) {
@@ -1374,20 +1514,41 @@ function infoSlotCalendario(slot, modelo = "europeu") {
 
 function anoDoSlotCalendario(slot, modelo = "europeu") {
     const base = Math.floor(Number(slot) || 1);
-    return modelo === "europeu" && base >= 22 ? anoAtual + 1 : anoAtual;
+    return modelo === "europeu" && base >= 23 ? anoAtual + 1 : anoAtual;
 }
 
 function formatarDataCalendario(evento) {
     const slot = evento?.slot || rodadaAtual;
     const modelo = evento?.calendarioModelo || obterConfigCalendarioCompeticao(evento?.compId || "")?.modelo || "europeu";
     const info = infoSlotCalendario(slot, modelo);
-    return `${info.mes} ${anoDoSlotCalendario(slot, modelo)} • ${evento?.janelaCalendario || info.periodo}`;
+    const diaSemana = obterDiaSemana(slot, modelo);
+    return `${diaSemana}, ${info.mes} ${anoDoSlotCalendario(slot, modelo)} • ${evento?.janelaCalendario || info.periodo}`;
 }
 
 function distribuirSlots(qtd, inicio, fim) {
     if (qtd <= 1) return [fim];
     const passo = (fim - inicio) / (qtd - 1);
     return Array.from({ length: qtd }, (_, i) => Number((inicio + passo * i).toFixed(2)));
+}
+
+// 📅 Determina o dia da semana para um slot do calendário (para exibição realista)
+function obterDiaSemana(slot, modelo = "europeu") {
+    const base = Math.floor(Number(slot) || 1);
+    // Simulação de dias da semana: slot 1 = sábado, slot 2 = domingo, slot 3 = sexta, etc.
+    // Padrão realista: jogos de liga nos fins de semana, copas na semana
+    const dias = ["Sábado", "Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta"];
+    const diaIdx = (base - 1) % 7;
+    return dias[diaIdx];
+}
+
+// 📅 Determina se um slot deve ser jogo de fim de semana ou meio de semana
+function isJogoFimDeSemana(slot, tipoCompeticao = "liga") {
+    const base = Math.floor(Number(slot) || 1);
+    // Ligas geralmente nos fins de semana, copas podem ser na semana
+    if (tipoCompeticao === "liga") {
+        return (base % 7) < 2; // Sábado ou domingo
+    }
+    return (base % 7) >= 2 && (base % 7) <= 4; // Segunda a quarta para copas
 }
 
 function indiceFaseCalendario(fase = "") {
@@ -1619,7 +1780,7 @@ function obterJogadoresNacionalidade(pais) {
     // pudesse sortear o próprio jogador como autor de jogo/gol/assistência
     // daquele país, inflando jogos/gols da seleção do jogador para valores
     // absurdos (ex: 500 jogos, 700 gols) mesmo tendo jogado só 1 partida real.
-    const souDesseTime = jogador && normalizarNacionalidade(jogador.nacionalidade) === alvo;
+    const souDesseTime = jogador && !jogador.aposentadoSelecao && normalizarNacionalidade(jogador.nacionalidade) === alvo;
     return [...(souDesseTime ? [jogador] : []), ...jogadoresIA.filter(j => !j.aposentado && normalizarNacionalidade(j.nacionalidade) === alvo)];
 }
 
@@ -2279,32 +2440,41 @@ window.abrirPerfilSelecao = function(selecaoId) {
     const titulos = selecoesEstado.campeoes?.[sel.id] || [];
     const rankPos = selecoesEstado.ranking?.find(r => r.id === sel.id)?.pos || "—";
     const forca = Math.round(calcularForcaSelecao(sel.id));
-    // 🛡️ FIX: antes só mostrava os 15 primeiros — não dava para ver o elenco
-    // completo da seleção. Agora mostra todos os jogadores elegíveis (com
-    // scroll interno na lista, para não estourar o modal).
-    const elenco = obterJogadoresNacionalidade(sel.pais).sort((a,b) => b.geral - a.geral);
-    // 🛡️ FIX: troféus da seleção estavam pequenos demais (50x50) e sem
-    // destaque nenhum — aumentado e com cartão maior/mais vistoso.
+    // 🛡️ FIX (mostrava o país inteiro, tipo 55 jogadores): antes usava
+    // obterJogadoresNacionalidade(), que traz TODO jogador elegível daquela
+    // nacionalidade no mundo — não é "o elenco da seleção", é o país inteiro.
+    // Agora usa a mesma lógica de convocação por mérito (gerarConvocacaoSelecao)
+    // usada de verdade pra convocar — o mesmo corte de ~23 nomes, nas mesmas
+    // posições, que apareceria numa convocação real agora.
+    const competicaoAtual = obterCompeticaoSelecao(sel);
+    const convocacaoAtual = gerarConvocacaoSelecao(sel, competicaoAtual);
+    const elenco = convocacaoAtual.convocados.sort((a,b) => b.geral - a.geral);
     const htmlTitulos = titulos.length ? `<div class="selecao-titulos-grid">${titulos.map(t => `
-        <div class="card-conquista card-conquista-grande"><img src="${obterUrlImagem(t.nome, 'trofeu')}" class="trofeu-icon" style="width:92px;height:92px;"><div><strong style="color:var(--gold); font-size:1.15rem;">${t.nome}</strong><br><span style="color:#ccc; font-size:1rem;">${t.ano}</span></div></div>`).join("")}</div>`
+        <div class="card-conquista card-conquista-grande"><img loading="lazy" decoding="async" src="${obterUrlImagem(t.nome, 'trofeu')}" class="trofeu-icon" style="width:92px;height:92px;"><div><strong style="color:var(--gold); font-size:1.15rem;">${t.nome}</strong><br><span style="color:#ccc; font-size:1rem;">${t.ano}</span></div></div>`).join("")}</div>`
         : `<p style="color:#aaa; padding:20px; text-align:center;">Nenhum título internacional registrado ainda.</p>`;
+    // 🎨 REDESIGN: linha própria (selecao-convocado-row) em vez de reaproveitar
+    // .convocado-row (feita pra tela de animação de convocação, com grid de 5
+    // colunas — aqui sobravam colunas vazias, já que só tinha foto + nome/OVR).
     const htmlElenco = elenco.map(p => `
-        <div class="convocado-row" onclick="abrirPerfilJogador('${p.id}')">
-            <img src="${obterUrlImagem(p,'jogador')}"><div><strong>${p.nome}</strong><br><small>OVR ${p.geral} • ${p.posicao}</small></div>
+        <div class="selecao-convocado-row" onclick="abrirPerfilJogador('${p.id}')">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(p,'jogador')}">
+            <div><strong>${p.nome}</strong><br><small>OVR ${p.geral} • ${p.posicao}</small></div>
         </div>`).join("");
     const modal = document.getElementById("modalPerfilJogador");
     if(!modal) return;
     const inner = modal.querySelector(".modal-content") || modal.firstElementChild;
     inner.innerHTML = `
-        <div style="display:flex; gap:24px; align-items:center; padding-bottom:20px; border-bottom:1px solid #333;">
-            <img src="${sel.logo}" style="width:100px; border-radius:12px;" onerror="this.style.display='none'">
-            <div><h1 style="margin:0; color:var(--theme-primary);">Seleção ${sel.nome}</h1>
-            <p style="color:#aaa; margin:8px 0 0;">${sel.conf} • FIFA #${rankPos} • Força ${forca}</p></div>
+        <div class="selecao-perfil-header">
+            <img loading="lazy" decoding="async" src="${sel.logo}" class="selecao-perfil-escudo" onerror="this.style.display='none'">
+            <div class="selecao-perfil-titulo">
+                <h1>Seleção ${sel.nome}</h1>
+                <p><span>${sel.conf}</span><span>FIFA #${rankPos}</span><span>Força ${forca}</span></p>
+            </div>
             <button class="close-btn" onclick="document.getElementById('modalPerfilJogador').classList.add('oculto')">✖</button>
         </div>
         <h3 style="color:var(--gold);">🏆 Palmarés</h3>${htmlTitulos}
-        <h3 style="color:var(--theme-primary); margin-top:24px;">Elenco completo (${elenco.length})</h3>
-        <div style="max-height:420px; overflow-y:auto; padding-right:6px;">${htmlElenco}</div>`;
+        <h3 style="color:var(--theme-primary); margin-top:24px;">Elenco Atual (${elenco.length})</h3>
+        <div class="selecao-elenco-lista">${htmlElenco}</div>`;
     modal.classList.remove("oculto");
 };
 
@@ -2319,7 +2489,7 @@ function renderArvoreMataMata(confrontos, corComp = "#00ff88", faseLabel = "") {
             if (!t) return `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
             const elim = conf.vencedorId && conf.vencedorId !== t.id;
             return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilSelecao('${t.id}')">
-                <img class="bracket-slot-crest" src="${t.logo || ""}" onerror="this.style.visibility='hidden'">
+                <img loading="lazy" decoding="async" class="bracket-slot-crest" src="${t.logo || ""}" onerror="this.style.visibility='hidden'">
                 <span class="bracket-slot-name">${t.nome}</span>
                 <span class="bracket-slot-goals">${jogado ? gols : "–"}</span>
                 ${win ? '<span class="bracket-slot-check">✓</span>' : ""}
@@ -2359,7 +2529,7 @@ function renderClassificadosElim(tor, cor) {
         <div><strong>${meta.destinoNome ? `Classificados para ${meta.destinoNome} ${meta.destinoAno}` : "Vagas garantidas"}</strong>
         <div class="comp-vagas-flags">${ids.map(id => {
             const s = SELECOES.find(x => x.id === id);
-            return s ? `<img src="${s.logo}" title="${s.nome}" onclick="abrirPerfilSelecao('${id}')">` : "";
+            return s ? `<img loading="lazy" decoding="async" src="${s.logo}" title="${s.nome}" onclick="abrirPerfilSelecao('${id}')">` : "";
         }).join("")}</div></div>
     </div>`;
 }
@@ -2386,7 +2556,7 @@ function renderTorneioInternacionalCompleto(tor, key) {
     let html = `<div class="comp-int-card comp-int-premium" style="--comp-cor:${cor}">
         <div class="comp-int-header">
             <div class="comp-int-title-block">
-                ${logoTorneio ? `<img class="comp-int-icon" src="${logoTorneio}" alt="${tor.nome}" onerror="this.outerHTML='<span class=&quot;comp-int-icon&quot;>${meta.icon}</span>'">` : `<span class="comp-int-icon">${meta.icon}</span>`}
+                ${logoTorneio ? `<img loading="lazy" decoding="async" class="comp-int-icon" src="${logoTorneio}" alt="${tor.nome}" onerror="this.outerHTML='<span class=&quot;comp-int-icon&quot;>${meta.icon}</span>'">` : `<span class="comp-int-icon">${meta.icon}</span>`}
                 <div><h3>${tor.nome}</h3>
                 <p>${meta.subtitulo || `Temporada ${tor.ano}`}${elim ? " • Sem troféu — apenas vagas" : ""}</p></div>
             </div>
@@ -2407,7 +2577,7 @@ function renderTorneioInternacionalCompleto(tor, key) {
                 const s = SELECOES.find(x => x.id === e.id);
                 const qual = elim && i < cutoff;
                 const rankClass = i === 0 ? "rank-1" : i === 1 ? "rank-2" : i === 2 ? "rank-3" : "";
-                return `<tr class="${qual ? "row-qualifica" : ""} ${elim && i === cutoff - 1 ? "linha-corte" : ""}" onclick="abrirPerfilSelecao('${e.id}')"><td class="col-pos"><span class="grupo-pos ${rankClass}">${qual ? "✓" : i + 1}</span></td><td class="col-team"><img src="${s?.logo || ""}" class="bracket-flag">${s?.nome || e.nome}</td><td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf - e.gs > 0 ? "+" : ""}${e.gf - e.gs}</td></tr>`;
+                return `<tr class="${qual ? "row-qualifica" : ""} ${elim && i === cutoff - 1 ? "linha-corte" : ""}" onclick="abrirPerfilSelecao('${e.id}')"><td class="col-pos"><span class="grupo-pos ${rankClass}">${qual ? "✓" : i + 1}</span></td><td class="col-team"><img loading="lazy" decoding="async" src="${s?.logo || ""}" class="bracket-flag">${s?.nome || e.nome}</td><td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf - e.gs > 0 ? "+" : ""}${e.gf - e.gs}</td></tr>`;
             }).join("")}
         </tbody></table></div></div>`;
     } else if (tor.tipo === "mata-mata" && tor.confrontos) {
@@ -2455,7 +2625,7 @@ function renderizarCompeticoesInternacionais() {
     const stSel = jogador?.statsSelecao || { jogos: 0, gols: 0, assistencias: 0 };
     const minhaCampanhaHtml = selecaoJogador ? `
         <div class="comp-int-minha-selecao">
-            <img src="${selecaoJogador.logo || ''}" alt="${selecaoJogador.nome}" onerror="this.style.visibility='hidden'">
+            <img loading="lazy" decoding="async" src="${selecaoJogador.logo || ''}" alt="${selecaoJogador.nome}" onerror="this.style.visibility='hidden'">
             <div>
                 <span class="comp-int-kicker" style="margin:0;">Minha Seleção</span>
                 <h3>${selecaoJogador.nome}</h3>
@@ -2498,7 +2668,7 @@ function renderizarCompeticoesInternacionais() {
                     const logoCard = obterLogoTorneioInternacional(t.comp.nome, t.meta);
                     return `<button type="button" class="comp-tournament-card ${t.comp.id === compAtual?.comp.id ? "ativo" : ""}" data-comp="${t.comp.id}" style="--comp-cor:${t.tor.cor || CORES_COMP.default}">
                         <div class="comp-tournament-card-top">
-                            ${logoCard ? `<img class="comp-tournament-icon" src="${logoCard}" alt="${t.comp.nome}" onerror="this.outerHTML='<span class=&quot;comp-tournament-icon&quot;>${t.meta.icon}</span>'">` : `<span class="comp-tournament-icon">${t.meta.icon}</span>`}
+                            ${logoCard ? `<img loading="lazy" decoding="async" class="comp-tournament-icon" src="${logoCard}" alt="${t.comp.nome}" onerror="this.outerHTML='<span class=&quot;comp-tournament-icon&quot;>${t.meta.icon}</span>'">` : `<span class="comp-tournament-icon">${t.meta.icon}</span>`}
                             ${camp ? `<span class="comp-tournament-crown" title="${camp}">👑</span>` : ""}
                         </div>
                         <strong>${t.comp.nome.replace("Eliminatórias ", "").replace(" — Divisão ", " Div. ")}</strong>
@@ -2539,7 +2709,7 @@ function renderBlocoFaseInternacional(faseObj, corComp) {
                     const qualifica = i < avancam;
                     return `<tr class="${e.id===jogador?.selecaoId?'bracket-row-me':''} ${qualifica?'row-qualifica':''} ${i===avancam-1?'linha-corte':''}" onclick="abrirPerfilSelecao('${e.id}')">
                         <td class="col-pos"><span class="grupo-pos ${rankClass}">${i+1}</span></td>
-                        <td class="col-team"><img src="${s?.logo||''}" class="bracket-flag">${s?.nome||e.nome}</td>
+                        <td class="col-team"><img loading="lazy" decoding="async" src="${s?.logo||''}" class="bracket-flag">${s?.nome||e.nome}</td>
                         <td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf-e.gs > 0 ? "+" : ""}${e.gf-e.gs}</td>
                     </tr>`;
                 }).join("")}</tbody></table></div>`;
@@ -2563,6 +2733,20 @@ styleOverrides.innerHTML = `
     .view-section { display: none; }
     .view-section.ativo { display: block; }
     
+    /* 🎨 REDESIGN — Perfil da Seleção (abrirPerfilSelecao) */
+    .selecao-perfil-header { display:flex; gap:22px; align-items:center; padding-bottom:20px; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.12); }
+    .selecao-perfil-escudo { width:92px; height:92px; object-fit:contain; border-radius:14px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.12); padding:8px; box-shadow:0 8px 20px rgba(0,0,0,0.35); }
+    .selecao-perfil-titulo { flex:1; }
+    .selecao-perfil-titulo h1 { margin:0; color:var(--theme-primary); font-size:1.7rem; }
+    .selecao-perfil-titulo p { margin:10px 0 0; display:flex; gap:8px; flex-wrap:wrap; }
+    .selecao-perfil-titulo p span { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:20px; padding:4px 12px; font-size:0.8rem; color:#ccc; font-weight:700; }
+    .selecao-elenco-lista { max-height:420px; overflow-y:auto; padding-right:6px; }
+    .selecao-convocado-row { display:flex; align-items:center; gap:14px; padding:9px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.035); margin-bottom:7px; cursor:pointer; transition:background 0.15s ease, transform 0.15s ease, border-color 0.15s ease; }
+    .selecao-convocado-row:hover { background:rgba(255,255,255,0.07); transform:translateX(3px); border-color:rgba(255,255,255,0.2); }
+    .selecao-convocado-row img { width:44px; height:44px; border-radius:50%; object-fit:cover !important; border:1px solid rgba(255,255,255,0.12); flex-shrink:0; }
+    .selecao-convocado-row strong { display:block; font-size:0.92rem; }
+    .selecao-convocado-row small { color:#999; font-weight:700; font-size:0.76rem; }
+
     .foto-perfil-gigante { width: 180px; height: 180px; border-radius: 50%; object-fit: cover !important; border: 4px solid var(--theme-primary); box-shadow: 0 0 15px rgba(0, 255, 136, 0.4); margin-right: 25px; }
     .status-texto-grande { font-size: 1.2rem; margin: 8px 0; color: #ccc; }
     .trofeu-icon { width: 35px; height: 35px; vertical-align: middle; margin-right: 12px; filter: drop-shadow(0 0 5px rgba(255,215,0,0.6)); }
@@ -2597,6 +2781,10 @@ styleOverrides.innerHTML = `
     .classificacao-meta { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
     .meta-pill { padding:8px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.35); color:#dbeafe; font-weight:800; font-size:0.82rem; text-transform:uppercase; }
     .paises-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; }
+    .regioes-filtro { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+    .regiao-filtro-chip { font-size:0.8rem; font-weight:800; padding:8px 16px; border-radius:20px; background:rgba(255,255,255,0.06); color:#ccc; border:1px solid rgba(255,255,255,0.14); cursor:pointer; user-select:none; transition:transform 0.12s, filter 0.12s, background 0.12s, color 0.12s; text-transform:uppercase; letter-spacing:0.02em; }
+    .regiao-filtro-chip:hover { transform:translateY(-1px); background:rgba(255,255,255,0.12); }
+    .regiao-filtro-chip.ativo { background:var(--theme-primary); color:#000; border-color:var(--theme-primary); }
     .btn-pais-filtro { min-height:74px; border:1px solid rgba(255,255,255,0.11); border-radius:12px; background:linear-gradient(145deg, rgba(24,24,27,0.9), rgba(9,9,11,0.9)); color:#fff; cursor:pointer; font-family:'Montserrat'; text-align:left; padding:14px 16px; display:flex; align-items:center; gap:12px; transition:0.22s ease; box-shadow:0 10px 24px rgba(0,0,0,0.22); }
     .btn-pais-filtro:hover { transform:translateY(-2px); border-color:rgba(0,255,136,0.45); background:linear-gradient(145deg, rgba(24,24,27,1), rgba(0,255,136,0.08)); }
     .btn-pais-filtro.ativo { border-color:var(--theme-primary); box-shadow:0 0 0 1px rgba(0,255,136,0.24), 0 18px 36px rgba(0,255,136,0.1); background:linear-gradient(145deg, rgba(0,255,136,0.18), rgba(24,24,27,0.95)); }
@@ -2606,6 +2794,13 @@ styleOverrides.innerHTML = `
     .pais-label { display:block; font-size:1rem; font-weight:900; }
     .pais-sub { display:block; margin-top:3px; color:var(--text-muted); font-size:0.75rem; font-weight:700; text-transform:uppercase; }
     .divisoes-container { display:flex; gap:10px; flex-wrap:wrap; padding:12px; border-radius:14px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.28); }
+    .divisoes-linha-principal { display:flex; gap:10px; flex-wrap:wrap; width:100%; }
+    .btn-estaduais-toggle { background:rgba(250,204,21,0.08); border-color:rgba(250,204,21,0.3); }
+    .btn-estaduais-toggle.ativo { background:var(--gold); border-color:var(--gold); }
+    .painel-estaduais { width:100%; margin-top:12px; padding-top:12px; border-top:1px dashed rgba(255,255,255,0.14); }
+    .painel-estaduais-header { font-size:0.8rem; font-weight:800; color:#d4d4d8; text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+    .painel-estaduais-header span { background:var(--gold); color:#000; border-radius:20px; padding:1px 9px; font-size:0.72rem; }
+    .painel-estaduais-grid { display:flex; gap:10px; flex-wrap:wrap; }
     .btn-divisao { border:1px solid rgba(255,255,255,0.12); color:#d4d4d8; background:rgba(255,255,255,0.04); padding:11px 15px; border-radius:10px; font-family:'Montserrat'; font-weight:900; cursor:pointer; transition:0.2s ease; }
     .btn-divisao small { display:block; margin-top:3px; color:#a1a1aa; font-size:0.68rem; text-transform:uppercase; }
     .btn-divisao.ativo small { color:rgba(0,0,0,0.65); }
@@ -2651,14 +2846,16 @@ styleOverrides.innerHTML = `
     .finalista-card { background:linear-gradient(180deg, rgba(255,255,255,0.07), rgba(0,0,0,0.42)); border:1px solid rgba(255,255,255,0.11); padding:18px; border-radius:16px; min-height:230px; width:auto; transition:all 0.75s ease; opacity:0; transform:translateY(30px); display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; overflow:hidden; }
     .finalista-card:before { content:attr(data-rank); position:absolute; top:12px; left:12px; color:rgba(255,255,255,0.22); font-size:2.4rem; font-weight:900; }
     .finalista-card.revelado { opacity:1; transform:translateY(0); border-color:rgba(255,255,255,0.22); }
-    .finalista-card.vencedor { border-color:#facc15; background:linear-gradient(180deg, rgba(250,204,21,0.24), rgba(0,0,0,0.5)); box-shadow:0 0 50px rgba(250,204,21,0.42); transform:scale(1.08) translateY(-12px); z-index:10; }
+    .finalista-card.vencedor { border-color:#facc15; background:linear-gradient(180deg, rgba(250,204,21,0.24), rgba(0,0,0,0.5)); transform:scale(1.08) translateY(-12px); z-index:10; animation:pulsarVencedor 1.8s ease-in-out infinite alternate; }
     .finalista-card img { width:92px; height:92px; border-radius:50%; margin-bottom:12px; object-fit:cover !important; border:3px solid rgba(255,255,255,0.18); }
     .finalista-card.vencedor img { border-color:#facc15; box-shadow:0 0 26px rgba(250,204,21,0.45); }
     .finalista-card h4 { margin:6px 0; font-size:1.08rem; }
     .finalista-stats { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:10px; }
     .finalista-stats span { padding:6px 8px; border-radius:999px; background:rgba(255,255,255,0.08); color:#e5e7eb; font-size:0.76rem; font-weight:800; }
     .gala-awards-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:24px 0; }
-    .gala-award { background:rgba(255,255,255,0.055); padding:15px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); text-align:left; }
+    .gala-award { background:rgba(255,255,255,0.055); padding:15px; border-radius:14px; border:1px solid rgba(255,255,255,0.12); text-align:left; opacity:0; animation:popIn 0.45s ease-out forwards; transition:transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease; }
+    .gala-award:hover { transform:translateY(-5px); box-shadow:0 14px 30px rgba(0,0,0,0.4); border-color:rgba(250,204,21,0.35); }
+    .gala-award:nth-child(1) { animation-delay:0.05s; } .gala-award:nth-child(2) { animation-delay:0.15s; } .gala-award:nth-child(3) { animation-delay:0.25s; } .gala-award:nth-child(4) { animation-delay:0.35s; } .gala-award:nth-child(5) { animation-delay:0.45s; } .gala-award:nth-child(6) { animation-delay:0.55s; }
     .gala-award img { width:46px; height:46px; object-fit:contain !important; float:right; margin-left:10px; filter:drop-shadow(0 5px 12px rgba(0,0,0,0.45)); }
     .gala-award small { display:block; color:#a1a1aa; font-weight:900; text-transform:uppercase; margin-bottom:8px; }
     .gala-award strong { display:block; color:#fff; line-height:1.25; }
@@ -2667,10 +2864,29 @@ styleOverrides.innerHTML = `
     .gala-premio-palco h3 { margin:0 0 6px; color:#facc15; font-size:1.45rem; text-transform:uppercase; }
     .gala-candidatos-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-top:16px; }
     .gala-candidato { border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:14px; background:rgba(255,255,255,0.055); transition:0.35s ease; }
-    .gala-candidato.vencedor { border-color:#facc15; background:rgba(250,204,21,0.14); box-shadow:0 0 28px rgba(250,204,21,0.25); transform:translateY(-5px); }
+    .gala-candidato.vencedor { border-color:#facc15; background:rgba(250,204,21,0.14); transform:translateY(-5px); animation:pulsarVencedor 1.8s ease-in-out infinite alternate; }
     .gala-candidato img { width:70px; height:70px; border-radius:50%; object-fit:cover !important; border:2px solid rgba(255,255,255,0.18); }
     .gala-candidato strong { display:block; margin-top:8px; color:#fff; }
     .gala-candidato span { display:block; margin-top:5px; color:#a1a1aa; font-weight:800; font-size:0.82rem; }
+
+    /* PLACAR TOP 30 — BOLA DE OURO (antes sem nenhum CSS: renderizava como divs soltas) */
+    .top30-board { display:flex; flex-direction:column; gap:6px; max-height:380px; overflow-y:auto; padding:8px 12px 8px 4px; margin-top:14px; scrollbar-width:thin; scrollbar-color:rgba(250,204,21,0.4) transparent; }
+    .top30-board::-webkit-scrollbar { width:6px; }
+    .top30-board::-webkit-scrollbar-thumb { background:rgba(250,204,21,0.35); border-radius:999px; }
+    .top30-slot { display:flex; align-items:center; gap:12px; padding:9px 16px; border-radius:10px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); opacity:0.5; transition:opacity 0.5s ease, background 0.5s ease, border-color 0.5s ease, transform 0.4s ease; }
+    .top30-slot.revelado { opacity:1; background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.14); animation:top30Pop 0.5s ease-out; }
+    .top30-slot.top3.revelado { background:linear-gradient(90deg, rgba(250,204,21,0.16), rgba(255,255,255,0.04)); border-color:rgba(250,204,21,0.5); box-shadow:0 6px 22px rgba(250,204,21,0.18); }
+    .top30-rank { width:36px; flex-shrink:0; font-weight:900; font-size:1.02rem; color:#71717a; text-align:center; }
+    .top30-slot.top3 .top30-rank { color:#facc15; font-size:1.25rem; text-shadow:0 0 10px rgba(250,204,21,0.5); }
+    .top30-slot img { width:44px; height:44px; border-radius:50%; object-fit:cover !important; border:2px solid rgba(255,255,255,0.2); flex-shrink:0; }
+    .top30-slot.top3.revelado img { border-color:#facc15; animation:glowTaca 1.6s ease-in-out infinite alternate; }
+    .top30-avatar-oculto { width:44px; height:44px; border-radius:50%; background:rgba(255,255,255,0.06); border:2px dashed rgba(255,255,255,0.2); display:flex; align-items:center; justify-content:center; color:#52525b; font-weight:900; flex-shrink:0; }
+    .top30-info { display:flex; flex-direction:column; align-items:flex-start; text-align:left; overflow:hidden; min-width:0; }
+    .top30-info strong { color:#fff; font-size:0.92rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .top30-slot:not(.revelado) .top30-info strong { color:#52525b; letter-spacing:2px; }
+    .top30-info span { color:#a1a1aa; font-size:0.74rem; font-weight:700; }
+    @keyframes top30Pop { 0% { transform:scale(0.94); } 55% { transform:scale(1.015); } 100% { transform:scale(1); } }
+
     .conquista-stack { position:relative; cursor:pointer; }
     .conquista-count { position:absolute; top:8px; left:58px; min-width:34px; padding:4px 7px; border-radius:999px; background:var(--gold); color:#000; font-weight:900; text-align:center; box-shadow:0 6px 14px rgba(0,0,0,0.35); }
     .conquista-detalhes { display:none; margin-top:10px; color:#cbd5e1; font-size:0.92rem; line-height:1.6; }
@@ -2683,7 +2899,7 @@ styleOverrides.innerHTML = `
     .interview-card { width:min(720px, 92vw); background:linear-gradient(145deg, #18181b, #09090b); border:1px solid rgba(0,255,136,0.28); border-radius:16px; padding:26px; box-shadow:0 24px 70px rgba(0,0,0,0.75); }
     .interview-option { width:100%; margin-top:10px; text-align:left; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:#fff; border-radius:10px; padding:14px; font-family:'Montserrat'; font-weight:800; cursor:pointer; }
     .interview-option:hover { border-color:var(--theme-primary); background:rgba(0,255,136,0.1); }
-    .gala-winner-name { color:#facc15; font-size:3rem; margin:14px 0 4px; text-transform:uppercase; text-shadow:0 0 22px rgba(250,204,21,0.55); }
+    .gala-winner-name { background:linear-gradient(90deg, #fff7ad, #facc15, #fde68a, #facc15, #fff7ad); background-size:300% auto; -webkit-background-clip:text; background-clip:text; color:transparent; font-size:3rem; margin:14px 0 4px; text-transform:uppercase; animation:brilhoTexto 3.2s linear infinite; filter:drop-shadow(0 0 20px rgba(250,204,21,0.55)); }
     @keyframes galaSpotlight { 0%, 35% { transform:translateX(-100%); } 60%, 100% { transform:translateX(100%); } }
     @keyframes trofeuFloat { 0%,100% { transform:translateY(0) scale(1); } 50% { transform:translateY(-8px) scale(1.03); } }
     @keyframes popIn { 0% { transform: scale(0.5) translateY(20px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
@@ -2698,11 +2914,9 @@ styleOverrides.innerHTML = `
     #modalEntrevista { background:linear-gradient(rgba(0,0,0,0.72), rgba(0,0,0,0.86)), url('https://images.unsplash.com/photo-1495020689067-958852a7765e?q=80&w=1800&auto=format&fit=crop'); background-size:cover; background-position:center; }
     .interview-card { position:relative; overflow:hidden; border-top:4px solid var(--theme-primary); background:linear-gradient(145deg, rgba(24,24,27,0.97), rgba(9,9,11,0.97)); }
     .interview-card:before { content:''; position:absolute; left:0; right:0; top:0; height:76px; background:linear-gradient(90deg, rgba(0,255,136,0.18), transparent); pointer-events:none; }
-    .match-scoreboard { background:radial-gradient(circle at 50% 0%, rgba(0,255,136,0.12), transparent 40%), linear-gradient(180deg, rgba(24,24,27,0.96), rgba(9,9,11,1)); padding:34px !important; }
-    .match-scoreboard h2 { color:#e5e7eb !important; font-size:1.25rem !important; font-weight:900; }
-    .match-logo { width:58px !important; height:58px !important; border-radius:12px !important; background:rgba(255,255,255,0.95); padding:5px; object-fit:contain !important; }
-    .score-number { font-size:4.8rem !important; color:#fff; text-shadow:0 0 24px rgba(255,255,255,0.28); }
-    .match-log { background:linear-gradient(180deg, #050505, #0b0b0f) !important; height:230px !important; color:#d1d5db !important; font-family:'Montserrat', monospace !important; }
+    .match-scoreboard-compact { background:radial-gradient(circle at 50% 0%, rgba(0,255,136,0.10), transparent 45%), linear-gradient(180deg, rgba(24,24,27,0.96), rgba(9,9,11,1)); }
+    .match-logo { border-radius:8px !important; background:rgba(255,255,255,0.95); padding:3px; object-fit:contain !important; }
+    .match-log { background:linear-gradient(180deg, #050505, #0b0b0f) !important; color:#d1d5db !important; font-family:'Montserrat', monospace !important; }
     .match-log div { border-bottom:1px dashed rgba(255,255,255,0.09) !important; }
     .match-log .gol-meu { color:#facc15 !important; background:rgba(250,204,21,0.08); border:1px solid rgba(250,204,21,0.25); border-radius:8px; padding:10px; box-shadow:0 0 18px rgba(250,204,21,0.12); }
     .match-log .gol-time { color:#00ff88 !important; font-weight:900; }
@@ -2711,6 +2925,8 @@ styleOverrides.innerHTML = `
     .ranking-mini h4 { margin:0 0 10px; color:var(--theme-primary); text-transform:uppercase; font-size:0.82rem; }
     .ranking-mini-row { display:flex; align-items:center; gap:8px; justify-content:space-between; padding:8px 0; border-bottom:1px dashed rgba(255,255,255,0.08); font-size:0.82rem; }
     .ranking-mini-row img { width:26px; height:26px; border-radius:50%; object-fit:cover !important; }
+    .ranking-mini-row-eu { background:rgba(250,204,21,0.10); border:1px solid rgba(250,204,21,0.35); border-radius:8px; padding:8px !important; margin-top:2px; }
+    .ranking-mini-row-eu strong { color:var(--gold) !important; }
 
     /* CONVERSA COM O TÉCNICO (avisos de escalação) */
     #modalConversaTecnico { z-index:1000; background:rgba(0,0,0,0.82); backdrop-filter:blur(6px); }
@@ -2743,6 +2959,17 @@ styleOverrides.innerHTML = `
     .hof-trofeu-item span { font-size:0.74rem; color:#d4d4d8; font-weight:700; line-height:1.25; }
     .hof-trofeu-item em { position:absolute; top:6px; right:8px; font-style:normal; font-size:0.7rem; font-weight:900; color:var(--gold); background:rgba(0,0,0,0.5); border-radius:8px; padding:1px 6px; }
     .hof-trofeu-tag { display:inline-block; background:rgba(250,204,21,0.12); color:#facc15; border:1px solid rgba(250,204,21,0.3); border-radius:999px; padding:2px 8px; font-size:0.72rem; font-weight:700; margin:2px 3px 2px 0; white-space:nowrap; }
+
+    /* GALERIA DE TÉCNICOS */
+    .tecnicos-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:16px; margin-top:6px; }
+    .tecnico-card { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.09); border-radius:14px; padding:16px 12px; text-align:center; transition:transform 0.15s, border-color 0.15s; color:inherit; font:inherit; cursor:pointer; width:100%; }
+    .tecnico-card:hover { transform:translateY(-3px); border-color:rgba(0,255,136,0.35); }
+    .tecnico-card .tecnico-foto { width:78px; height:78px; border-radius:50%; object-fit:cover; border:3px solid var(--theme-primary); margin:0 auto 10px; display:block; background:rgba(255,255,255,0.06); }
+    .tecnico-card .tecnico-nome { font-weight:800; font-size:0.92rem; color:#fff; margin:0 0 4px; line-height:1.2; }
+    .tecnico-card .tecnico-vinculo { font-size:0.76rem; color:var(--theme-primary); font-weight:700; margin:0 0 6px; min-height:1em; }
+    .tecnico-card .tecnico-meta { font-size:0.7rem; color:#9ca3af; display:flex; flex-direction:column; gap:2px; }
+    .tecnico-card .tecnico-estilo-chip { display:inline-block; margin-top:8px; padding:3px 9px; border-radius:999px; font-size:0.66rem; font-weight:800; text-transform:uppercase; background:rgba(0,255,136,0.12); color:var(--theme-primary); border:1px solid rgba(0,255,136,0.3); }
+    .tecnico-card .tecnico-rep { margin-top:6px; font-size:0.72rem; color:var(--gold); font-weight:800; }
 
     /* NOTÍCIAS: chips de filtro (clicáveis) */
     .noticia-filtro-chip { font-size:0.72rem; font-weight:800; padding:5px 10px; border-radius:20px; background:color-mix(in srgb, var(--chip-cor) 13%, transparent); color:var(--chip-cor); border:1px solid color-mix(in srgb, var(--chip-cor) 35%, transparent); cursor:pointer; user-select:none; transition:transform 0.12s, filter 0.12s; }
@@ -2786,13 +3013,14 @@ styleOverrides.innerHTML = `
     .gala-progresso span.feito { color:#a1a1aa; }
 
     /* GALA — Melhor 11 do Mundo (campo tático) */
-    .melhor11-pitch { position:relative; width:min(720px, 92vw); aspect-ratio:1.55/1; margin:20px auto; border-radius:16px; background:linear-gradient(180deg, #1c6e3a, #14532d); border:3px solid rgba(255,255,255,0.55); overflow:hidden; box-shadow:inset 0 0 60px rgba(0,0,0,0.4); }
-    .melhor11-pitch::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 10%, transparent 10% 20%); }
-    .melhor11-pitch::after { content:''; position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1/1; border:2px solid rgba(255,255,255,0.5); border-radius:50%; transform:translate(-50%,-50%); }
-    .melhor11-vaga { position:absolute; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:4px; width:96px; opacity:0; animation:popIn 0.4s ease-out forwards; }
+    .melhor11-campo { position:relative; width:min(720px, 92vw); min-height:400px; margin:20px auto; border-radius:16px; background:linear-gradient(180deg, #1c6e3a, #14532d); border:3px solid rgba(255,255,255,0.55); overflow:hidden; box-shadow:inset 0 0 60px rgba(0,0,0,0.4); display:flex; flex-direction:column-reverse; justify-content:space-evenly; padding:22px 14px; gap:8px; }
+    .melhor11-campo::before { content:''; position:absolute; inset:0; background-image:repeating-linear-gradient(0deg, rgba(255,255,255,0.05) 0 10%, transparent 10% 20%); pointer-events:none; }
+    .melhor11-campo::after { content:''; position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1/1; border:2px solid rgba(255,255,255,0.5); border-radius:50%; transform:translate(-50%,-50%); pointer-events:none; }
+    .melhor11-linha { position:relative; z-index:1; display:flex; justify-content:space-evenly; align-items:flex-start; width:100%; flex-wrap:wrap; gap:10px 6px; }
+    .melhor11-vaga { display:flex; flex-direction:column; align-items:center; gap:4px; width:88px; opacity:0; animation:popIn 0.4s ease-out forwards; }
     .melhor11-vaga img { width:46px; height:46px; border-radius:50%; object-fit:cover; border:2px solid #facc15; background:#222; box-shadow:0 4px 12px rgba(0,0,0,0.5); }
     .melhor11-vaga .melhor11-avatar-vazio { width:46px; height:46px; border-radius:50%; background:rgba(255,255,255,0.15); border:2px dashed rgba(255,255,255,0.4); display:flex; align-items:center; justify-content:center; font-size:0.8rem; color:#fff; }
-    .melhor11-vaga strong { font-size:0.68rem; color:#fff; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,0.8); line-height:1.1; background:rgba(0,0,0,0.45); padding:2px 5px; border-radius:5px; }
+    .melhor11-vaga strong { font-size:0.68rem; color:#fff; text-align:center; text-shadow:0 1px 3px rgba(0,0,0,0.8); line-height:1.1; background:rgba(0,0,0,0.45); padding:2px 5px; border-radius:5px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .melhor11-vaga span { font-size:0.6rem; color:#facc15; font-weight:900; text-shadow:0 1px 3px rgba(0,0,0,0.8); }
     .gala-award.premio-especial { border-color:rgba(250,204,21,0.4); background:linear-gradient(135deg, rgba(250,204,21,0.1), rgba(255,255,255,0.04)); }
     .fase-bloco { border-radius:14px !important; background:linear-gradient(145deg, rgba(24,24,27,0.92), rgba(0,0,0,0.58)) !important; border:1px solid rgba(255,255,255,0.12) !important; }
@@ -2976,6 +3204,37 @@ styleOverrides.innerHTML = `
     .manager-row em { font-style:normal; color:#facc15; font-weight:900; font-size:0.82rem; }
     .manager-row .btn { padding:8px 10px; font-size:0.72rem; }
     @media (max-width: 900px) { .manager-grid, .manager-kpis, .manager-controls { grid-template-columns:1fr; } .manager-hero { align-items:flex-start; flex-direction:column; } }
+
+    /* ✨ Camada extra de polimento sobre o hero/KPIs/painéis/linhas do
+       Manager — reforça profundidade, hierarquia e feedback de interação
+       sem mexer na estrutura HTML já existente. */
+    .manager-hero { position:relative; overflow:hidden; }
+    .manager-hero::before { content:""; position:absolute; top:-40%; left:-10%; width:60%; height:180%; background:linear-gradient(115deg, transparent 40%, rgba(255,255,255,.05) 50%, transparent 60%); pointer-events:none; }
+    .manager-license { position:relative; transition:transform .2s ease, border-color .2s ease; }
+    .manager-license:hover { transform:translateY(-2px); border-color:rgba(250,204,21,.35); }
+    .manager-kpis div { position:relative; overflow:hidden; transition:transform .2s ease, box-shadow .2s ease; }
+    .manager-kpis div::before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:linear-gradient(180deg, var(--theme-primary), transparent); }
+    .manager-kpis div:hover { transform:translateY(-3px); box-shadow:0 12px 26px rgba(0,0,0,.35); }
+    .manager-panel { position:relative; transition:box-shadow .2s ease; }
+    .manager-panel::before { content:""; position:absolute; top:0; left:16px; right:16px; height:1px; background:linear-gradient(90deg, transparent, rgba(0,255,136,.4), transparent); }
+    .manager-panel h3 { display:flex; align-items:center; gap:8px; letter-spacing:.06em; }
+    .manager-row { transition:transform .15s ease, border-color .15s ease, background .15s ease; }
+    .manager-row:hover { transform:translateX(3px); border-color:rgba(255,255,255,.18); background:rgba(255,255,255,.06); }
+    .manager-row img { transition:box-shadow .2s ease; }
+    .manager-row-titular img { box-shadow:0 0 0 2px rgba(16,185,129,.55); }
+    .manager-club-card { position:relative; }
+    .manager-club-card::after { content:""; position:absolute; inset:0; border-radius:16px; box-shadow:inset 0 0 0 1px transparent; transition:box-shadow .2s ease; pointer-events:none; }
+    .manager-club-card:hover::after { box-shadow:inset 0 0 0 1px rgba(0,255,136,.35); }
+    .manager-full-squad-list { display:flex; flex-direction:column; gap:8px; animation:fadeInView .3s ease-out; }
+    .manager-retrospecto-grid { display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; }
+    .retrospecto-item { text-align:center; padding:14px 8px; border-radius:12px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); }
+    .retrospecto-item strong { display:block; font-size:1.4rem; font-weight:900; color:#eee; }
+    .retrospecto-item span { display:block; font-size:.7rem; color:#888; text-transform:uppercase; font-weight:800; margin-top:4px; }
+    .retrospecto-item.vitoria strong { color:#00ff88; }
+    .retrospecto-item.empate strong { color:#facc15; }
+    .retrospecto-item.derrota strong { color:#f87171; }
+    @media (max-width:640px) { .manager-retrospecto-grid { grid-template-columns:repeat(2, 1fr); } }
+    .manager-shell { position:relative; min-height:calc(100vh - 220px); background:radial-gradient(circle at 15% 0%, rgba(0,255,136,.035), transparent 40%), radial-gradient(circle at 85% 30%, rgba(250,204,21,.03), transparent 45%); }
 
     /* ==========================================
        🏆 REDESIGN 2026: COMPETIÇÕES INT — GRUPOS & MATA-MATA
@@ -3167,6 +3426,9 @@ function obterPaisCompeticaoId(compId) {
     // brasileiros — sem isto, o jogo tentava (erradamente) tratá-los como um
     // "país" chamado "estadual", quebrando o calendário e o agrupamento por país.
     if (partes[0] === "estadual") return "br";
+    // 🛡️ FIX: competições continentais (afc_cla, conmebol_lib, uefa_cl, etc.)
+    // retornam o prefixo da conferação
+    if (partes[0] === "afc" || partes[0] === "conmebol" || partes[0] === "uefa" || partes[0] === "concacaf" || partes[0] === "caf") return partes[0];
     return partes[0];
 }
 
@@ -3180,6 +3442,7 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Luva de Ouro")) return "https://i.ibb.co/Kj8b22RW/3c80b476-f71c-4436-90f5-a0e16a48e56d.png";
         if(entidade.includes("UEFA Best Player")) return "https://tmssl.akamaized.net//images/titel/medium/152.png?lm=1396275124";
         if(entidade.includes("FIFA The Best")) return "https://tmssl.akamaized.net//images/titel/medium/195.png?lm=1575286754";
+        if(entidade.includes("Melhor 11 do Mundo")) return "https://tmssl.akamaized.net//images/titel/medium/195.png?lm=1575286754";
 
         if(entidade.includes("Champions League") || entidade.includes("uefa_cl")) return "https://i.ibb.co/4nKhHSYv/5491af57-2610-4491-8266-979218ed4fb0.png";
         if(entidade.includes("Europa League") || entidade.includes("uefa_el")) return "https://i.ibb.co/bRsmDFBX/bdf3a3e3-0934-46d3-b907-7677c066f624.png";
@@ -3194,15 +3457,16 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Copa da Ásia") || entidade.includes("asian_cup")) return "https://upload.wikimedia.org/wikipedia/en/thumb/0/08/AFC_Asian_Cup_logo.svg/512px-AFC_Asian_Cup_logo.svg.png";
         if(entidade.includes("Oceania Cup") || entidade.includes("ofc_nations_cup") || entidade.includes("Copa das Nações da Oceania") || entidade.includes("oceania_cup")) return "https://tmssl.akamaized.net//images/erfolge/medium/108.png?lm=1461847499";
 
-        if(entidade.includes("Mundial Sub17") || entidade.includes("mundial_sub17")) return "https://i.ibb.co/8ngb5Csz/031efcc4-f6b7-422f-8e52-9d252579b9b2.png";
+        if(entidade.includes("Mundial Sub17") || entidade.includes("mundial_sub17")) return "https://upload.wikimedia.org/wikipedia/commons/thumb/1/15/Trophy_U17.png/250px-Trophy_U17.png";
         if(entidade.includes("Mundial Sub21") || entidade.includes("mundial_sub21")) return "https://tmssl.akamaized.net//images/erfolge/medium/158.png?lm=1657627706";
 
 
         if(entidade.includes("Libertadores") || entidade.includes("conmebol_lib")) return "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/328-3287452_copa-libertadores-primer-trofeo-hd-png-download.png/250px-328-3287452_copa-libertadores-primer-trofeo-hd-png-download.png";
         if(entidade.includes("Sulamericana") || entidade.includes("conmebol_sul")) return "https://tmssl.akamaized.net//images/erfolge/medium/154.png?lm=1520606999";
 
-        if(entidade.includes("afc_cla ") || entidade.includes("AFC Champions")) return "https://r2.thesportsdb.com/images/media/league/trophy/5dzvma1747117869.png/medium";
-
+            if(entidade.includes("afc_cla2") || entidade.includes("AFC Champions 2")) return "https://i.ibb.co/0ynKNm0g/image.png";
+            if(entidade.includes("afc_cla") || entidade.includes("AFC Champions")) return "https://r2.thesportsdb.com/images/media/league/trophy/5dzvma1747117869.png/medium";
+            
         if(entidade.includes("concacaf_clc") || entidade.includes("Concacaf Champions Cup")) return "https://tmssl.akamaized.net//images/erfolge/medium/306.png?lm=1654760845";
 
         if(entidade.includes("intercontinental_cup") || entidade.includes("Intercontinental FIFA")) return "https://tmssl.akamaized.net//images/erfolge/medium/1100.png?lm=1734608335";
@@ -3291,6 +3555,10 @@ function obterUrlImagem(entidade, tipo) {
         if (entidade.includes("Scottish Challenge Cup") || entidade.includes("copa_sco")) return "https://tmssl.akamaized.net//images/erfolge/medium/87.png?lm=1461847499";
         if (entidade.includes("Scottish Super Cup") || entidade.includes("supercopa_sco")) return "https://tmssl.akamaized.net//images/erfolge/medium/88.png?lm=1461847499";
 
+        if (entidade == ("Brack Super League") || entidade.includes("sui_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/23.png?lm=1655896213";
+        if (entidade == ("Schweizer Cup") || entidade.includes("copa_sui")) return "https://tmssl.akamaized.net//images/erfolge/medium/99.png?lm=1520606999";
+        
+
          //ASIA
         if(entidade.includes("Saudi Pro") || entidade.includes("ara_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/271.png?lm=1748099013";
         if(entidade.includes("Kings Cup") || entidade.includes("copa_ara")) return "https://tmssl.akamaized.net//images/erfolge/medium/456.png?lm=1626256782";
@@ -3306,7 +3574,8 @@ function obterUrlImagem(entidade, tipo) {
         if(entidade.includes("Leagues Cup") || entidade.includes("Supercopa_usa")) return "https://tmssl.akamaized.net//images/erfolge/medium/604.png?lm=1606063811";
 
         if(entidade == ("Liga MX Apertura") || entidade.includes("mx_1")) return "https://tmssl.akamaized.net//images/erfolge/medium/153.png?lm=1461847499";
-        if(entidade == ("Copa Mexico") || entidade.includes("copa_mx")) return "";
+        if(entidade == ("Copa Mexico") || entidade.includes("copa_mx")) return "https://tmssl.akamaized.net//images/erfolge/medium/392.png?lm=1654154831";
+        if(entidade == ("Campeón de Campeones") || entidade.includes("supercopa_mx")) return "https://tmssl.akamaized.net//images/erfolge/medium/577.png?lm=1653896973";
 
     }
     let entidadex = entidade;
@@ -3314,15 +3583,88 @@ function obterUrlImagem(entidade, tipo) {
         if (tipo === 'jogador') { let enc = jogadoresIA.find(j => j.nome === entidade || j.id === entidade); if (enc) entidadex = enc; } 
         else if (tipo === 'clube') { let enc = clubes.find(c => c.id === entidade || c.nome === entidade); if (enc) entidadex = enc; } 
         else if (tipo === 'competicao') { let enc = competicoes.find(c => c.id === entidade); if (enc) entidadex = enc; }
+        else if (tipo === 'tecnico') { let enc = (treinadoresIA || []).find(t => t.nome === entidade || t.id === entidade); if (enc) entidadex = enc; }
     }
     const urlDatabase = entidadex.foto || entidadex.logo;
     if (urlDatabase && urlDatabase.trim() !== "") return urlDatabase;
+
+    // 👔 Técnico sem foto ainda: dispara busca assíncrona na Wikipedia (só uma
+    // vez por técnico) e, enquanto isso, cai no avatar gerado logo abaixo.
+    if (tipo === 'tecnico' && typeof entidadex === 'object' && entidadex.id) carregarFotoTecnico(entidadex);
 
     let nome = entidadex.nome || entidadex; let limpo = encodeURIComponent(nome);
     if(tipo === 'jogador') return `https://ui-avatars.com/api/?name=${limpo}&background=random&color=fff&size=150&font-size=0.4`;
     if(tipo === 'clube') return `https://ui-avatars.com/api/?name=${limpo}&background=18181b&color=00ff88&size=150&rounded=true&font-size=0.4`;
     if(tipo === 'competicao') return `https://ui-avatars.com/api/?name=${limpo}&background=facc15&color=000&size=150&rounded=true&font-size=0.4`;
+    if(tipo === 'tecnico') return `https://ui-avatars.com/api/?name=${limpo}&background=27272a&color=00ff88&size=150&rounded=true&font-size=0.4&bold=true`;
     return "";
+}
+
+// 💾 Cache persistente (localStorage) das fotos de técnico já resolvidas —
+// sem isto, toda vez que o jogo carregava (nova sessão/reload) todos os
+// técnicos com foto ainda não vista voltavam a bater na API da Wikipedia do
+// zero. Guarda tanto os acertos (URL da foto) quanto os "não achei nada"
+// (null), pra nunca repetir a mesma busca falha.
+const CACHE_FOTO_TECNICO_KEY = "fotosTecnicosCache_v1";
+function _lerCacheFotoTecnico() {
+    try { return JSON.parse(localStorage.getItem(CACHE_FOTO_TECNICO_KEY) || "{}"); } catch (e) { return {}; }
+}
+function _salvarCacheFotoTecnico(cache) {
+    try { localStorage.setItem(CACHE_FOTO_TECNICO_KEY, JSON.stringify(cache)); } catch (e) { /* localStorage cheio ou indisponível: perde só o cache, não quebra nada */ }
+}
+
+// 🌐 Busca a foto real de um técnico na Wikipedia (API pública, com CORS
+// liberado para leitura anônima) e guarda em treinador.foto para as próximas
+// renderizações. Não repete a busca se já tentou antes (fotoIndisponivel) ou
+// se já tem foto. Chamado internamente por obterUrlImagem — nunca precisa
+// ser chamado à mão.
+const _tecnicosBuscandoFoto = new Set();
+async function carregarFotoTecnico(treinador) {
+    if (!treinador || treinador.foto || treinador.fotoIndisponivel) return;
+    if (_tecnicosBuscandoFoto.has(treinador.id)) return;
+    _tecnicosBuscandoFoto.add(treinador.id);
+    try {
+        const titulo = (treinador.wikiNome || treinador.nome || "").trim();
+        if (!titulo) { treinador.fotoIndisponivel = true; return; }
+
+        const cache = _lerCacheFotoTecnico();
+        const cacheKey = titulo.toLowerCase();
+        if (cache[cacheKey] !== undefined) {
+            if (cache[cacheKey]) {
+                treinador.foto = cache[cacheKey];
+                document.querySelectorAll(`img[data-tecnico-id="${treinador.id}"]`).forEach(img => { img.src = treinador.foto; });
+            } else {
+                treinador.fotoIndisponivel = true;
+            }
+            return;
+        }
+
+        const tituloEnc = encodeURIComponent(titulo);
+        const resp = await fetch(`https://pt.wikipedia.org/api/rest_v1/page/summary/${tituloEnc}`);
+        let dados = resp.ok ? await resp.json() : null;
+        if (!dados?.thumbnail?.source) {
+            // Fallback para a Wikipedia em inglês quando não existe verbete em PT.
+            const resp2 = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${tituloEnc}`);
+            dados = resp2.ok ? await resp2.json() : null;
+        }
+        if (dados?.thumbnail?.source) {
+            treinador.foto = dados.thumbnail.source;
+            cache[cacheKey] = treinador.foto;
+            _salvarCacheFotoTecnico(cache);
+            // 🔄 Atualiza ao vivo qualquer <img data-tecnico-id="..."> já na tela
+            // (grade de Técnicos, perfil do clube, modal do técnico) sem precisar
+            // re-renderizar a view inteira.
+            document.querySelectorAll(`img[data-tecnico-id="${treinador.id}"]`).forEach(img => { img.src = treinador.foto; });
+        } else {
+            treinador.fotoIndisponivel = true;
+            cache[cacheKey] = null;
+            _salvarCacheFotoTecnico(cache);
+        }
+    } catch (e) {
+        treinador.fotoIndisponivel = true;
+    } finally {
+        _tecnicosBuscandoFoto.delete(treinador.id);
+    }
 }
 
 function calcularValorNumerico(geral, idade) {
@@ -3518,7 +3860,7 @@ function renderNegociacaoModal() {
 
     body.innerHTML = `
         <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1);">
-            <img src="${obterUrlImagem(clube,'clube')}" style="width:52px; height:52px; object-fit:contain; background:#fff; border-radius:8px; padding:4px;">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(clube,'clube')}" style="width:52px; height:52px; object-fit:contain; background:#fff; border-radius:8px; padding:4px;">
             <div><span class="meta-pill">${tipoLabel}</span><h3 style="margin:6px 0 0;">${clube?.nome || ""}</h3></div>
             <div style="margin-left:auto; text-align:right;"><span style="color:#888; font-size:0.75rem; text-transform:uppercase; font-weight:800;">Rodada</span><br><strong>${negociacaoAtual.rodada}/${negociacaoAtual.maxRodadas}</strong></div>
         </div>
@@ -3657,7 +3999,10 @@ window.cancelarNegociacao = function() {
     negociacaoAtual = null;
     document.getElementById("modalNegociacao")?.classList.add("oculto");
 };
-document.getElementById("btnFecharNegociacao")?.addEventListener("click", () => { window.cancelarNegociacao(); });
+document.getElementById("btnFecharNegociacao")?.addEventListener("click", () => {
+    if (managerNegociacaoAtual) window.managerFecharNegociacao(true);
+    else window.cancelarNegociacao();
+});
 
 function registrarEstatisticaCompeticao(j, compId, jogos = 0, gols = 0, assistencias = 0) {
     if(!j || !compId) return;
@@ -3668,13 +4013,34 @@ function registrarEstatisticaCompeticao(j, compId, jogos = 0, gols = 0, assisten
     j.statsCompeticoes[compId].assistencias += assistencias;
 }
 function montarRankingCompeticao(compId) {
-    const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)];
-    const base = todos.map(j => ({ j, st: j.statsCompeticoes?.[compId] || { jogos:0, gols:0, assistencias:0 } }));
-    const artilheiros = [...base].filter(x=>x.st.gols>0).sort((a,b)=>b.st.gols-a.st.gols).slice(0,5);
-    const assistentes = [...base].filter(x=>x.st.assistencias>0).sort((a,b)=>b.st.assistencias-a.st.assistencias).slice(0,5);
-    const bloco = (titulo, lista, campo) => `<h4>${titulo}</h4>${lista.length ? lista.map((x,i)=>`
-        <div class="ranking-mini-row"><span style="display:flex; align-items:center; gap:8px;"><strong>${i+1}</strong><img src="${obterUrlImagem(x.j,'jogador')}">${x.j.nome}</span><strong style="color:var(--gold);">${x.st[campo]}</strong></div>`).join("") : `<p style="color:#aaa; font-size:0.82rem;">Ainda sem dados.</p>`}`;
-    return `<aside class="ranking-mini">${bloco("Artilharia", artilheiros, "gols")}${bloco("Assistências", assistentes, "assistencias")}</aside>`;
+    const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)].filter(p => p && !p?.aposentadoSelecao);
+    const base = todos.map(j => ({ j, st: j?.statsCompeticoes?.[compId] || { jogos:0, gols:0, assistencias:0 } }));
+
+    // 🛡️ FIX (jogador sumia da artilharia): antes só se mostravam os 5 primeiros
+    // de cada lista — se o jogador não estivesse entre eles, sua posição real
+    // não aparecia em lugar nenhum, mesmo tendo marcado gols/assistências nessa
+    // competição. Agora a lista sempre calcula a posição de VERDADE do jogador
+    // (entre todos que marcaram) e, se ele ficar fora do Top 5, sua linha é
+    // acrescentada por baixo, destacada, mostrando a colocação real (ex: "12º").
+    const montarInfo = (campo) => {
+        const comStat = base.filter(x => x.st[campo] > 0).sort((a,b) => b.st[campo] - a.st[campo]);
+        const top5 = comStat.slice(0, 5);
+        const idxJogador = comStat.findIndex(x => x.j === jogador);
+        return { comStat, top5, idxJogador };
+    };
+
+    const linhaJogador = (info, campo) => {
+        if (info.idxJogador < 0 || info.idxJogador < 5) return ""; // já está no top5 ou não marcou nada ainda
+        const item = info.comStat[info.idxJogador];
+        return `<div class="ranking-mini-row ranking-mini-row-eu"><span style="display:flex; align-items:center; gap:8px;"><strong>${info.idxJogador + 1}º</strong><img loading="lazy" decoding="async" src="${obterUrlImagem(jogador,'jogador')}">${jogador.nome} (tu)</span><strong>${item.st[campo]}</strong></div>`;
+    };
+
+    const bloco = (titulo, info, campo) => `<h4>${titulo}</h4>${info.top5.length ? info.top5.map((x,i)=>`
+        <div class="ranking-mini-row${x.j === jogador ? " ranking-mini-row-eu" : ""}"><span style="display:flex; align-items:center; gap:8px;"><strong>${i+1}</strong><img loading="lazy" decoding="async" src="${obterUrlImagem(x.j,'jogador')}">${x.j.nome}${x.j === jogador ? " (tu)" : ""}</span><strong style="color:var(--gold);">${x.st[campo]}</strong></div>`).join("") : `<p style="color:#aaa; font-size:0.82rem;">Ainda sem dados.</p>`}${linhaJogador(info, campo)}`;
+
+    const golsInfo = montarInfo("gols");
+    const assistInfo = montarInfo("assistencias");
+    return `<aside class="ranking-mini">${bloco("Artilharia", golsInfo, "gols")}${bloco("Assistências", assistInfo, "assistencias")}</aside>`;
 }
 function formatarMoeda(valor) { return valor >= 1000000 ? `€${(valor / 1000000).toFixed(1)}M` : `€${(valor / 1000).toFixed(0)}K`; }
 
@@ -3692,12 +4058,1412 @@ function mudarTela(id) {
     let tela = document.getElementById(id);
     if (tela) tela.classList.remove("oculto");
     // 🎵 Música fixa na tela de criação de jogador; qualquer outra tela usa a playlist normal.
-    if (id === "telaCriacao") window.tocarMusicaTelaCriacao?.();
+    if (id === "telaCriacao" || id === "telaAtributosIniciais") window.tocarMusicaTelaCriacao?.();
     else window.retomarPlaylistNormal?.();
 }
 // 🛡️ FIX: expõe no window — firebase-integration.js (script clássico) chama
 // mudarTela(...) diretamente e sem isto o lobby online travava em silêncio.
 window.mudarTela = mudarTela;
+
+// ==========================================
+// 🧭 NAVEGAÇÃO EXCLUSIVA DO MODO MANAGER
+// ==========================================
+// O Manager não reutiliza Lifestyle, negociações do atleta ou telas pessoais.
+// Esta função troca apenas os atalhos laterais e mantém o Hub da Época como
+// ponto de entrada comum entre as duas carreiras.
+const MENU_MANAGER_HTML = `
+    <button class="menu-item ativo" data-view="view-home">🏟️ Hub da Época</button>
+    <button class="menu-item" data-view="view-manager" data-manager-tab="view-manager-tactics">🧠 Central Tática</button>
+    <button class="menu-item" data-view="view-manager" data-manager-tab="view-manager-squad">👥 Elenco & Reservas</button>
+    <button class="menu-item" data-view="view-manager" data-manager-tab="view-manager-transfers">💼 Mercado do Manager</button>
+    <button class="menu-item" data-view="view-manager" data-manager-tab="view-manager-contracts">📄 Contratos do Manager</button>
+    <button class="menu-item" data-view="view-manager" data-manager-tab="view-manager-finance">🏦 Finanças & Base</button>
+    <button class="menu-item" data-view="view-classificacao">📊 Tabelas Globais</button>
+    <button class="menu-item" data-view="view-chaveamentos">🏆 Chaveamentos</button>
+    <button class="menu-item" data-view="view-noticias">📰 Notícias do Clube</button>`;
+let menuJogadorOriginal = null;
+
+function configurarNavegacaoPorModo() {
+    const menu = document.querySelector(".sidebar-menu");
+    if (!menu) return;
+    if (!menuJogadorOriginal) menuJogadorOriginal = menu.innerHTML;
+    const eManager = window.gameMode === "manager";
+    const stats = document.querySelector(".sidebar-stats");
+    if (stats && !stats.dataset.playerStats) stats.dataset.playerStats = stats.innerHTML;
+    document.body.classList.toggle("modo-manager", eManager);
+    if (eManager && !menu.dataset.managerMenu) {
+        menu.innerHTML = MENU_MANAGER_HTML;
+        menu.dataset.managerMenu = "true";
+    } else if (!eManager && menu.dataset.managerMenu) {
+        menu.innerHTML = menuJogadorOriginal;
+        delete menu.dataset.managerMenu;
+    }
+    // Ao retornar ao modo Jogador, restaura também a ficha lateral original.
+    if (!eManager && stats?.dataset.playerStats) stats.innerHTML = stats.dataset.playerStats;
+}
+window.configurarNavegacaoPorModo = configurarNavegacaoPorModo;
+
+// ==========================================
+// 🎥 SIMULAÇÃO VISUAL DE PARTIDA
+// ==========================================
+// A visualização é uma camada de apresentação: ela recebe os mesmos minutos
+// e eventos que o motor já calcula, sem alterar placar, atributos ou resultados.
+window.visualPartidaAtiva = true;
+window.estadoVisualPartida = null;
+
+// Mantém o botão do Hub e o botão do modal sincronizados com a escolha do usuário.
+function atualizarControlesVisualPartida() {
+    const ativo = window.visualPartidaAtiva;
+    const hub = document.getElementById("btnModoVisualHub");
+    const modal = document.getElementById("btnAlternarVisualPartida");
+    if (hub) { hub.textContent = ativo ? "🎥 Visual: ligado" : "⚡ Visual: desligado"; hub.classList.toggle("btn-primary", ativo); }
+    if (modal) { modal.setAttribute("aria-pressed", String(ativo)); modal.textContent = ativo ? "◉ Visual ligado" : "○ Visual desligado"; }
+}
+
+// Posicionamentos genéricos — só entram como último recurso, quando não há
+// elenco algum disponível para montar uma escalação real (ex.: clube vazio).
+const POSICOES_VISUAIS_CASA = [[7,50],[23,16],[25,37],[25,63],[23,84],[46,24],[49,50],[46,76],[71,18],[78,50],[71,82]];
+const POSICOES_VISUAIS_VISITA = POSICOES_VISUAIS_CASA.map(([x, y]) => [100 - x, 100 - y]);
+
+// 🧩 Monta a escalação visual REAL de um clube: se for o clube do próprio
+// Manager, usa a formação e os titulares exatos definidos na Central Tática
+// (o que você monta lá é o que joga aqui). Para qualquer outro clube, usa os
+// titulares reais dele — o mesmo elenco de onde o motor sorteia os autores
+// dos golos — encaixados por posição numa formação-padrão. Cada jogador
+// aparece na vaga certa da sua posição, não num índice genérico fixo.
+function montarFormacaoVisual(clubeId, ladoCasa) {
+    const formacaoPadrao = "4-3-3";
+    let slots = FORMACOES_SLOTS[formacaoPadrao];
+    let mapa = null;
+    if (managerEstado?.ativo && managerEstado.clubeId === clubeId && managerEstado.escalacao?.titulares) {
+        const formacaoManager = FORMACOES_SLOTS[managerEstado.tatica?.formacao] ? managerEstado.tatica.formacao : formacaoPadrao;
+        const tentativa = FORMACOES_SLOTS[formacaoManager].map(slot => ({ slot, jogador: jogadorManagerPorId(managerEstado.escalacao.titulares[slot.id]) }));
+        if (tentativa.filter(x => x.jogador).length >= 7) { slots = FORMACOES_SLOTS[formacaoManager]; mapa = tentativa; }
+    }
+    if (!mapa) {
+        const elenco = (typeof montarEscalacaoJogo === "function" ? montarEscalacaoJogo(clubeId) : jogadoresIA.filter(j => j.clubeId === clubeId)).slice();
+        if (jogador?.clubeId === clubeId && !elenco.some(j => j.id === "player")) elenco.push(jogador);
+        const usados = new Set();
+        mapa = slots.map(slot => {
+            let candidato = elenco.filter(j => j.posicao === slot.pos && !usados.has(j.id)).sort((a, b) => (b.geral || 60) - (a.geral || 60))[0];
+            if (!candidato) {
+                if (slot.pos === "Goleiro") {
+                    // 🧤 FIX: o slot de goleiro é sempre o primeiro avaliado (fica no
+                    // topo de toda formação em FORMACOES_SLOTS), então se o pool não
+                    // tinha ninguém com posicao==="Goleiro" (elenco pequeno, dados
+                    // incompletos do clube, etc.), o fallback genérico de "maior OVR
+                    // que sobrou" caía aqui primeiro — e podia escalar até o TEU
+                    // atacante como goleiro, só por ele ter o maior geral disponível.
+                    // Agora a emergência tenta qualquer variante de goleiro cadastrada
+                    // e, na falta total, usa o PIOR OVR de linha que sobrar (um reserva
+                    // improvisando no gol) — nunca o jogador real, nunca o craque do time.
+                    candidato = elenco.filter(j => !usados.has(j.id) && (j.posicao || "").includes("Goleiro")).sort((a, b) => (b.geral || 60) - (a.geral || 60))[0]
+                        || elenco.filter(j => !usados.has(j.id) && j.id !== "player").sort((a, b) => (a.geral || 60) - (b.geral || 60))[0];
+                } else {
+                    candidato = elenco.filter(j => !usados.has(j.id)).sort((a, b) => (b.geral || 60) - (a.geral || 60))[0];
+                }
+            }
+            if (candidato) usados.add(candidato.id);
+            return { slot, jogador: candidato || null };
+        });
+    }
+    // A Central Tática usa um campo vertical (top:0-100 = baliza própria até a
+    // adversária). A transmissão usa um campo horizontal com os dois times de
+    // frente um pro outro — aqui giramos as coordenadas 90° e espelhamos o
+    // lado visitante, exatamente como o layout genérico antigo já fazia.
+    return mapa.map(({ slot, jogador: j }, i) => {
+        const x = ladoCasa ? 100 - slot.top : slot.top;
+        const y = ladoCasa ? slot.left : 100 - slot.left;
+        return { x, y, pos: slot.pos, label: slot.label, jogador: j || { nome: `${slot.label} ${i + 1}`, posicao: slot.pos, id: null, geral: 60 } };
+    });
+}
+
+// ==========================================
+// 📋 CENTRAL DA PARTIDA — feed de eventos, estatísticas (posse/xG/xA/remates)
+// e tabela de elenco (POS/NOME/OVR/STATUS/COND/NOTA) com titulares + banco.
+// Substitui o antigo console de texto simples (#uiConsolePartida), mas NÃO
+// mexe no campo animado (matchVisualContainer) — os dois convivem, exatamente
+// como pedido: a transmissão tática segue igual, só o "relato" embaixo dela
+// ficou muito mais completo. Roda tanto no Modo Jogador quanto no Manager,
+// porque os dois já passam pela mesma janela (#modalPartida).
+// ==========================================
+const CP_SIGLA_POSICAO = {
+    "Goleiro": "GOL", "Goleiro Libero": "GOL", "Zagueiro": "ZAG", "Libero": "LIB",
+    "Lateral": "LAT", "Lateral Direito": "LAT", "Lateral Esquerdo": "LAT", "Lateral Ala": "ALA",
+    "Volante": "VOL", "Meia Defensivo": "MD", "Box-to-Box": "VOL", "Meio-Campista": "MC",
+    "Meia Ofensivo": "MEI", "Ponta": "PON", "Extremo": "PON", "Segundo Atacante": "SA", "Atacante": "ATA"
+};
+function cpSiglaPosicao(pos) { return CP_SIGLA_POSICAO[pos] || (pos ? pos.slice(0, 3).toUpperCase() : "—"); }
+
+// Mesmo formato usado pelo MatchEngine (match.js) — reproduzido aqui só pro
+// replay sintético do Manager (que não roda o motor completo) conseguir
+// alimentar a Central da Partida com o mesmo shape de estatísticas.
+function cpNovoQuadroStats() {
+    return { remates: 0, alvo: 0, area: 0, fora: 0, escanteios: 0, faltas: 0, amarelos: 0, vermelhos: 0, xg: 0, xa: 0, posse: 50 };
+}
+
+// Sem clube (seleções, ou fallback genérico): monta um XI plausível a partir
+// de um elenco solto — 1 goleiro + os 10 de campo com maior geral — só para
+// a Central da Partida ter nomes reais. Nunca é usado pelo campo animado.
+function cpMontarXIGenerico(elenco) {
+    const pool = (elenco || []).filter(j => j && j.id);
+    const goleiros = pool.filter(j => (j.posicao || "").includes("Goleiro")).sort((a, b) => (b.geral || 0) - (a.geral || 0));
+    const linha = pool.filter(j => !(j.posicao || "").includes("Goleiro")).sort((a, b) => (b.geral || 0) - (a.geral || 0));
+    const titulares = [...goleiros.slice(0, 1), ...linha.slice(0, 10)];
+    const idsTit = new Set(titulares.map(j => j.id));
+    const banco = pool.filter(j => !idsTit.has(j.id)).sort((a, b) => (b.geral || 0) - (a.geral || 0)).slice(0, 7);
+    return { titulares, banco };
+}
+
+// Junta titulares (com a posição tática já sorteada pra Central Tática, via
+// os slots que também alimentam o campo animado) + banco real do clube
+// (montarEscalacaoJogo) num único { titulares, banco } por lado.
+function cpMontarElenco(clubeId, slots, elencoFallback) {
+    if (clubeId) {
+        const titulares = (slots || []).map(s => s.jogador).filter(j => j && j.id);
+        const idsTit = new Set(titulares.map(j => j.id));
+        const completo = (typeof montarEscalacaoJogo === "function") ? montarEscalacaoJogo(clubeId) : [];
+        const banco = completo.filter(j => !idsTit.has(j.id));
+        return { titulares, banco };
+    }
+    return cpMontarXIGenerico(elencoFallback);
+}
+
+function cpResolverJogador(id, nomeFallback) {
+    if (id === "player" && typeof jogador !== "undefined" && jogador) return jogador;
+    if (id && typeof jogadoresIA !== "undefined") {
+        const achado = jogadoresIA.find(j => j.id === id);
+        if (achado) return achado;
+    }
+    return nomeFallback ? { nome: nomeFallback } : null;
+}
+
+function cpLinhaJogador(j, lado) {
+    const id = j.id || `cp_anon_${Math.random().toString(36).slice(2, 9)}`;
+    const nome = j.nome || "—";
+    const pos = cpSiglaPosicao(j.posicao);
+    const ovr = j.geral ?? j.overall ?? "—";
+    const foto = (typeof obterUrlImagem === "function") ? obterUrlImagem(j, "jogador") : "";
+    return `<div class="cp-row" data-cp-jid="${id}" data-cp-lado="${lado}">
+        <span class="cp-col-pos">${pos}</span>
+        <span class="cp-col-nome"><img loading="lazy" decoding="async" src="${foto}" class="cp-avatar-mini" alt="" onerror="this.style.visibility='hidden'"><span class="cp-nome-txt">${nome}</span></span>
+        <span class="cp-col-ovr">${ovr}</span>
+        <span class="cp-col-status" data-cp-status></span>
+        <span class="cp-col-cond"><span class="cp-cond-track"><span class="cp-cond-fill" data-cp-cond style="width:100%"></span></span><span class="cp-cond-txt" data-cp-cond-txt>100%</span></span>
+        <span class="cp-col-nota" data-cp-nota>—</span>
+    </div>`;
+}
+
+function cpBlocoElenco(nomeTime, logoUrl, titulares, banco, lado) {
+    return `<div class="cp-squad" data-cp-lado="${lado}">
+        <div class="cp-squad-head"><img loading="lazy" decoding="async" src="${logoUrl || ''}" class="cp-squad-logo" alt="" onerror="this.style.visibility='hidden'"><span>${nomeTime}</span></div>
+        <div class="cp-squad-cols"><span>POS</span><span>NOME</span><span>OVR</span><span></span><span>COND</span><span>NOTA</span></div>
+        <div class="cp-squad-rows">${titulares.map(j => cpLinhaJogador(j, lado)).join("")}</div>
+        ${banco.length ? `<div class="cp-squad-banco-label">BANCO</div><div class="cp-squad-rows cp-squad-banco">${banco.map(j => cpLinhaJogador(j, lado)).join("")}</div>` : ""}
+    </div>`;
+}
+
+function cpLinhaStat(chave, label, valCasa, valVisita, sufixo = "") {
+    return `<div class="cp-stat-row" data-cp-stat="${chave}">
+        <span class="cp-stat-val" data-cp-val="casa">${valCasa}${sufixo}</span>
+        <span class="cp-stat-label">${label}</span>
+        <span class="cp-stat-val" data-cp-val="visita">${valVisita}${sufixo}</span>
+        <div class="cp-stat-track"><span class="cp-stat-fill-casa" data-cp-fill="casa" style="width:50%"></span><span class="cp-stat-fill-visita" data-cp-fill="visita" style="width:50%"></span></div>
+    </div>`;
+}
+
+// Monta o esqueleto inteiro (feed vazio + estatísticas zeradas + as duas
+// tabelas de elenco). Chamado uma vez, no início da transmissão.
+function iniciarCentralPartida(nomeCasa, nomeVisita, clubeCasaId, clubeVisitaId, slotsCasa, slotsVisita) {
+    const raiz = document.getElementById("uiConsolePartida");
+    if (!raiz) return;
+    const clubeCasa = clubeCasaId ? clubes.find(c => c.id === clubeCasaId) : null;
+    const clubeVisita = clubeVisitaId ? clubes.find(c => c.id === clubeVisitaId) : null;
+    const logoCasa = clubeCasa && typeof obterUrlImagem === "function" ? obterUrlImagem(clubeCasa, "clube") : "";
+    const logoVisita = clubeVisita && typeof obterUrlImagem === "function" ? obterUrlImagem(clubeVisita, "clube") : "";
+    // Sem clube (seleção): tenta usar o elenco do motor ao vivo (jogadores
+    // reais da seleção) como fallback pra tabela ter nomes reais também.
+    const elencoCasa = cpMontarElenco(clubeCasaId, slotsCasa, window.engineAoVivo?.elencoMandante);
+    const elencoVisita = cpMontarElenco(clubeVisitaId, slotsVisita, window.engineAoVivo?.elencoVisitante);
+    raiz.innerHTML = `
+    <div class="cp-events" id="cpEventos">
+        <div class="cp-section-head">Eventos da Partida</div>
+        <div class="cp-events-list" id="cpEventosList">
+            <div class="cp-event cp-event-kickoff"><span class="cp-event-min">0'</span><div class="cp-event-main"><span class="cp-event-body">O árbitro prepara o apito inicial...</span></div></div>
+        </div>
+    </div>
+    <div class="cp-stats" id="cpStats">
+        <div class="cp-section-head">Estatísticas</div>
+        ${cpLinhaStat("posse", "Posse de bola", 50, 50, "%")}
+        ${cpLinhaStat("xg", "Gols esperados (xG)", "0.00", "0.00")}
+        ${cpLinhaStat("xa", "Assistências esperadas (xA)", "0.00", "0.00")}
+        ${cpLinhaStat("remates", "Finalizações", 0, 0)}
+        ${cpLinhaStat("alvo", "Finalizações no alvo", 0, 0)}
+        ${cpLinhaStat("area", "Finalizações na área", 0, 0)}
+        ${cpLinhaStat("fora", "Finalizações de fora", 0, 0)}
+        ${cpLinhaStat("escanteios", "Escanteios", 0, 0)}
+        ${cpLinhaStat("faltas", "Faltas", 0, 0)}
+    </div>
+    <div class="cp-squads">
+        ${cpBlocoElenco(nomeCasa, logoCasa, elencoCasa.titulares, elencoCasa.banco, "casa")}
+        ${cpBlocoElenco(nomeVisita, logoVisita, elencoVisita.titulares, elencoVisita.banco, "visita")}
+    </div>`;
+}
+
+const CP_TIPOS_EVENTO = {
+    gol: { badge: "GOL", classe: "gol" },
+    penalti: { badge: "PÊNALTI", classe: "penalti" },
+    penalti_defendido: { badge: "PÊNALTI DEFENDIDO", classe: "defesa" },
+    defesa: { badge: "DEFESA", classe: "defesa" },
+    trave: { badge: "NA TRAVE", classe: "trave" },
+    amarelo: { badge: "CARTÃO AMARELO", classe: "amarelo" },
+    vermelho: { badge: "CARTÃO VERMELHO", classe: "vermelho" },
+    escanteio: { badge: "ESCANTEIO", classe: "escanteio" },
+    falta: { badge: "FALTA", classe: "falta" },
+    impedimento: { badge: "IMPEDIMENTO", classe: "impedimento" },
+    atendimento: { badge: "ATENDIMENTO MÉDICO", classe: "atendimento" },
+    substituicao: { badge: "SUBSTITUIÇÃO", classe: "substituicao" }
+};
+
+// Card de evento a partir do objeto estruturado que vem do MatchEngine
+// (5º argumento do onTick). É o caminho "rico": ícone por tipo, avatar do
+// jogador quando existe, destaque visual pra gols/cartões.
+function cpMontarCardEvento(evento, minutoFallback) {
+    const info = CP_TIPOS_EVENTO[evento.tipo] || { badge: "LANCE", classe: "lance" };
+    const textoLimpo = String(evento.texto || "").replace(/<[^>]*>/g, "").replace(/^\s*\d+'\s*/, "").trim();
+    const minuto = evento.minuto ?? minutoFallback ?? 0;
+    const jog = evento.jogadorId ? cpResolverJogador(evento.jogadorId, evento.jogadorNome) : null;
+    const avatar = jog && typeof obterUrlImagem === "function" ? obterUrlImagem(jog, "jogador") : "";
+    const ehMeuGol = evento.tipo === "gol" && evento.jogadorId === "player";
+    return `<div class="cp-event cp-event-${info.classe}${ehMeuGol ? " cp-event-meugol" : ""}">
+        <span class="cp-event-min">${minuto}'</span>
+        <div class="cp-event-main">
+            <span class="cp-event-badge cp-badge-${info.classe}">${ehMeuGol ? "⭐ " : ""}${info.badge}</span>
+            <span class="cp-event-body">${textoLimpo}</span>
+        </div>
+        ${jog ? `<img loading="lazy" decoding="async" class="cp-event-avatar" src="${avatar}" alt="" onerror="this.style.visibility='hidden'">` : ""}
+    </div>`;
+}
+
+// Card "modo simples" quando não há snapshot estruturado disponível (ex.:
+// espectador de confronto direto online, que só recebe o texto do log via
+// Firebase) — mantém a Central da Partida funcional mesmo sem os dados ricos.
+function cpMontarCardFallback(log, minuto, nomeJogadorReal) {
+    const textoLimpo = String(log || "").replace(/<[^>]*>/g, "").replace(/^\s*\d+'\s*/, "").trim();
+    if (!textoLimpo) return "";
+    const meuGol = /É SEU/i.test(textoLimpo) || (nomeJogadorReal && textoLimpo.includes(nomeJogadorReal) && /GOLO|GOL /i.test(textoLimpo));
+    const substituicao = /SUBSTITUIÇÃO/i.test(textoLimpo);
+    const golTime = !meuGol && !substituicao && /GOLO|GOL /i.test(textoLimpo);
+    const classe = meuGol ? "meugol" : (substituicao ? "substituicao" : (golTime ? "gol" : "lance"));
+    const badge = meuGol ? "⭐ GOL" : (substituicao ? "SUBSTITUIÇÃO" : (golTime ? "GOL" : "LANCE"));
+    return `<div class="cp-event cp-event-${classe}">
+        <span class="cp-event-min">${minuto}'</span>
+        <div class="cp-event-main"><span class="cp-event-badge cp-badge-${classe}">${badge}</span><span class="cp-event-body">${textoLimpo}</span></div>
+    </div>`;
+}
+
+function cpAtualizarStats(est) {
+    const linhas = [
+        ["posse", est.casa.posse, est.visita.posse, "%"],
+        ["xg", (est.casa.xg || 0).toFixed(2), (est.visita.xg || 0).toFixed(2), ""],
+        ["xa", (est.casa.xa || 0).toFixed(2), (est.visita.xa || 0).toFixed(2), ""],
+        ["remates", est.casa.remates, est.visita.remates, ""],
+        ["alvo", est.casa.alvo, est.visita.alvo, ""],
+        ["area", est.casa.area, est.visita.area, ""],
+        ["fora", est.casa.fora, est.visita.fora, ""],
+        ["escanteios", est.casa.escanteios, est.visita.escanteios, ""],
+        ["faltas", est.casa.faltas, est.visita.faltas, ""]
+    ];
+    linhas.forEach(([chave, valCasa, valVisita, sufixo]) => {
+        const linha = document.querySelector(`#cpStats .cp-stat-row[data-cp-stat="${chave}"]`);
+        if (!linha) return;
+        const elC = linha.querySelector('[data-cp-val="casa"]'); if (elC) elC.textContent = `${valCasa}${sufixo}`;
+        const elV = linha.querySelector('[data-cp-val="visita"]'); if (elV) elV.textContent = `${valVisita}${sufixo}`;
+        const numC = parseFloat(valCasa) || 0, numV = parseFloat(valVisita) || 0;
+        const totalNum = numC + numV;
+        const pctCasa = totalNum > 0 ? Math.max(4, Math.min(96, (numC / totalNum) * 100)) : 50;
+        const fillC = linha.querySelector('[data-cp-fill="casa"]'); if (fillC) fillC.style.width = pctCasa + "%";
+        const fillV = linha.querySelector('[data-cp-fill="visita"]'); if (fillV) fillV.style.width = (100 - pctCasa) + "%";
+    });
+}
+
+function cpAtualizarNotas(notas) {
+    (notas || []).forEach(n => {
+        const linha = document.querySelector(`.cp-row[data-cp-jid="${n.id}"]`);
+        if (!linha) return;
+        const notaEl = linha.querySelector("[data-cp-nota]");
+        if (notaEl) {
+            notaEl.textContent = n.nota.toFixed(1);
+            notaEl.classList.remove("cp-nota-boa", "cp-nota-media", "cp-nota-ruim");
+            notaEl.classList.add(n.nota >= 7 ? "cp-nota-boa" : (n.nota >= 6 ? "cp-nota-media" : "cp-nota-ruim"));
+        }
+        const condFill = linha.querySelector("[data-cp-cond]"); if (condFill) condFill.style.width = n.condicao + "%";
+        const condTxt = linha.querySelector("[data-cp-cond-txt]"); if (condTxt) condTxt.textContent = n.condicao + "%";
+        const condTrack = linha.querySelector(".cp-cond-track");
+        if (condTrack) { condTrack.classList.remove("cp-cond-boa", "cp-cond-media", "cp-cond-baixa"); condTrack.classList.add(n.condicao >= 80 ? "cp-cond-boa" : (n.condicao >= 65 ? "cp-cond-media" : "cp-cond-baixa")); }
+        const statusEl = linha.querySelector("[data-cp-status]");
+        if (statusEl) statusEl.innerHTML = n.cartao === "vermelho" ? "🟥" : (n.cartao === "amarelo" ? "🟨" : "");
+    });
+}
+
+// 🔄 Ponto único chamado a cada tick pelos três lugares que rodam partidas
+// (Modo Jogador, Manager com motor real, Manager com replay). Atualiza o
+// feed, as estatísticas e o elenco — tudo dentro de #uiConsolePartida.
+window.atualizarCentralPartida = function(minuto, log, snapshot) {
+    const lista = document.getElementById("cpEventosList");
+    if (lista) {
+        let cardHtml = "";
+        if (snapshot?.evento) cardHtml = cpMontarCardEvento(snapshot.evento, minuto);
+        else if (log && !snapshot) cardHtml = cpMontarCardFallback(log, minuto, typeof jogador !== "undefined" ? jogador?.nome : null);
+        if (cardHtml) {
+            lista.insertAdjacentHTML("afterbegin", cardHtml);
+            while (lista.children.length > 60) lista.removeChild(lista.lastChild);
+        }
+    }
+    if (snapshot?.estatisticas) cpAtualizarStats(snapshot.estatisticas);
+    if (snapshot?.notas) cpAtualizarNotas(snapshot.notas);
+};
+
+window.prepararVisualizacaoPartida = function(nomeCasa = "Casa", nomeVisita = "Visita", clubeCasaId = null, clubeVisitaId = null) {
+    const container = document.getElementById("matchVisualContainer");
+    const toggle = document.getElementById("btnAlternarVisualPartida");
+    if (!container || !toggle) return;
+    // Guarda os clubes da partida em andamento para que o botão liga/desliga
+    // visual (que só tem os nomes do placar à mão) consiga remontar a
+    // escalação real ao reativar a transmissão no meio do jogo.
+    if (clubeCasaId) window.partidaVisualClubes = { casa: clubeCasaId, visita: clubeVisitaId };
+    clubeCasaId = clubeCasaId || window.partidaVisualClubes?.casa || null;
+    clubeVisitaId = clubeVisitaId || window.partidaVisualClubes?.visita || null;
+    atualizarControlesVisualPartida();
+    container.classList.toggle("ativo", window.visualPartidaAtiva);
+
+    // 🧩 Escalação real por posição (ver montarFormacaoVisual). Sem um clube
+    // válido, cai de volta no layout genérico 4-3-3 de sempre.
+    const slotsCasa = clubeCasaId ? montarFormacaoVisual(clubeCasaId, true) : POSICOES_VISUAIS_CASA.map(([x, y], i) => ({ x, y, pos: null, label: "", jogador: { nome: `${nomeCasa} ${i + 1}`, id: null } }));
+    const slotsVisita = clubeVisitaId ? montarFormacaoVisual(clubeVisitaId, false) : POSICOES_VISUAIS_VISITA.map(([x, y], i) => ({ x, y, pos: null, label: "", jogador: { nome: `${nomeVisita} ${i + 1}`, id: null } }));
+
+    // 📋 Central da Partida roda SEMPRE, ligado ou não o campo animado — é a
+    // nova "simulação por texto" (substitui o antigo console simples). O
+    // campo com a bola em movimento continua exatamente como estava.
+    iniciarCentralPartida(nomeCasa, nomeVisita, clubeCasaId, clubeVisitaId, slotsCasa, slotsVisita);
+
+    if (!window.visualPartidaAtiva) { container.innerHTML = ""; return; }
+
+    // Guarda a posse e o placar anterior para descobrir qual lado marcou a
+    // partir do callback real do MatchEngine, em vez de sortear um atacante.
+    // 📊 estatisticas/ticksPosse alimentam a barra de posse e os contadores de
+    // remates/escanteios, tudo derivado dos mesmos eventos que já chegam pelo
+    // onTick — nenhum número extra é sorteado à parte do relato real.
+    window.estadoVisualPartida = {
+        posse: "casa", placarCasa: 0, placarVisita: 0, ultimoJogador: 7,
+        nomes: { casa: nomeCasa, visita: nomeVisita },
+        slotsCasa, slotsVisita,
+        ticksPosseCasa: 0, ticksPosseTotal: 0,
+        estatisticas: {
+            casa: { remates: 0, alvo: 0, escanteios: 0 },
+            visita: { remates: 0, alvo: 0, escanteios: 0 }
+        },
+        intervaloMostrado: false,
+        // 🔄 TROCA DE LADOS: 1 = casa ataca para a direita (x=100) como hoje;
+        // -1 = casa ataca para a esquerda (x=0), depois do intervalo. Tudo que
+        // decide "pra que lado alguém ataca" (chute, cruzamento, escanteio,
+        // avanço tático) lê esta flag em vez de assumir sempre o mesmo lado —
+        // assim a troca de lados no intervalo (ver bloco do minuto 45 abaixo)
+        // só precisa inverter ela + espelhar as posições atuais uma vez.
+        direcaoCasa: 1,
+        // 🌀 últimas posições da bola (rastro) e 📈 janela curta de posse (pressão)
+        historicoBola: [{ x: 50, y: 50 }, { x: 50, y: 50 }, { x: 50, y: 50 }],
+        janelaPosse: [],
+        // 🎬 MOTOR DE ANIMAÇÃO — a bola nunca salta direto pro alvo: cada tick
+        // gera uma SEQUÊNCIA de lances (recuperação → passe → passe → chute)
+        // que entra numa fila e é consumida quadro a quadro pelo loop de
+        // animação (ver iniciarLoopAnimacaoPartida), com todos os 22 jogadores
+        // interpolando suavemente até o alvo tático de cada momento — nunca
+        // parados, nunca teleportados.
+        bola: { x: 50, y: 50, z: 0 },
+        filaBola: [],
+        faseAtual: null,
+        posAtual: { casa: slotsCasa.map(s => ({ x: s.x, y: s.y })), visita: slotsVisita.map(s => ({ x: s.x, y: s.y })) },
+        posAlvo: { casa: slotsCasa.map(s => ({ x: s.x, y: s.y })), visita: slotsVisita.map(s => ({ x: s.x, y: s.y })) },
+        faseIdle: { casa: slotsCasa.map(() => Math.random() * Math.PI * 2), visita: slotsVisita.map(() => Math.random() * Math.PI * 2) },
+        velocidade: 1, pausado: false, tempoAnterior: 0
+    };
+    container.innerHTML = `
+    <div class="match-live-pitch" id="matchLivePitch">
+        <span class="match-area match-area-esquerda"></span><span class="match-area match-area-direita"></span>
+        <span class="match-small-area match-small-area-esquerda"></span><span class="match-small-area match-small-area-direita"></span>
+        <span class="match-penalty-spot match-penalty-spot-esquerda"></span><span class="match-penalty-spot match-penalty-spot-direita"></span>
+        <span class="match-goal-net match-goal-net-esquerda"></span><span class="match-goal-net match-goal-net-direita"></span>
+        <span class="match-corner-arc tl"></span><span class="match-corner-arc bl"></span><span class="match-corner-arc tr"></span><span class="match-corner-arc br"></span>
+        ${slotsCasa.map((p, i) => `<span class="match-live-token casa ${p.pos === "Goleiro" ? "goleiro" : ""}" data-team="casa" data-index="${i}" style="left:${p.x}%;top:${p.y}%" title="${p.jogador.nome}">${p.jogador.nome.split(" ").slice(-1)[0].slice(0, 2).toUpperCase()}</span>`).join("")}
+        ${slotsVisita.map((p, i) => `<span class="match-live-token visita ${p.pos === "Goleiro" ? "goleiro" : ""}" data-team="visita" data-index="${i}" style="left:${p.x}%;top:${p.y}%" title="${p.jogador.nome}">${p.jogador.nome.split(" ").slice(-1)[0].slice(0, 2).toUpperCase()}</span>`).join("")}
+        <span class="match-live-ball-trail" id="matchBallTrail3" data-n="3" style="left:50%;top:50%"></span>
+        <span class="match-live-ball-trail" id="matchBallTrail2" data-n="2" style="left:50%;top:50%"></span>
+        <span class="match-live-ball-trail" id="matchBallTrail1" data-n="1" style="left:50%;top:50%"></span>
+        <span class="match-live-pass" id="matchLivePass"></span>
+        <span class="match-live-ball-shadow" id="matchLiveBallShadow" style="left:50%;top:50%"></span>
+        <span class="match-live-ball" id="matchLiveBall" style="left:50%;top:50%"></span>
+        <div class="match-action-badge" id="matchActionBadge"></div>
+        <div class="match-clash-effect" id="matchClashEffect"></div>
+        <div class="match-replay-badge" id="matchReplayBadge">🔁 Replay</div>
+        <div class="match-halftime-banner" id="matchHalftimeBanner"><strong>Intervalo</strong><span id="matchHalftimeScore">0 - 0</span></div>
+        <div class="match-goal-scorer-card" id="matchGoalScorerCard"></div>
+        <div class="match-goool-banner" id="matchGoolBanner"><strong>GOOOOL!</strong><span id="matchGoolPlacar">0 - 0</span></div>
+        <div class="match-stoppage-banner" id="matchStoppageBanner"><strong id="matchStoppageIcon">🟦</strong><span id="matchStoppageTexto">Falta</span></div>
+        <div class="match-sub-ticker" id="matchSubTicker"></div>
+    </div><p class="match-live-caption" id="matchLiveCaption">A partida vai começar.</p>
+    <div class="match-stats-bar" id="matchStatsBar">
+        <div class="match-possession-row">
+            <span class="lado-casa" id="matchPosseCasa">50%</span>
+            <span class="match-possession-track"><span class="match-possession-fill-casa" id="matchPosseFillCasa" style="width:50%"></span><span class="match-possession-fill-visita" id="matchPosseFillVisita" style="width:50%"></span></span>
+            <span class="lado-visita" id="matchPosseVisita">50%</span>
+        </div>
+        <div class="match-momentum-row">
+            <span>Pressão</span>
+            <span class="match-momentum-track"><span class="match-momentum-fill-casa" id="matchMomentumCasa" style="width:50%"></span><span class="match-momentum-fill-visita" id="matchMomentumVisita" style="width:50%"></span></span>
+        </div>
+        <div class="match-stats-grid">
+            <span class="stat-casa" id="matchRematesCasa">0</span><span class="stat-label">Remates</span><span class="stat-visita" id="matchRematesVisita">0</span>
+            <span class="stat-casa" id="matchAlvoCasa">0</span><span class="stat-label">No alvo</span><span class="stat-visita" id="matchAlvoVisita">0</span>
+            <span class="stat-casa" id="matchEscanteiosCasa">0</span><span class="stat-label">Escanteios</span><span class="stat-visita" id="matchEscanteiosVisita">0</span>
+        </div>
+    </div>`;
+    wireControlesVelocidadeVisualPartida();
+    iniciarLoopAnimacaoPartida();
+};
+
+// 💬 Exibe selos de ação flutuante (Passe, Cruzamento, Dividida, Chute, Desarme) no campo
+function mostrarBadgeAcao(rotulo, tipo = "") {
+    const badge = document.getElementById("matchActionBadge");
+    if (!badge || !rotulo) return;
+    badge.textContent = rotulo;
+    badge.className = `match-action-badge ${tipo} ativo`;
+    clearTimeout(window._matchActionBadgeTimer);
+    window._matchActionBadgeTimer = setTimeout(() => {
+        if (badge) badge.classList.remove("ativo");
+    }, 1400);
+}
+
+// 💥 Dispara onda de choque visual em divididas/desarmes
+function dispararEfeitoChoque(x, y) {
+    const clash = document.getElementById("matchClashEffect");
+    if (!clash) return;
+    clash.style.left = `${x}%`;
+    clash.style.top = `${y}%`;
+    clash.classList.remove("ativo");
+    void clash.offsetWidth;
+    clash.classList.add("ativo");
+}
+
+// 🎛️ Liga os botões de play/pause e 1x/2x/4x/8x ao motor em andamento
+function wireControlesVelocidadeVisualPartida() {
+    const barra = document.getElementById("matchSpeedControls");
+    if (!barra || barra.dataset.wired) return;
+    barra.dataset.wired = "1";
+    barra.addEventListener("click", (e) => {
+        const btnPlay = e.target.closest("#matchBtnPlayPause");
+        if (btnPlay) {
+            const tocando = btnPlay.dataset.playing === "1";
+            if (tocando) {
+                window.engineAoVivo?.pausar?.(); btnPlay.textContent = "▶"; btnPlay.dataset.playing = "0";
+                if (window.estadoVisualPartida) window.estadoVisualPartida.pausado = true;
+            } else {
+                window.engineAoVivo?.retomar?.(); btnPlay.textContent = "⏸"; btnPlay.dataset.playing = "1";
+                if (window.estadoVisualPartida) window.estadoVisualPartida.pausado = false;
+            }
+            return;
+        }
+        const btnVel = e.target.closest("[data-speed]");
+        if (btnVel) {
+            barra.querySelectorAll("[data-speed]").forEach(b => b.classList.toggle("ativo", b === btnVel));
+            const v = Number(btnVel.dataset.speed) || 1;
+            window.engineAoVivo?.definirVelocidade?.(v);
+            if (window.estadoVisualPartida) window.estadoVisualPartida.velocidade = v;
+        }
+    });
+}
+
+// 🧭 Gera a SEQUÊNCIA de lances visuais: a bola sempre parte da posição REAL
+// atual do jogador (posAtual) e vai diretamente até o companheiro de equipe,
+// garantindo que passe a passe, condução e escanteio fiquem perfeitos.
+function gerarSequenciaJogada(tipoEvento, eCasa, indiceFinalizador, slotsPos, slots, slotsDefPos = null, dirCasa = 1) {
+    const passos = [];
+    // 🔄 ataqueDir: +1 = time atacante empurra a jogada pra x=100, -1 = pra x=0.
+    // Antes disto era sempre "eCasa ? 100 : 0" fixo — agora respeita a troca
+    // de lados do intervalo (dirCasa vem do estado, ver prepararVisualizacaoPartida).
+    const ataqueDir = eCasa ? dirCasa : -dirCasa;
+    const golX = ataqueDir === 1 ? 96 : 4;   // posição X do gol adversário
+    const golY = 50;
+
+    const posJogador = (idx, atacante = true) => {
+        const estado = window.estadoVisualPartida;
+        if (!estado || idx < 0) return { x: 50, y: 50 };
+        const timeKey = atacante ? (eCasa ? "casa" : "visita") : (eCasa ? "visita" : "casa");
+        const p = estado.posAtual?.[timeKey]?.[idx];
+        return p ? { x: p.x, y: p.y } : { x: 50, y: 50 };
+    };
+
+    const pickDef = () => 1 + Math.floor(Math.random() * 4);
+    const pickMid = () => 5 + Math.floor(Math.random() * 3);
+    const pickAtk = () => 8 + Math.floor(Math.random() * 3);
+    const pickWing = () => Math.random() < 0.5 ? 1 : 4;
+    const pickOppDef = () => 1 + Math.floor(Math.random() * 4);
+    const pickOppMid = () => 5 + Math.floor(Math.random() * 3);
+
+    const DUR_CONDUCAO   = 460;
+    const DUR_PASSE      = 440;
+    const DUR_CRUZAMENTO = 600;
+    const DUR_CHUTE      = 320;
+    const DUR_DIVIDIDA   = 420;
+    const DUR_REBOTE     = 400;
+
+    const distanciaPontos = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+    // Condução: a bola desliza junta ao pé do jogador
+    const conducao = (idx, rotulo = "⚡ CONDUÇÃO", duracao = DUR_CONDUCAO) => {
+        const p = posJogador(idx, true);
+        return { x: p.x, y: p.y, indice: idx, duracaoMs: duracao, tipo: "conducao", rotulo };
+    };
+
+    // Passe: a bola vai do passador direto até a posição real do companheiro.
+    // 🏃 FÍSICA DO PASSE: a duração não é mais fixa — escala com a distância
+    // real entre quem passa e quem recebe, senão um passe curto de 2 metros
+    // "flutuava" devagar e um lançamento de 40 metros parecia teleporte.
+    // ~55% do tempo é reação/preparo (sempre existe, mesmo num passe curto),
+    // o resto cresce com a distância percorrida pela bola.
+    const passe = (fromIdx, toIdx, rotulo = "🎯 PASSE", duracaoBase = DUR_PASSE) => {
+        const pFrom = posJogador(fromIdx, true);
+        const pTarget = posJogador(toIdx, true);
+        const dist = distanciaPontos(pFrom, pTarget);
+        const duracaoMs = Math.round(duracaoBase * 0.55 + duracaoBase * 0.95 * Math.min(1.7, dist / 30));
+        return { x: pTarget.x, y: pTarget.y, indice: toIdx, duracaoMs, tipo: "passe", rotulo };
+    };
+
+    // Cruzamento: curva em parábola suave para a grande área
+    const cruzamento = (idx, targetX, targetY) => {
+        const pFrom = posJogador(idx, true);
+        const dist = distanciaPontos(pFrom, { x: targetX, y: targetY });
+        const duracaoMs = Math.round(DUR_CRUZAMENTO * 0.7 + DUR_CRUZAMENTO * 0.6 * Math.min(1.4, dist / 40));
+        return { x: targetX, y: targetY, indice: idx, duracaoMs,
+                 tipo: "cruzamento", rotulo: "✈️ CRUZAMENTO", arco: true };
+    };
+
+    // Chute ao gol
+    const chute = (idx, rotulo = "💥 CHUTAÇO!") => {
+        const jitterGol = (Math.random() - 0.5) * 10;
+        return { x: golX, y: golY + jitterGol, indice: idx, duracaoMs: DUR_CHUTE,
+                 tipo: "chute", rotulo, remate: true };
+    };
+
+    const cabeceio = (idx) => {
+        const jitterGol = (Math.random() - 0.5) * 8;
+        return { x: golX, y: golY + jitterGol, indice: idx, duracaoMs: DUR_CHUTE,
+                 tipo: "cabeceio", rotulo: "🗣️ CABECEIO!", remate: true };
+    };
+
+    const dividida = (idxAtacante, idxDefensor, rotulo = "⚔️ DIVIDIDA!") => {
+        const pA = posJogador(idxAtacante, true);
+        const pD = posJogador(idxDefensor, false);
+        return { x: (pA.x + pD.x) / 2, y: (pA.y + pD.y) / 2, indice: idxAtacante,
+                 defensorIndice: idxDefensor, duracaoMs: DUR_DIVIDIDA, tipo: "dividida",
+                 rotulo, choque: true };
+    };
+
+    const desarme = (idxAtacante, idxDefensor) => {
+        const pA = posJogador(idxAtacante, true);
+        const pD = posJogador(idxDefensor, false);
+        return { x: (pA.x + pD.x) / 2, y: (pA.y + pD.y) / 2, indice: idxAtacante,
+                 defensorIndice: idxDefensor, duracaoMs: DUR_DIVIDIDA, tipo: "desarme",
+                 rotulo: "🛡️ DESARME!", choque: true, mudarPosse: true };
+    };
+
+    if (tipoEvento === "golo") {
+        const modoGol = Math.floor(Math.random() * 3);
+        const d = pickDef(), m = pickMid(), a = (indiceFinalizador >= 0 ? indiceFinalizador : pickAtk());
+
+        if (modoGol === 0) {
+            // Construção 1: Passe Zagueiro -> Meia -> Condução -> Passe Filtrado -> Gol
+            passos.push(passe(d, m, "🎯 SAÍDA DE BOLA"));
+            passos.push(conducao(m, "⚡ ARRANCADA"));
+            passos.push(passe(m, a, "📐 PASSE FILTRADO"));
+            passos.push(conducao(a, "🏃 DOMÍNIO"));
+            const chuteP = chute(a, "💥 CHUTAÇO!");
+            chuteP.evento = "golo";
+            passos.push(chuteP);
+
+        } else if (modoGol === 1) {
+            // Construção 2: Jogada de Ponta -> Cruzamento -> Cabeceio -> Gol
+            const w = pickWing();
+            passos.push(passe(m, w, "📐 LANÇAMENTO NA PONTA"));
+            passos.push(conducao(w, "⚡ ARRANCADA NA FLANCA"));
+            passos.push(cruzamento(w, ataqueDir === 1 ? 86 : 14, 50));
+            const cab = cabeceio(a);
+            cab.evento = "golo";
+            passos.push(cab);
+
+        } else {
+            // Construção 3: Troca de passes curta -> Chute de longe -> Gol
+            const m1 = pickMid(), m2 = pickMid() !== m1 ? pickMid() : pickAtk();
+            passos.push(passe(d, m1, "🎯 PASSE CURTO"));
+            passos.push(conducao(m1, "⚡ CONDUÇÃO"));
+            passos.push(passe(m1, m2, "📐 TABELA"));
+            passos.push(conducao(m2, "🏃 AJEITOU"));
+            const chuteP = chute(m2, "🚀 FOGUETE!");
+            chuteP.evento = "golo";
+            passos.push(chuteP);
+        }
+
+    } else if (tipoEvento === "defesa" || tipoEvento === "trave") {
+        const m = pickMid(), a = (indiceFinalizador >= 0 ? indiceFinalizador : pickAtk()), od = pickOppDef();
+        passos.push(passe(m, a, "🎯 PASSE NA ÁREA"));
+        passos.push(conducao(a, "⚡ DOMÍNIO E CHUTE"));
+        const chuteP = chute(a, "💥 CHUTE FORTE");
+        chuteP.evento = tipoEvento;
+        passos.push(chuteP);
+        passos.push({ x: 50 - ataqueDir * 14, y: 50 + (Math.random() * 20 - 10),
+                       indice: -1, duracaoMs: DUR_REBOTE, tipo: "rebote", rotulo: "🧤 DEFESA / REBOTE", evento: "rebote" });
+
+    } else if (tipoEvento === "escanteio") {
+        // 🚩 ESCANTEIO REAL: Coloca o cobrador exatamente na bandeira de escanteio
+        const estado = window.estadoVisualPartida;
+        const w = pickWing(), a = (indiceFinalizador >= 0 ? indiceFinalizador : pickAtk());
+        const timeKey = eCasa ? "casa" : "visita";
+        const cantoX = ataqueDir === 1 ? 96 : 4;
+        const cantoY = Math.random() < 0.5 ? 10 : 90;
+
+        if (estado && estado.posAtual?.[timeKey]?.[w]) {
+            estado.posAtual[timeKey][w] = { x: cantoX, y: cantoY };
+            estado.posAlvo[timeKey][w] = { x: cantoX, y: cantoY };
+            estado.bola = { x: cantoX, y: cantoY, z: 0 };
+        }
+
+        // Cobrança em curva da bandeira de escanteio para a grande área
+        passos.push({ x: cantoX, y: cantoY, indice: w, duracaoMs: 350, tipo: "conducao", rotulo: "🚩 ESCANTEIO" });
+        passos.push(cruzamento(w, ataqueDir === 1 ? 86 : 14, 50));
+        passos.push(cabeceio(a));
+
+    } else if (tipoEvento === "falta" || tipoEvento === "impedimento" || tipoEvento === "cartao") {
+        const d = pickDef(), m = pickMid(), od = pickOppMid();
+        passos.push(passe(d, m, "🎯 PASSE"));
+        passos.push(conducao(m, "⚡ CONDUÇÃO"));
+        const div = dividida(m, od, "⚔️ FALTOSA DIVIDIDA!");
+        div.evento = tipoEvento;
+        passos.push(div);
+
+    } else if (tipoEvento === "penalti") {
+        const m = pickMid(), a = (indiceFinalizador >= 0 ? indiceFinalizador : pickAtk()), od = pickOppDef();
+        passos.push(passe(m, a, "🎯 PASSE NA ÁREA"));
+        passos.push(dividida(a, od, "⚽ FALTA NA ÁREA!"));
+        passos.push({ x: eCasa ? 88 : 12, y: 50, indice: a, duracaoMs: 500, tipo: "chute", rotulo: "⚽ CHUTE PÊNALTI", evento: "penalti", remate: true });
+
+    } else {
+        // 🤝 JOGO NORMAL (Ambiente): Troca de passes realista, fluida e encadeada
+        const variante = Math.floor(Math.random() * 3);
+        const d = pickDef(), m = pickMid(), a = pickAtk(), w = pickWing(), om = pickOppMid();
+
+        if (variante === 0) {
+            // Passe Zagueiro -> Meia -> Condução -> Passe Atacante
+            passos.push(passe(d, m, "🎯 PASSE"));
+            passos.push(conducao(m, "⚡ CONDUÇÃO"));
+            passos.push(passe(m, a, "🎯 PASSE CURTO"));
+
+        } else if (variante === 1) {
+            // Passe -> Ponta Conduz -> Passe de lado
+            passos.push(passe(d, w, "📐 PASSE NA PONTA"));
+            passos.push(conducao(w, "⚡ ARRANCADA"));
+            passos.push(passe(w, a, "🎯 PASSE DE LADO"));
+
+        } else {
+            // Meia conduz -> Dividida -> Passe de apoio
+            passos.push(passe(d, m, "🎯 PASSE"));
+            passos.push(conducao(m, "⚡ CONDUÇÃO"));
+            passos.push(dividida(m, om, "⚔️ DIVIDIDA"));
+        }
+    }
+    return passos;
+}
+
+// ⏱️ Easing framerate-independente — constante de tempo mais ALTA = movimento
+// mais suave e gradual. O cap em 0.12 impede que k fique alto demais e cause
+// saltos em frames com dt grande.
+function aproximar(atual, alvo, dt, velocidadeMs) {
+    const k = 1 - Math.exp(-dt / Math.max(velocidadeMs, 120));
+    return atual + (alvo - atual) * Math.min(k, 0.12);
+}
+
+// ==========================================
+// 🥅 MINIGAME INTERATIVO DE PÊNALTI (MODO JOGADOR)
+// ==========================================
+window.abrirMinigamePenalti = function(dados = {}, callback) {
+    const modal = document.getElementById("modalPenaltiMinigame");
+    if (!modal) {
+        if (typeof callback === "function") callback({ gol: Math.random() < 0.75 });
+        return;
+    }
+
+    const ehGoleiro = dados.ehGoleiro ?? (window.jogador && window.jogador.posicao === "Goleiro");
+    const forcaRival = dados.forcaRival ?? 70;
+    const cobradorNome = dados.cobradorNome || (ehGoleiro ? "Atacante Adversário" : (window.jogador?.nome || "Você"));
+    const goleiroNome = dados.goleiroNome || (ehGoleiro ? (window.jogador?.nome || "Você") : "Goleiro Adversário");
+    
+    document.getElementById("penaltiTitulo").textContent = ehGoleiro ? "🧤 DEFESA DE PÊNALTI!" : "⚽ PÊNALTI DECISIVO!";
+    document.getElementById("penaltiSubtitulo").textContent = ehGoleiro 
+        ? `${cobradorNome} vai para a cobrança! Escolha o canto para saltar e defender!` 
+        : `${cobradorNome} contra ${goleiroNome}. Escolha o canto e acerte o tempo de força!`;
+
+    const kickerCtrls = document.getElementById("penaltiKickerControls");
+    const keeperCtrls = document.getElementById("penaltiKeeperControls");
+    const overlay = document.getElementById("penaltiResultOverlay");
+    const reticle = document.getElementById("penaltiTargetReticle");
+    const ball = document.getElementById("penaltiBall");
+    const keeper = document.getElementById("penaltiGoalkeeper");
+    const indicator = document.getElementById("penaltiPowerIndicator");
+
+    overlay.classList.remove("ativo");
+    ball.style.bottom = "24px";
+    ball.style.left = "50%";
+    keeper.style.left = "50%";
+    keeper.style.transform = "translateX(-50%)";
+
+    modal.classList.remove("oculto");
+
+    let cantoSelecionado = "center";
+    let defesaSelecionada = "center";
+    let powerDirection = 1;
+    let powerVal = 0;
+    let powerInterval = null;
+
+    if (ehGoleiro) {
+        kickerCtrls.classList.add("oculto");
+        keeperCtrls.classList.remove("oculto");
+        reticle.style.display = "none";
+
+        keeperCtrls.querySelectorAll(".btn-canto-gk").forEach(btn => {
+            btn.onclick = () => {
+                keeperCtrls.querySelectorAll(".btn-canto-gk").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                defesaSelecionada = btn.dataset.defesa;
+            };
+        });
+
+        document.getElementById("btnDefenderPenalti").onclick = () => {
+            finalizarPenalti(ehGoleiro, cantoSelecionado, defesaSelecionada, powerVal, callback);
+        };
+    } else {
+        kickerCtrls.classList.remove("oculto");
+        keeperCtrls.classList.add("oculto");
+        reticle.style.display = "block";
+
+        kickerCtrls.querySelectorAll(".btn-canto").forEach(btn => {
+            btn.onclick = () => {
+                kickerCtrls.querySelectorAll(".btn-canto").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                cantoSelecionado = btn.dataset.canto;
+                posicionarMira(cantoSelecionado);
+            };
+        });
+
+        posicionarMira(cantoSelecionado);
+
+        // Barra de força animada
+        clearInterval(powerInterval);
+        powerVal = 0;
+        powerInterval = setInterval(() => {
+            powerVal += powerDirection * 3;
+            if (powerVal >= 100) { powerVal = 100; powerDirection = -1; }
+            if (powerVal <= 0) { powerVal = 0; powerDirection = 1; }
+            if (indicator) indicator.style.left = `${powerVal}%`;
+        }, 20);
+
+        document.getElementById("btnChutarPenalti").onclick = () => {
+            clearInterval(powerInterval);
+            finalizarPenalti(ehGoleiro, cantoSelecionado, defesaSelecionada, powerVal, callback);
+        };
+    }
+
+    function posicionarMira(canto) {
+        const coords = {
+            "top-left": { left: "20%", top: "25%" },
+            "low-left": { left: "22%", top: "50%" },
+            "center": { left: "50%", top: "40%" },
+            "low-right": { left: "78%", top: "50%" },
+            "top-right": { left: "80%", top: "25%" }
+        };
+        const pos = coords[canto] || coords["center"];
+        reticle.style.left = pos.left;
+        reticle.style.top = pos.top;
+    }
+
+    function finalizarPenalti(souGoleiro, cantoChute, cantoSalto, forca, cb) {
+        let ehGol = false;
+        let desc = "";
+
+        if (souGoleiro) {
+            // 🧤 Você é o goleiro: Reflexos/Reação (reflexos), Posicionamento
+            // (reposição), Elasticidade (velocidade) e Defesa de Pênaltis
+            // (defesa) definem tanto a chance de "ler" o canto quanto a
+            // chance de ainda assim alcançar a bola quando adivinha errado.
+            const notaGoleiro = notaPenaltiDefesa(window.jogador);
+            const cantosPossiveis = ["top-left", "low-left", "center", "low-right", "top-right"];
+            cantoChute = cantosPossiveis[Math.floor(Math.random() * cantosPossiveis.length)];
+
+            const chanceAcertarCanto = Math.max(0.18, Math.min(0.62, 0.30 + (notaGoleiro - 65) * 0.006));
+            const acertouLado = cantoSalto === cantoChute;
+            let chanceDefender;
+            if (acertouLado) {
+                chanceDefender = Math.max(0.45, Math.min(0.93, 0.75 + (notaGoleiro - 65) * 0.005 - Math.max(0, forcaRival - 70) * 0.004));
+            } else {
+                chanceDefender = Math.max(0.03, Math.min(0.30, 0.08 + (notaGoleiro - 65) * 0.004));
+            }
+            const defendeu = Math.random() < chanceDefender;
+            ehGol = !defendeu;
+            desc = defendeu
+                ? (acertouLado ? "Defesaça espetacular! Você leu o canto e salvou o time!" : "Reflexo incrível! Alcançou uma bola que não era pro seu lado!")
+                : "Gol do adversário! Chute preciso no canto.";
+            void chanceAcertarCanto; // usada só para calibrar o quão previsível é o cobrador rival (mantida pra leitura do código)
+            moverComponentesAnimacao(cantoChute, cantoSalto);
+        } else {
+            // 🎯 Você é o cobrador: Pênaltis/Finalização (finalizacao),
+            // Compostura (inteligência) e Moral formam a nota da cobrança —
+            // o goleiro rival "lê" o canto com chance ligada à força do time
+            // adversário (forcaRival), e mesmo acertando o lado uma cobrança
+            // de alto nível ainda tem chance real de vencer o goleiro.
+            const notaCobranca = notaPenaltiCobranca({ ...window.jogador, isMe: true });
+            const idealForca = forca >= 35 && forca <= 65;
+            const muitoForte = forca > 85;
+
+            const cantosSaltoAi = ["top-left", "low-left", "center", "low-right", "top-right"];
+            const chanceRivalAcertarCanto = Math.max(0.20, Math.min(0.55, 0.30 + Math.max(0, forcaRival - 70) * 0.006));
+            const acertouCanto = Math.random() < chanceRivalAcertarCanto;
+            cantoSalto = acertouCanto ? cantoChute : cantosSaltoAi[Math.floor(Math.random() * cantosSaltoAi.length)];
+
+            if (muitoForte && Math.random() < 0.6) {
+                ehGol = false;
+                desc = "Isolou! Chute forte demais subiu por cima do travessão!";
+            } else if (cantoSalto === cantoChute && Math.random() < Math.max(0.10, 0.65 - (notaCobranca - 65) * 0.006)) {
+                ehGol = false;
+                desc = "Defendeu o goleiro! Ele adivinhou o canto!";
+            } else {
+                ehGol = true;
+                desc = idealForca ? "GOLAÇO! Cobrança no ângulo sem chance!" : "GOL! Bola no fundo das redes!";
+            }
+
+            moverComponentesAnimacao(cantoChute, cantoSalto);
+        }
+
+        setTimeout(() => {
+            const titleEl = document.getElementById("penaltiResultTitle");
+            const descEl = document.getElementById("penaltiResultDesc");
+            if (titleEl) titleEl.textContent = ehGol ? "⚽ GOOOOL!" : "🛑 DEFESA / FORA!";
+            if (descEl) descEl.textContent = desc;
+            overlay.classList.add("ativo");
+
+            setTimeout(() => {
+                modal.classList.add("oculto");
+                overlay.classList.remove("ativo");
+                if (typeof cb === "function") cb({ gol: ehGol, descricao: desc });
+            }, 2200);
+        }, 600);
+    }
+
+    function moverComponentesAnimacao(chute, salto) {
+        const coordsGoal = {
+            "top-left": { ballX: "22%", ballY: "25%", gkX: "25%" },
+            "low-left": { ballX: "24%", ballY: "48%", gkX: "28%" },
+            "center": { ballX: "50%", ballY: "40%", gkX: "50%" },
+            "low-right": { ballX: "76%", ballY: "48%", gkX: "72%" },
+            "top-right": { ballX: "78%", ballY: "25%", gkX: "75%" }
+        };
+        const targetBall = coordsGoal[chute] || coordsGoal["center"];
+        const targetGk = coordsGoal[salto] || coordsGoal["center"];
+
+        ball.style.left = targetBall.ballX;
+        ball.style.bottom = targetBall.ballY;
+        keeper.style.left = targetGk.gkX;
+    }
+};
+
+// 🎬 LOOP DE ANIMAÇÃO — reescrito para fluidez. Cada passe da fila é consumido
+// um de cada vez com easing suave (ease-in-out cúbico). Os jogadores se movem
+// com constantes de tempo ALTAS (~800ms) para nunca parecerem teletransportar.
+// A oscilação idle é mínima (±0.6%) para dar vida sem causar vibração visual.
+function iniciarLoopAnimacaoPartida() {
+    if (window._matchRafHandle) cancelAnimationFrame(window._matchRafHandle);
+    const frame = (ts) => {
+        window._matchRafHandle = requestAnimationFrame(frame);
+        const estado = window.estadoVisualPartida;
+        if (!estado || !window.visualPartidaAtiva) return;
+        if (!estado.tempoAnterior) estado.tempoAnterior = ts;
+        let dt = ts - estado.tempoAnterior;
+        estado.tempoAnterior = ts;
+        dt = Math.min(dt, 50); // teto baixo evita saltos ao trocar de aba
+        if (estado.pausado) dt = 0;
+        const vel = estado.pausado ? 0 : (estado.velocidade || 1);
+
+        // 🥅 Avança a fila de lances UM DE CADA VEZ
+        if (vel > 0 && !estado.faseAtual && estado.filaBola.length) {
+            const proximo = estado.filaBola.shift();
+            estado.faseAtual = {
+                ...proximo,
+                inicio: { x: estado.bola.x, y: estado.bola.y },
+                decorrido: 0,
+                duracaoMs: Math.max(240, proximo.duracaoMs / vel)
+            };
+            if (proximo.rotulo && !proximo.silencioso) {
+                mostrarBadgeAcao(proximo.rotulo, proximo.tipo);
+            }
+        }
+        if (vel > 0 && estado.faseAtual) {
+            const fase = estado.faseAtual;
+            fase.decorrido += dt;
+            const t = Math.min(1, fase.decorrido / fase.duracaoMs);
+            const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+            if (fase.tipo === "conducao" || fase.tipo === "drible") {
+                // ⚽ A bola fica colada exatamente ao pé do jogador que está conduzindo!
+                const timeKey = estado.posse;
+                const pToken = estado.posAtual[timeKey]?.[fase.indice];
+                if (pToken) {
+                    const dirX = (estado.posse === "casa" ? 1.6 : -1.6);
+                    estado.bola.x = Math.max(3, Math.min(97, pToken.x + dirX));
+                    estado.bola.y = Math.max(6, Math.min(94, pToken.y));
+                }
+            } else {
+                estado.bola.x = fase.inicio.x + (fase.x - fase.inicio.x) * eased;
+                estado.bola.y = fase.inicio.y + (fase.y - fase.inicio.y) * eased;
+            }
+
+            if (fase.arco) {
+                // Parábola suave para cruzamentos (teto de 14px para não voar para fora do campo)
+                estado.bola.z = Math.sin(t * Math.PI) * 14;
+            } else if (fase.tipo === "passe") {
+                // 🎯 Passe raso também ganha uma leve "levantada" física — bem
+                // sutil pra passe curto, um pouco mais alta pra lançamento longo
+                // (a duração já escala com a distância, então reaproveitamos ela
+                // como referência em vez de recalcular a distância aqui).
+                estado.bola.z = Math.sin(t * Math.PI) * Math.min(6, fase.duracaoMs / 90);
+            } else {
+                estado.bola.z = 0;
+            }
+
+            if (t >= 1) {
+                if (fase.tipo !== "conducao" && fase.tipo !== "drible") {
+                    estado.bola.x = fase.x;
+                    estado.bola.y = fase.y;
+                }
+                estado.bola.z = 0;
+                if (fase.choque) {
+                    dispararEfeitoChoque(fase.x, fase.y);
+                }
+                if (fase.mudarPosse) {
+                    estado.posse = estado.posse === "casa" ? "visita" : "casa";
+                }
+                if (typeof fase.aoChegar === "function" && !fase.silencioso) fase.aoChegar();
+                estado.faseAtual = null;
+            }
+        }
+
+        // 🧠 Movimentação suave dos 22 jogadores
+        const donoTime = estado.faseAtual?.indice >= 0 ? (estado.posse === "casa" ? "casa" : "visita") : null;
+        ["casa", "visita"].forEach(time => {
+            const slots = time === "casa" ? estado.slotsCasa : estado.slotsVisita;
+            const posAtual = estado.posAtual[time], posAlvo = estado.posAlvo[time], faseIdle = estado.faseIdle[time];
+            const temPosse = estado.posse === time;
+
+            slots.forEach((slot, i) => {
+                let alvoX = posAlvo[i].x, alvoY = posAlvo[i].y;
+                const fase = estado.faseAtual;
+                const ehPortador = donoTime === time && fase?.indice === i;
+                const ehDefensorDividida = fase && !temPosse && fase.defensorIndice === i && (fase.tipo === "dividida" || fase.tipo === "desarme");
+
+                if (ehPortador) {
+                    // O portador avança pela lateral/centro no ataque
+                    const avancoConducao = (time === "casa" ? 1 : -1) * (estado.direcaoCasa || 1) * 5;
+                    alvoX = Math.max(6, Math.min(94, posAlvo[i].x + avancoConducao));
+                    alvoY = posAlvo[i].y;
+                } else if (ehDefensorDividida) {
+                    alvoX = fase.x;
+                    alvoY = fase.y;
+                } else if (slot.pos === "Goleiro") {
+                    if (fase?.remate || fase?.tipo === "chute" || fase?.tipo === "cabeceio") {
+                        const golAmeacado = (time === "casa" && !eDonoCasaAtacando(estado)) || (time === "visita" && eDonoCasaAtacando(estado));
+                        if (golAmeacado) alvoY = alvoY * 0.4 + estado.bola.y * 0.6;
+                    }
+                } else {
+                    const dirAtaqueTime = (time === "casa" ? 1 : -1) * (estado.direcaoCasa || 1);
+                    if (temPosse) {
+                        const avanco = dirAtaqueTime * 3.5;
+                        if (slot.pos === "Atacante" || slot.pos === "Ponta") {
+                            alvoX += avanco * 1.3;
+                        } else if (slot.pos === "Meio-Campista" || slot.pos === "Meia Ofensivo") {
+                            alvoX += avanco * 0.8;
+                        }
+                    } else {
+                        const recuo = dirAtaqueTime * -3.5;
+                        if (slot.pos === "Zagueiro" || slot.pos === "Volante") {
+                            alvoX += recuo * 1.0;
+                            alvoY = (alvoY * 0.8) + (estado.bola.y * 0.2);
+                        }
+                    }
+                }
+
+                const tTime = performance.now() / 1000;
+                const idleX = Math.sin(tTime * 0.35 + faseIdle[i]) * 0.6;
+                const idleY = Math.cos(tTime * 0.3 + faseIdle[i] * 1.2) * 0.6;
+                const velocidadeAprox = (ehPortador || ehDefensorDividida) ? 260 : 750;
+                const limiteXFinal = slot.pos === "Goleiro" ? [3, 97] : [6, 94];
+                posAtual[i].x = aproximar(posAtual[i].x, Math.max(limiteXFinal[0], Math.min(limiteXFinal[1], alvoX + idleX)), dt, velocidadeAprox / Math.max(1, vel));
+                posAtual[i].y = aproximar(posAtual[i].y, Math.max(6, Math.min(94, alvoY + idleY)), dt, velocidadeAprox / Math.max(1, vel));
+            });
+        });
+
+        renderizarQuadroPartida();
+    };
+    window._matchRafHandle = requestAnimationFrame(frame);
+}
+function eDonoCasaAtacando(estado) { return estado.posse === "casa"; }
+
+function renderizarQuadroPartida() {
+    const estado = window.estadoVisualPartida;
+    const pitch = document.getElementById("matchLivePitch");
+    const ball = document.getElementById("matchLiveBall");
+    const ballShadow = document.getElementById("matchLiveBallShadow");
+    if (!estado || !pitch || !ball) return;
+
+    const fase = estado.faseAtual;
+    const z = estado.bola.z || 0;
+
+    ball.style.left = `${estado.bola.x}%`;
+    ball.style.top = `${estado.bola.y}%`;
+    ball.style.transform = `translate(-50%, -50%) translateY(${-z}px) scale(${1 + z / 35})`;
+
+    if (ballShadow) {
+        ballShadow.style.left = `${estado.bola.x}%`;
+        ballShadow.style.top = `${estado.bola.y}%`;
+        ballShadow.style.transform = `translate(-50%, -50%) scale(${1 + z / 25})`;
+        ballShadow.style.opacity = `${Math.max(0.12, 0.55 - z / 50)}`;
+    }
+
+    ["casa", "visita"].forEach(time => {
+        const posAtual = estado.posAtual[time];
+        const temPosse = estado.posse === time;
+        pitch.querySelectorAll(`.match-live-token[data-team="${time}"]`).forEach(token => {
+            const i = Number(token.dataset.index);
+            const p = posAtual[i];
+            if (!p) return;
+            token.style.left = `${p.x}%`; token.style.top = `${p.y}%`;
+
+            const ehPortador = fase && fase.indice === i && temPosse;
+            const ehDefensorDividida = fase && fase.defensorIndice === i && !temPosse && (fase.tipo === "dividida" || fase.tipo === "desarme");
+            const ehGoleiroMergulho = token.classList.contains("goleiro") && fase && (fase.tipo === "chute" || fase.tipo === "cabeceio" || fase.remate);
+
+            token.classList.toggle("em-acao", ehPortador || ehDefensorDividida);
+            token.classList.toggle("com-bola", ehPortador);
+            token.classList.toggle("conduzindo", ehPortador && (fase?.tipo === "conducao" || fase?.tipo === "drible"));
+            token.classList.toggle("dividida", ehPortador || ehDefensorDividida);
+            token.classList.toggle("mergulho", ehGoleiroMergulho);
+        });
+    });
+
+    estado.historicoBola.unshift({ x: estado.bola.x, y: estado.bola.y });
+    estado.historicoBola = estado.historicoBola.slice(0, 9);
+    [1, 2, 3].forEach(n => {
+        const dot = document.getElementById(`matchBallTrail${n}`);
+        const pos = estado.historicoBola[n * 2] || estado.historicoBola[estado.historicoBola.length - 1];
+        if (dot && pos) { dot.style.left = `${pos.x}%`; dot.style.top = `${pos.y}%`; }
+    });
+    const linhaPasse = document.getElementById("matchLivePass");
+    if (linhaPasse && fase && (fase.tipo === "passe" || fase.tipo === "cruzamento")) {
+        const dx = estado.bola.x - fase.inicio.x, dy = estado.bola.y - fase.inicio.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 2) {
+            linhaPasse.style.width = `${dist}%`;
+            linhaPasse.style.left = `${fase.inicio.x}%`; linhaPasse.style.top = `${fase.inicio.y}%`;
+            linhaPasse.style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`;
+            linhaPasse.style.opacity = "1";
+        } else {
+            linhaPasse.style.opacity = "0";
+        }
+    } else if (linhaPasse) { linhaPasse.style.opacity = "0"; }
+}
+
+window.atualizarVisualizacaoPartida = function(minuto, evento = "", golsCasa = 0, golsVisita = 0) {
+    if (!window.visualPartidaAtiva) return;
+    const pitch = document.getElementById("matchLivePitch");
+    const caption = document.getElementById("matchLiveCaption");
+    const estado = window.estadoVisualPartida;
+    if (!pitch || !estado) return;
+    const texto = evento.replace(/<[^>]*>/g, "").trim();
+    const golCasa = golsCasa > estado.placarCasa;
+    const golVisita = golsVisita > estado.placarVisita;
+    if (golCasa) estado.posse = "casa";
+    else if (golVisita) estado.posse = "visita";
+    else if (/RECUPERA|ROUBA|DEFESA|CORTA|PERDE A BOLA/i.test(texto)) estado.posse = estado.posse === "casa" ? "visita" : "casa";
+    else if (texto.toUpperCase().includes(estado.nomes.visita.toUpperCase())) estado.posse = "visita";
+    else if (texto.toUpperCase().includes(estado.nomes.casa.toUpperCase())) estado.posse = "casa";
+
+    const mostrarBannerParada = (icone, mensagem, duracaoMs = 1500) => {
+        const banner = document.getElementById("matchStoppageBanner");
+        if (!banner) return;
+        const iconEl = document.getElementById("matchStoppageIcon");
+        const textoEl = document.getElementById("matchStoppageTexto");
+        if (iconEl) iconEl.textContent = icone;
+        if (textoEl) textoEl.textContent = mensagem;
+        banner.classList.remove("ativo"); void banner.offsetWidth; banner.classList.add("ativo");
+        clearTimeout(window._matchStoppageTimer);
+        window._matchStoppageTimer = setTimeout(() => banner.classList.remove("ativo"), duracaoMs);
+    };
+    if (/SUBSTITUI/i.test(texto)) {
+        const ticker = document.getElementById("matchSubTicker");
+        if (ticker) {
+            ticker.textContent = `🔄 ${texto.replace(/^.*SUBSTITUIÇÃO NO [^:]*:\s*/i, "").trim() || "Substituição"}`;
+            ticker.classList.remove("ativo"); void ticker.offsetWidth; ticker.classList.add("ativo");
+            clearTimeout(window._matchSubTimer);
+            window._matchSubTimer = setTimeout(() => ticker.classList.remove("ativo"), 2400);
+        }
+    } else if (/IMPEDIMENTO/i.test(texto)) {
+        mostrarBannerParada("🚩", "Impedimento assinalado", 1500);
+    } else if (/ATENDIMENTO M[ÉE]DICO/i.test(texto)) {
+        mostrarBannerParada("🩹", "Pausa para atendimento médico", 1800);
+    } else if (/PÊNALTI|PENALTI/i.test(texto)) {
+        mostrarBannerParada("⚽", "Pênalti marcado!", 2000);
+        if (window.gameMode === "jogador" && window.jogador) {
+            const ehGoleiro = window.jogador.posicao === "Goleiro";
+            const temAtributoPenalti = (window.jogador.atributos?.penaltis || window.jogador.geral || 60) >= 65;
+            if (ehGoleiro || temAtributoPenalti) {
+                window.engineAoVivo?.pausar?.();
+                window.abrirMinigamePenalti({ ehGoleiro }, () => {
+                    window.engineAoVivo?.retomar?.();
+                });
+            }
+        }
+    } else if (/\bFALTA\b/i.test(texto) && !/CART[ÃA]O/i.test(texto)) {
+        mostrarBannerParada("🟦", "Falta marcada", 1300);
+    } else if (/ESCANTEIO/i.test(texto)) {
+        mostrarBannerParada("🚩", "Escanteio", 1200);
+    }
+
+    let textoVisual = texto;
+    if (!textoVisual) {
+        const fase = Math.floor(minuto / 6) % 4;
+        if (fase === 0) estado.posse = estado.posse === "casa" ? "visita" : "casa";
+        textoVisual = ["saída de bola organizada", "troca passes pelo meio", "avança pelas laterais", "procura espaço no último terço"][fase];
+    }
+
+    const eCasa = estado.posse === "casa";
+    const eFinalizacao = golCasa || golVisita || /GOLO|GOL|CHUTE|FINALIZA|DEFESA/i.test(textoVisual);
+    const eAtaque = eFinalizacao || /ATAQUE|CRUZA|PASSE|AVANÇA|PROCURA/i.test(textoVisual);
+
+    estado.ticksPosseTotal++;
+    if (eCasa) estado.ticksPosseCasa++;
+    const eEscanteio = /ESCANTEIO|CANTO/i.test(textoVisual);
+    const eNoAlvo = golCasa || golVisita || /DEFESA|DEFESAÇA/i.test(textoVisual);
+    const eRemate = eNoAlvo || /TRAVE|CHUTE|FINALIZA|REMATE/i.test(textoVisual);
+    const statsLado = estado.estatisticas[estado.posse];
+    if (statsLado) {
+        if (eEscanteio) statsLado.escanteios++;
+        if (eRemate) statsLado.remates++;
+        if (eNoAlvo) statsLado.alvo++;
+    }
+    estado.janelaPosse.push(estado.posse);
+    if (estado.janelaPosse.length > 6) estado.janelaPosse.shift();
+    const pctMomentumCasa = Math.round((estado.janelaPosse.filter(p => p === "casa").length / estado.janelaPosse.length) * 100);
+    const momCasa = document.getElementById("matchMomentumCasa"); const momVisita = document.getElementById("matchMomentumVisita");
+    if (momCasa) momCasa.style.width = `${pctMomentumCasa}%`; if (momVisita) momVisita.style.width = `${100 - pctMomentumCasa}%`;
+    const posseTotal = Math.max(1, estado.ticksPosseTotal);
+    const pctCasa = Math.round((estado.ticksPosseCasa / posseTotal) * 100);
+    const pctVisita = 100 - pctCasa;
+    setText("matchPosseCasa", `${pctCasa}%`); setText("matchPosseVisita", `${pctVisita}%`);
+    const fillCasa = document.getElementById("matchPosseFillCasa"); const fillVisita = document.getElementById("matchPosseFillVisita");
+    if (fillCasa) fillCasa.style.width = `${pctCasa}%`; if (fillVisita) fillVisita.style.width = `${pctVisita}%`;
+    setText("matchRematesCasa", estado.estatisticas.casa.remates); setText("matchRematesVisita", estado.estatisticas.visita.remates);
+    setText("matchAlvoCasa", estado.estatisticas.casa.alvo); setText("matchAlvoVisita", estado.estatisticas.visita.alvo);
+    setText("matchEscanteiosCasa", estado.estatisticas.casa.escanteios); setText("matchEscanteiosVisita", estado.estatisticas.visita.escanteios);
+
+    if (minuto >= 45 && !estado.intervaloMostrado) {
+        estado.intervaloMostrado = true;
+        const banner = document.getElementById("matchHalftimeBanner");
+        if (banner) {
+            setText("matchHalftimeScore", `${golsCasa} - ${golsVisita}`);
+            banner.classList.add("ativo");
+            setTimeout(() => banner.classList.remove("ativo"), 1600);
+        }
+        // 🔄 TROCA DE LADOS: no intervalo, os times de verdade trocam de campo.
+        // Espelha o X (100-x) de todo mundo em campo — jogadores e bola — de
+        // uma vez só, e inverte a flag direcaoCasa para que toda jogada daqui
+        // pra frente (chutes, cruzamentos, escanteios, avanços táticos) já
+        // nasça mirando o lado certo. O Y não muda (só inverte esquerda↔direita,
+        // não em cima↔embaixo).
+        estado.direcaoCasa = (estado.direcaoCasa || 1) * -1;
+        ["casa", "visita"].forEach(time => {
+            estado.posAtual[time].forEach(p => { p.x = 100 - p.x; });
+            estado.posAlvo[time].forEach(p => { p.x = 100 - p.x; });
+        });
+        estado.bola.x = 100 - estado.bola.x;
+        estado.historicoBola = estado.historicoBola.map(p => ({ x: 100 - p.x, y: p.y }));
+        mostrarBadgeAcao("🔄 TROCA DE LADO", "ambiente");
+    }
+    const progresso = eFinalizacao ? 39 : eAtaque ? 23 : 8;
+    const faixaY = [50, 34, 66][Math.floor(minuto / 7) % 3];
+
+    const slotsAtaque = eCasa ? estado.slotsCasa : estado.slotsVisita;
+    const textoUpper = textoVisual.toUpperCase();
+    let indiceNomeado = -1;
+    for (let i = 0; i < slotsAtaque.length; i++) {
+        const nomeJog = slotsAtaque[i]?.jogador?.nome;
+        if (!nomeJog || nomeJog.startsWith("#")) continue;
+        const sobrenome = nomeJog.split(" ").slice(-1)[0];
+        if (sobrenome.length > 2 && textoUpper.includes(sobrenome.toUpperCase())) { indiceNomeado = i; break; }
+    }
+    const dono = indiceNomeado >= 0 ? indiceNomeado : (eFinalizacao ? 8 + Math.floor(Math.random() * 3) : (estado.ultimoJogador + 1) % 11);
+    estado.ultimoJogador = dono;
+
+    const dispararCelebracaoGol = () => {
+        const scoreboard = document.querySelector("#modalPartida .match-scoreboard-compact");
+        const numeroGol = document.getElementById(golCasa ? "placarMarcadorCasa" : "placarMarcadorVisita");
+        if (scoreboard) { scoreboard.classList.remove("gol-flash"); void scoreboard.offsetWidth; scoreboard.classList.add("gol-flash"); }
+        if (numeroGol) { numeroGol.classList.remove("gol-pulse"); void numeroGol.offsetWidth; numeroGol.classList.add("gol-pulse"); }
+        pitch.classList.remove("gol-shake"); void pitch.offsetWidth; pitch.classList.add("gol-shake");
+        const goolBanner = document.getElementById("matchGoolBanner");
+        if (goolBanner) {
+            setText("matchGoolPlacar", `${golsCasa} - ${golsVisita}`);
+            goolBanner.classList.remove("ativo"); void goolBanner.offsetWidth; goolBanner.classList.add("ativo");
+            setTimeout(() => goolBanner.classList.remove("ativo"), 2000);
+        }
+        const overlay = document.getElementById("matchGoalScorerCard");
+        if (overlay) {
+            const jogadorGol = indiceNomeado >= 0 ? slotsAtaque[indiceNomeado].jogador : null;
+            const fotoUrl = jogadorGol?.id ? obterUrlImagem(jogadorGol, "jogador") : "";
+            overlay.innerHTML = `
+                ${fotoUrl ? `<img loading="lazy" decoding="async" src="${fotoUrl}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'match-goal-scorer-silhueta',textContent:'⚽'}))">` : `<div class="match-goal-scorer-silhueta">⚽</div>`}
+                <strong>${jogadorGol?.nome || estado.nomes[estado.posse]}</strong>
+                <span>GOLO! ${golsCasa}-${golsVisita}</span>`;
+            overlay.classList.remove("ativo"); void overlay.offsetWidth; overlay.classList.add("ativo");
+            setTimeout(() => overlay.classList.remove("ativo"), 2600);
+        }
+        setTimeout(() => reproduzirReplayJogada(sequencia, eCasa), 2050);
+    };
+    const dispararMarcadorChute = (passo, noAlvo) => {
+        const marcador = document.createElement("span");
+        marcador.className = `match-shot-marker ${noAlvo ? "no-alvo" : "fora"}`;
+        marcador.style.left = `${passo.x}%`; marcador.style.top = `${passo.y}%`;
+        pitch.appendChild(marcador);
+        setTimeout(() => marcador.remove(), 1800);
+    };
+    const dispararCartao = () => {
+        const vermelho = /VERMELHO/i.test(textoVisual);
+        const cartaoEl = document.createElement("span");
+        cartaoEl.className = `match-card-icon ${vermelho ? "vermelho" : "amarelo"}`;
+        cartaoEl.style.left = `${estado.bola.x}%`; cartaoEl.style.top = `${estado.bola.y}%`;
+        pitch.appendChild(cartaoEl);
+        setTimeout(() => cartaoEl.remove(), 1800);
+        window.tocarSom?.("cartao", 0.5);
+    };
+
+    let tipoEvento = "ambiente";
+    if (golCasa || golVisita) tipoEvento = "golo";
+    else if (/TRAVE/i.test(textoVisual)) tipoEvento = "trave";
+    else if (eNoAlvo) tipoEvento = "defesa";
+    else if (/CART[ÃA]O/i.test(textoVisual)) tipoEvento = "cartao";
+    else if (eEscanteio) tipoEvento = "escanteio";
+    else if (/P[ÊE]NALTI/i.test(textoVisual)) tipoEvento = "penalti";
+    else if (/IMPEDIMENTO/i.test(textoVisual)) tipoEvento = "impedimento";
+    else if (/\bFALTA\b/i.test(textoVisual) && !/CART[ÃA]O/i.test(textoVisual)) tipoEvento = "falta";
+
+    const sequencia = gerarSequenciaJogada(tipoEvento, eCasa, dono, estado.posAlvo[eCasa ? "casa" : "visita"], slotsAtaque, estado.posAlvo[eCasa ? "visita" : "casa"], estado.direcaoCasa || 1);
+    sequencia.forEach(passo => {
+        if (passo.evento === "golo") passo.aoChegar = () => { dispararMarcadorChute(passo, true); dispararCelebracaoGol(); };
+        else if (passo.evento === "defesa" || passo.evento === "trave") passo.aoChegar = () => dispararMarcadorChute(passo, false);
+        else if (passo.evento === "cartao") passo.aoChegar = () => dispararCartao();
+    });
+    // 🛑 ANTI-TELEPORTE: só empilha novos waypoints se a fila está quase vazia.
+    // Se o motor mandou ticks mais rápido do que a animação consumiu, descarta
+    // os antigos para que a bola nunca precise "correr" por dezenas de pontos
+    // empilhados — isso era a causa principal do efeito de teleportação.
+    if (estado.filaBola.length > 3) {
+        // Mantém só o último passo da fila antiga (para continuidade) e junta os novos
+        const ultimo = estado.filaBola[estado.filaBola.length - 1];
+        estado.filaBola = [ultimo, ...sequencia];
+    } else {
+        estado.filaBola.push(...sequencia);
+    }
+
+    // ⏸️ Pausa o RELÓGIO do motor (não a animação) enquanto a sequência ainda
+    // está se desenrolando na tela — é isto que garante que o próximo tick só
+    // chega DEPOIS que o lance atual (passe a passe) terminou de aparecer, em
+    // vez de empilhar vários lances de uma vez e "atropelar" a transmissão.
+    // Golo ganha um tempo extra: comemoração (2s) + replay em câmara lenta
+    // (a mesma sequência a ~2.1x mais devagar). definirVelocidade/pausar/
+    // retomar só mudam o RITMO — o resultado e o RNG do motor nunca mudam.
+    if (tipoEvento !== "ambiente" && typeof window.engineAoVivo?.pausar === "function") {
+        const duracaoSequenciaMs = sequencia.reduce((acc, p) => acc + p.duracaoMs, 0);
+        const extraGolo = tipoEvento === "golo" ? (2050 + duracaoSequenciaMs * 2.1) : 0;
+        window.engineAoVivo.pausar();
+        clearTimeout(window._matchRetomarTimer);
+        window._matchRetomarTimer = setTimeout(() => window.engineAoVivo?.retomar?.(), duracaoSequenciaMs + 250 + extraGolo);
+    }
+
+    // Cada linha se desloca em proporção diferente conforme o lance: zaga
+    // mantém a forma, meio oferece apoio e ataque ataca a profundidade —
+    // usando a posição REAL de cada titular. Isto vira o ALVO tático de cada
+    // jogador; o loop de animação é quem efetivamente os move até lá.
+    ["casa", "visita"].forEach(time => {
+        const timeCasa = time === "casa";
+        const slots = timeCasa ? estado.slotsCasa : estado.slotsVisita;
+        slots.forEach((slot, indice) => {
+            const baseX = slot?.x ?? 50, baseY = slot?.y ?? 50;
+            const meuTimeTemBola = timeCasa === eCasa;
+            const fatorLinha = indice === 0 ? .08 : indice < 5 ? .20 : indice < 8 ? .34 : .48;
+            const direcao = (eCasa ? 1 : -1) * (estado.direcaoCasa || 1);
+            const deslocamento = (meuTimeTemBola ? progresso * fatorLinha : -progresso * (fatorLinha * .42));
+            // 🥅 Só o goleiro pode chegar perto da linha do gol — os outros 10
+            // jogadores ficam travados antes da pequena área (6% de cada lado),
+            // pra ninguém aparecer "dentro do gol" mesmo empurrando no ataque.
+            const limiteX = slot.pos === "Goleiro" ? [4, 96] : [9, 91];
+            const x = Math.max(limiteX[0], Math.min(limiteX[1], baseX + direcao * deslocamento));
+            const y = Math.max(10, Math.min(90, baseY + (faixaY - 50) * (indice < 5 ? .18 : .38)));
+            estado.posAlvo[time][indice] = { x, y };
+        });
+    });
+
+    estado.placarCasa = golsCasa; estado.placarVisita = golsVisita;
+    if (caption) caption.textContent = `${minuto}' — ${estado.nomes[estado.posse]} ${textoVisual}.`;
+};
+
+// 🔁 Replay em câmara lenta: reconstrói o MESMO caminho que a bola acabou de
+// percorrer (silenciosamente — não recontabiliza estatísticas nem dispara
+// banners de novo) a ~40% da velocidade, com o selo "Replay" visível.
+function reproduzirReplayJogada(sequenciaOriginal, eCasa) {
+    const estado = window.estadoVisualPartida;
+    const badge = document.getElementById("matchReplayBadge");
+    if (!estado || !sequenciaOriginal.length) return;
+    const dirCasaReplay = estado.direcaoCasa || 1;
+    const ataqueDirReplay = eCasa ? dirCasaReplay : -dirCasaReplay;
+    const origX = ataqueDirReplay === 1 ? 10 : 90;
+    const origY = 50;
+    if (badge) { badge.classList.add("ativo"); }
+    estado.bola = { x: origX, y: origY };
+    const replaySeq = sequenciaOriginal.map(p => ({ ...p, duracaoMs: p.duracaoMs * 2.1, silencioso: true, aoChegar: null }));
+    replaySeq[replaySeq.length - 1].silencioso = false;
+    replaySeq[replaySeq.length - 1].aoChegar = () => { if (badge) badge.classList.remove("ativo"); };
+    estado.filaBola.push(...replaySeq);
+}
+
+// O botão deixa o usuário escolher entre relato compacto e transmissão visual
+// sem reiniciar a partida que já está em andamento.
+document.getElementById("btnAlternarVisualPartida")?.addEventListener("click", () => {
+    window.visualPartidaAtiva = !window.visualPartidaAtiva;
+    const nomeCasa = document.getElementById("placarTimeCasa")?.textContent || "Casa";
+    const nomeVisita = document.getElementById("placarTimeVisita")?.textContent || "Visita";
+    window.prepararVisualizacaoPartida(nomeCasa, nomeVisita);
+});
+
+// Permite escolher a forma de acompanhar a partida ANTES de entrar no relvado.
+document.getElementById("btnModoVisualHub")?.addEventListener("click", () => {
+    window.visualPartidaAtiva = !window.visualPartidaAtiva;
+    atualizarControlesVisualPartida();
+    mostrarToast("Simulação", window.visualPartidaAtiva ? "Transmissão visual ativada para o próximo jogo." : "Próximo jogo será simulação rápida, apenas com relato.", "info");
+});
 
 // ==========================================
 // 🔊 EFEITOS SONOROS
@@ -3766,17 +5532,33 @@ document.addEventListener("click", (e) => {
 // Cada faixa tem um "nome" de exibição — pode editar à vontade, é só o que
 // aparece na bolinha de configurações.
 const MUSICAS_JOGO = [
-    { arquivo: "assets/music/tema1.mp3", nome: "Tema 1" },
-    { arquivo: "assets/music/tema2.mp3", nome: "Tema 2" },
-    { arquivo: "assets/music/tema3.mp3", nome: "Tema 3" },
-    { arquivo: "assets/music/tema4.mp3", nome: "Tema 4" },
-     { arquivo: "assets/music/tema5.mp3", nome: "Tema 5" },
-      { arquivo: "assets/music/tema6.mp3", nome: "Tema 6" },
+    { arquivo: "assets/music/tema1.mp3", nome: "Yeat & Joji – Back Home" },
+    { arquivo: "assets/music/tema2.mp3", nome: "J Hus - Who Told You ft. Drake" },
+    { arquivo: "assets/music/tema3.mp3", nome: "Central Cee x Dave - Sprinter" },
+    { arquivo: "assets/music/tema4.mp3", nome: "Risky B - 2 Man" },
+     { arquivo: "assets/music/tema5.mp3", nome: "NDOTZ - Embrace It " },
+      { arquivo: "assets/music/tema6.mp3", nome: "J Balvin, SAIKO - Gaga" },
+      { arquivo: "assets/music/tema7.mp3", nome: "YO LO SOÑÉ - SAIKO & Omar Montes" },
+      { arquivo: "assets/music/tema8.mp3", nome: "arcoíris - Young Miko" },
+      { arquivo: "assets/music/tema9.mp3", nome: "Imagine Dragons - On Top Of The World" },
+      { arquivo: "assets/music/tema10.mp3", nome: "Smallpools - Dreaming" },
+      { arquivo: "assets/music/tema11.mp3", nome: "DNA (FIFA World Cup 2026)" },
+      { arquivo: "assets/music/tema12.mp3", nome: "ntre last de 20 - Bizarrap, Natanael Cano " },
+      { arquivo: "assets/music/tema13.mp3", nome: "Joy Crookes - Feet Don't Fail Me Now" },
+      { arquivo: "assets/music/tema14.mp3", nome: "Wande Coal, DJ Tunez - Iskaba" },
+      { arquivo: "assets/music/tema15.mp3", nome: "Midas The Jagaban - Party With A Jagaban" },
+      { arquivo: "assets/music/tema16.mp3", nome: "StaySolidRocky - Party Girl" },
+      { arquivo: "assets/music/tema17.mp3", nome: "Central Cee - Obsessed With You" },
+      { arquivo: "assets/music/tema18.mp3", nome: "The Weeknd, Madonna, Playboi Carti - Popular " },
+      { arquivo: "assets/music/tema19.mp3", nome: "" },
+      { arquivo: "assets/music/tema20.mp3", nome: "" },
 ];
+
+
 // 🆕 Faixa fixa e exclusiva da tela de criação de nome/jogador (telaCriacao):
 // toca sempre essa mesma música enquanto essa tela estiver aberta, e ao sair
 // dela a playlist normal (MUSICAS_JOGO) volta a tocar de onde parou.
-const MUSICA_TELA_CRIACAO = { arquivo: "assets/music/tema6.mp3", nome: "Tema 6" };
+const MUSICA_TELA_CRIACAO = { arquivo: "assets/music/tema_criacao.mp3", nome: "tema_criacao" };
 
 let _audioMusica = null;
 let _ordemMusicas = [];
@@ -4011,7 +5793,7 @@ function registrarMovimentacao({ jogadorNome, jogadorId, tipo, valor, origemId, 
     transferenciasHistorico.unshift(mov);
     transferenciasHistorico = transferenciasHistorico.slice(0, 120);
     registrarNoticia(
-        `${jogadorNome} ${tipo === "emprestimo" ? "foi emprestado" : "foi transferido"} para ${mov.destino}`,
+        `${jogadorNome} ${tipo === "emprestimo" ? "foi emprestado" : tipo === "venda" ? "foi vendido" : "foi transferido"} para ${mov.destino}`,
         `${mov.origem} -> ${mov.destino} | ${tipo === "emprestimo" ? "empréstimo" : formatarMoeda(valor || 0)} | ${mov.janela}`,
         "Mercado", { nome: jogadorNome }, "jogador"
     );
@@ -4099,7 +5881,7 @@ function agruparConvocados(lista) {
 }
 
 function gerarConvocacaoSelecao(selecao, competicao = null) {
-    const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)];
+    const todos = [jogador, ...jogadoresIA.filter(j => !j.aposentado)].filter(p => !p?.aposentadoSelecao);
     const elegiveis = todos
         .filter(p => normalizarNacionalidade(p.nacionalidade) === normalizarNacionalidade(selecao.pais))
         .map(p => ({ p, score:pontuarJogadorSelecao(p, competicao) }))
@@ -4319,12 +6101,12 @@ function cardConvocadoAnimado(p, delay, ehTitular = false, ehCapitao = false) {
     const clube = obterClubeJogador(p);
     const logoClube = clube ? obterUrlImagem(clube, 'clube') : "";
     return `<div class="convocado-card convocado-anim ${p.id === "player" ? "eu" : ""} ${ehTitular ? "titular" : "reserva"}" style="animation-delay:${delay}s;">
-        <img class="convocado-foto" src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
+        <img loading="lazy" decoding="async" class="convocado-foto" src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
         <div style="flex:1; min-width:0;">
             <strong>${p.nome}${p.id === "player" ? " ⭐" : ""}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong><br>
             <small style="color:#aaa; font-weight:700;">${p.posicao}${ehTitular ? " • Titular" : ""}</small>
         </div>
-        ${logoClube ? `<img class="convocado-clube" src="${logoClube}" alt="${clube?.nome || ''}" title="${clube?.nome || ''}">` : ""}
+        ${logoClube ? `<img loading="lazy" decoding="async" class="convocado-clube" src="${logoClube}" alt="${clube?.nome || ''}" title="${clube?.nome || ''}">` : ""}
         <span class="meta-pill">OVR ${p.geral}</span>
     </div>`;
 }
@@ -4396,7 +6178,7 @@ function mostrarAnimacaoConvocacao(convocacao, forcarExibicao = false) {
         <div class="modal-convocacao-card slide-in">
             <div class="modal-convocacao-head">
                 <div style="display:flex; align-items:center; gap:14px;">
-                    <img src="${convocacao.selecao.logo}" alt="${convocacao.selecao.nome}" onerror="this.style.display='none'">
+                    <img loading="lazy" decoding="async" src="${convocacao.selecao.logo}" alt="${convocacao.selecao.nome}" onerror="this.style.display='none'">
                     <div><span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">Convocação oficial</span><h2 style="margin:4px 0 0;">${convocacao.selecao.nome}</h2><p style="margin:4px 0 0; color:#aaa;">${convocacao.competicao?.nome || "Data FIFA"} • ${anoAtual}</p></div>
                 </div>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
@@ -4539,12 +6321,12 @@ function renderizarSelecoes() {
                 const ehCapitao = p.id === capitaoConvocacaoId;
                 const ehTitular = setTitularesConvocacao.has(p.id);
                 return `<div class="convocado-row ${p.id === "player" ? "eu" : ""} ${ehTitular ? "titular" : "reserva"}" onclick="abrirPerfilJogador('${p.id}')">
-                    <img src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
+                    <img loading="lazy" decoding="async" src="${obterUrlImagem(p,'jogador')}" alt="${p.nome}">
                     <div>
                         <strong>${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong>
                         <small>${clube?.nome || "Livre"} • ${p.posicao} • ${p.statsSelecao?.jogos || 0}J ${p.statsSelecao?.gols || 0}G ${p.statsSelecao?.assistencias || 0}A</small>
                     </div>
-                    ${clube ? `<img class="convocado-escudo" src="${obterUrlImagem(clube,'clube')}">` : `<span></span>`}
+                    ${clube ? `<img loading="lazy" decoding="async" class="convocado-escudo" src="${obterUrlImagem(clube,'clube')}">` : `<span></span>`}
                     <span class="convocado-status-tag ${ehTitular ? "titular" : "reserva"}">${ehTitular ? "Titular" : "Banco"}</span>
                     <span class="meta-pill">OVR ${p.geral}</span>
                 </div>`;
@@ -4560,7 +6342,7 @@ function renderizarSelecoes() {
             <section>
                 <div class="selecao-hero">
                     <div style="display:flex; align-items:center; gap:16px;">
-                        <img src="${selecao.logo}" alt="${selecao.nome}" onerror="this.style.display='none'">
+                        <img loading="lazy" decoding="async" src="${selecao.logo}" alt="${selecao.nome}" onerror="this.style.display='none'">
                         <div><span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase;">Carreira internacional</span><h2 style="margin:4px 0;">Seleção ${selecao.nome}</h2><p style="margin:0; color:#aaa;">Próxima janela: ${proxima.nome}${proxima.div ? ` • Divisão ${proxima.div}` : ""}</p></div>
                     </div>
                     <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end;">
@@ -4596,9 +6378,9 @@ function renderizarSelecoes() {
                 ${rankingSelecao.map(p => {
                     const clube = obterClubeJogador(p);
                     return `<div class="convocado-row" onclick="abrirPerfilJogador('${p.id}')">
-                        <img src="${obterUrlImagem(p,'jogador')}">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(p,'jogador')}">
                         <div><strong>${p.nome}</strong><br><small>${clube?.nome || "Livre"} • ${p.statsSelecao?.jogos || 0}J • ${p.statsSelecao?.gols || 0}G • ${p.statsSelecao?.assistencias || 0}A</small></div>
-                        ${clube ? `<img src="${obterUrlImagem(clube,'clube')}" style="width:24px;height:24px;object-fit:contain;background:#fff;border-radius:4px;padding:2px;">` : ""}
+                        ${clube ? `<img loading="lazy" decoding="async" src="${obterUrlImagem(clube,'clube')}" style="width:24px;height:24px;object-fit:contain;background:#fff;border-radius:4px;padding:2px;">` : ""}
                         <span class="meta-pill">OVR ${p.geral}</span>
                     </div>`;
                 }).join("")}
@@ -4691,31 +6473,45 @@ function gerarJovensGenericos(qtd = 34) {
 
 const TEMAS_COMPETICOES = {
     hub: { cor: "#00ff88", img: "" },
-    eng_1: { cor: "#00d8ff", img: "https://i.ibb.co/5h5QGVXb/Texture-Theme-EPL.png" },
-    carabao_eng: { cor: "#0b8600", img: "https://i.ibb.co/6J0nTwZy/fab2128c-e881-42c9-8881-579531cfb3f6.png" },
-    copa_eng: { cor: "#ca2b16", img: "https://i.ibb.co/XrChpJRJ/896acbef-567b-4032-8b47-95da84007ff8.png" },
-    eng_2: { cor: "#ffffff", img: "https://i.ibb.co/FbYZqHZK/240a1554-0b80-40a4-b171-8abbbb8717f0.png" },
-    supercopa_eng: { cor: "#ca2b16", img: "https://i.ibb.co/xSP6ykD6/image.png" },
-    esp: { cor: "#ff4d4d", img: "https://i.ibb.co/8nhCpHTN/Texture-Theme-La-Liga.png" },
-    ita: { cor: "#4ade80", img: "https://i.ibb.co/Cpmcn1Mp/d3565473-9dd0-4955-928b-64e68b18b129.png" },
-    ger: { cor: "#ef4444", img: "https://i.ibb.co/8Wn88Pg/Texture-Theme-Bundesliga.png" },
-    fra: { cor: "#60a5fa", img: "https://i.ibb.co/Q7nv3KTN/Texture-Theme-Ligue-One.png" },
-    pt: { cor: "#22c55e", img: "https://i.ibb.co/Zz0q8HSy/6ddcbece-af8f-4889-b9aa-d720c01a6771.png" },
-    br_1: { cor: "#facc15", img: "https://i.ibb.co/pjvQT62J/0c3b5a89-2f6d-48fb-b787-86c1e2e3f0ba.png" },
-    br_2: { cor: "#facc15", img: "https://i.ibb.co/DHxF4wF8/402a4527-80cb-47d1-8837-d224b722ceaa.png" },
-    br_3: { cor: "#facc15", img: "https://i.ibb.co/NdD2BHBm/b7017d32-e1cc-489c-be49-c3c52d7285be.png" },
-    br_4: { cor: "#facc15", img: "https://i.ibb.co/xtBMDR8k/5a320c73-d40c-462e-87ec-1d2efdfef13e.png" },
-    copa_br: { cor: "#facc15", img: "https://i.ibb.co/DXDc6GD/65ee9eff-8305-4340-af28-8d5e0435cbca.png" },
-    supercopa_br: { cor: "#facc15", img: "https://i.ibb.co/07cm20F/c0b21d32-8b09-443b-a972-2c427b4da9c4.png" },
-    arg: { cor: "#7dd3fc", img: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2000&auto=format&fit=crop" },
+    eng_1: { cor: "#00D8FF", img: "https://i.ibb.co/5h5QGVXb/Texture-Theme-EPL.png" },
+    carabao_eng: { cor: "#00A651", img: "https://i.ibb.co/6J0nTwZy/fab2128c-e881-42c9-8881-579531cfb3f6.png" },
+    copa_eng: { cor: "#E53935", img: "https://i.ibb.co/XrChpJRJ/896acbef-567b-4032-8b47-95da84007ff8.png" },
+    eng_2: { cor: "#FF6F00", img: "https://i.ibb.co/FbYZqHZK/240a1554-0b80-40a4-b171-8abbbb8717f0.png" },
+    supercopa_eng: { cor: "#FFD700", img: "https://i.ibb.co/xSP6ykD6/image.png" },
+    esp: { cor: "#FF4D4D", img: "https://i.ibb.co/8nhCpHTN/Texture-Theme-La-Liga.png" },
+    ita: { cor: "#0099FF", img: "https://i.ibb.co/Cpmcn1Mp/d3565473-9dd0-4955-928b-64e68b18b129.png" },
+    ger_1: { cor: "#E30613", img: "https://i.ibb.co/8Wn88Pg/Texture-Theme-Bundesliga.png" },
+    ger_2: { cor: "#E30613", img: "https://i.ibb.co/wfQS1Jd/044964fd-a840-443e-8888-af6f8df56dfb.png" },
+    fra_1: { cor: "#0057B8", img: "https://i.ibb.co/Q7nv3KTN/Texture-Theme-Ligue-One.png" },
+    fra_2: { cor: "#0057B8", img: "https://i.ibb.co/v48yM4tz/image.png" },
+    pt_1: { cor: "#003B8E", img: "https://i.ibb.co/sJ2Y60xC/e095fab0-74a4-43cc-9f84-188c30c3547b.png" },
+    pt_2: { cor: "#5A6F8F", img: "https://i.ibb.co/5hFBYD98/2fd0a86e-0ce0-43f6-91b3-c8334e4cffdd.png" },
+    copa_pt: { cor: "#00843D", img: "https://i.ibb.co/gFHDSPKs/19c8ab77-cb3a-4bad-ae89-b852bbedd14a.png" },
+    supercopa_pt: { cor: "#C9A227", img: "https://i.ibb.co/v4d4w9GT/5ff59a0c-c14d-4be1-9a56-d108ee8f8bb6.png" },
+    nl_1: { cor: "#FF6A00", img: "https://i.ibb.co/qLHVMYR5/image.png" },
+    copa_nl: { cor: "#0066CC", img: "https://i.ibb.co/N6JLPQRb/image.png" },
+    supercopa_nl: { cor: "#FFD54F", img: "https://i.ibb.co/S4cydYMY/image.png" },
+    tr_1: { cor: "#D32F2F", img: "https://i.ibb.co/b53LXDvK/image.png" },
+    copa_tr: { cor: "#C62828", img: "https://i.ibb.co/b53LXDvK/image.png" },
+    nor_1: { cor: "#0D47A1", img: "https://i.ibb.co/ZR91SHc7/8ee30dbe-49d9-421f-9c5f-a538b9339374.png" },
+    sco_1: { cor: "#4B0082", img: "https://i.ibb.co/RJNRCCX/71d22928-10b9-486d-857f-23991e4665f5.png" },
+    br_1: { cor: "#FFD700", img: "https://i.ibb.co/pjvQT62J/0c3b5a89-2f6d-48fb-b787-86c1e2e3f0ba.png" },
+    br_2: { cor: "#1E88E5", img: "https://i.ibb.co/DHxF4wF8/402a4527-80cb-47d1-8837-d224b722ceaa.png" },
+    br_3: { cor: "#2E7D32", img: "https://i.ibb.co/NdD2BHBm/b7017d32-e1cc-489c-be49-c3c52d7285be.png" },
+    br_4: { cor: "#2E7D32", img: "https://i.ibb.co/xtBMDR8k/5a320c73-d40c-462e-87ec-1d2efdfef13e.png" },
+    copa_br: { cor: "#009739", img: "https://i.ibb.co/DXDc6GD/65ee9eff-8305-4340-af28-8d5e0435cbca.png" },
+    supercopa_br: { cor: "#FFC107", img: "https://i.ibb.co/07cm20F/c0b21d32-8b09-443b-a972-2c427b4da9c4.png" },
+    arg: { cor: "#7dd3fc", img: "https://i.pinimg.com/1200x/9f/94/1b/9f941bf6562c668c1d0cfec152b43ec1.jpg" },
     usa: { cor: "#60a5fa", img: "https://i.ibb.co/p631bhjv/Texture-Theme-MLS.png" },
     ara: { cor: "#045712", img: "https://i.ibb.co/XkywSZ5T/8b754c3d-8759-47ac-9bc7-1921110aac8e.png" },
-    mx: { cor: "#22c55e", img: "https://images.unsplash.com/photo-1574629810360-7efbbe195018?q=80&w=2000&auto=format&fit=crop" },
+    mx: { cor: "#22c55e", img: "https://i.ibb.co/VYfvFMQN/7703dbb3-294f-44de-b9ef-e451c4c091ca.png" },
     uefa_cl: { cor: "#93c5fd", img: "https://i.ibb.co/MxG3hvhK/Texture-Theme-UCL.png" },
     uefa_el: { cor: "#fb923c", img: "https://i.ibb.co/Wvr2Z0QH/Texture-Theme-Euro-League.png" },
     uefa_col: { cor: "#22c55e", img: "https://i.ibb.co/Rx14dxQ/Texture-Theme-UECL.png" },
+    uefa_supercup: { cor: "#93c5fd", img: "https://i.pinimg.com/736x/63/0a/39/630a39bb6e12fe5fb897b45964f5ac71.jpg" },
     conmebol_lib: { cor: "#f59e0b", img: "https://i.ibb.co/8LCFn0Df/6a6deb85-920a-4b42-8beb-2bf148aef7e7.png" },
     conmebol_sul: { cor: "#22c55e", img: "https://i.ibb.co/Fk6C2qTQ/Texture-Theme-Sudamericana.png" },
+    concacaf_clc: { cor: "#22c55e", img: "https://i.ibb.co/1CppSPw/32963585-348c-4cb2-8ccc-abcd9a6cf321.png" },
     copa_mundo: { cor: "#facc15", img: "https://wallpapercave.com/wp/wp16426287.webp" },
     euro: { cor: "#3b82f6", img: "https://static.vecteezy.com/system/resources/thumbnails/041/933/077/small_2x/background-of-euro-2024-in-germany-with-the-tournament-logo-free-vector.jpg" },
     copa_america: { cor: "#22c55e", img: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=2000&auto=format&fit=crop" },
@@ -4796,7 +6592,7 @@ function montarCardConquista(nome, detalhes) {
 
     return `
         <div class="card-conquista conquista-stack ${isInternational ? 'international-trophy' : ''}" onclick="toggleConquistaDetalhes(this)">
-            <img src="${obterUrlImagem(safeNome, 'trofeu')}" style="width:60px; height:60px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.6));">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(safeNome, 'trofeu')}" style="width:60px; height:60px; filter: drop-shadow(0 0 10px rgba(255,215,0,0.6));">
             ${detalhes.length > 1 ? `<span class="conquista-count">x${detalhes.length}</span>` : ""}
             ${isInternational ? `<span class="international-badge">🌍</span>` : ""}
             <div>
@@ -5007,6 +6803,13 @@ function inicializarEstadoCarreiraJogador() {
         jogador.jogoAereo = gerados.jogoAereo;
     }
     if(typeof jogador.titularidade === "undefined") jogador.titularidade = 48;
+    // 🆕 NÍVEL / XP / PONTOS DE TREINO — migração pra saves que começaram
+    // antes deste sistema existir (a carreira nova já nasce com isto, ver
+    // btnConfirmarAtributosIniciais).
+    if(typeof jogador.nivel === "undefined") jogador.nivel = 1;
+    if(typeof jogador.xp === "undefined") jogador.xp = 0;
+    if(typeof jogador.xpProximoNivel === "undefined") jogador.xpProximoNivel = 100;
+    if(typeof jogador.pontosTreino === "undefined") jogador.pontosTreino = 0;
     if(typeof jogador.lesaoRodadas === "undefined") jogador.lesaoRodadas = 0;
     if(typeof jogador.entrevistasRespondidas === "undefined") jogador.entrevistasRespondidas = 0;
     if(!Array.isArray(jogador.formaResultados)) jogador.formaResultados = [];
@@ -5143,16 +6946,50 @@ window.pedirTransferenciaClube = function(clubeId, tipo) {
     renderizarMercado();
 };
 
+// 🆕 NÍVEL / XP: concede XP ao jogador e processa subidas de nível — cada
+// nível concedido dá 1 ponto de treino pra investir num atributo real (ver
+// janela de treino, substitui o antigo botão único "Treinar" que só subia
+// tudo igual sem escolha nenhuma).
+function concederXPJogador(quantidade, motivo = "") {
+    if (!jogador || !quantidade) return;
+    inicializarEstadoCarreiraJogador();
+    jogador.xp += quantidade;
+    let subiuNivel = false;
+    while (jogador.xp >= jogador.xpProximoNivel) {
+        jogador.xp -= jogador.xpProximoNivel;
+        jogador.nivel++;
+        jogador.pontosTreino++;
+        jogador.xpProximoNivel = Math.floor(jogador.xpProximoNivel * 1.15);
+        subiuNivel = true;
+    }
+    if (subiuNivel) {
+        mostrarToast("Subiu de Nível!", `${jogador.nome} alcançou o nível ${jogador.nivel} — +1 ponto de treino disponível.`, "success");
+        registrarNoticia("Subida de nível", `${jogador.nome} chegou ao nível ${jogador.nivel} e ganhou um novo ponto de treino.`, "Treino", { nome: jogador.nome, foto: jogador.foto }, "jogador");
+    }
+}
+
+// 🆕 XP DE FIM DE PARTIDA: quanto melhor a atuação (gols, assistências, e o
+// quanto o OVR do jogador está acima da média), mais XP — em vez do XP fixo
+// e aleatório que o botão "Treinar" antigo dava sem relação nenhuma com o
+// desempenho em campo.
+function concederXPPorDesempenho(nota, golsJogadorPartida, assistsJogadorPartida) {
+    const base = 14; // XP de participação, só por ter entrado em campo
+    const bonusNota = Math.max(0, Math.round((nota - 5.5) * 7));
+    const total = base + bonusNota;
+    concederXPJogador(total, "desempenho em campo");
+    return total;
+}
+
 function registrarMelhorAtuacao(gols, assistencias, adversario) {
-    if(!jogador) return false;
+    if(!jogador) return { recorde: false, nota: 0 };
     inicializarEstadoCarreiraJogador();
     const nota = 5.5 + (gols * 1.4) + (assistencias * 0.9) + ((jogador.geral || 60) - 60) * 0.04;
     const atual = jogador.melhorAtuacao?.nota || 0;
     if(nota > atual) {
         jogador.melhorAtuacao = { gols, assistencias, nota: Math.round(nota * 10) / 10, adversario: adversario || "Rival", rodada: rodadaAtual };
-        return atual > 0; // só é "recorde" se já existia uma marca anterior para bater
+        return { recorde: atual > 0, nota }; // só é "recorde" se já existia uma marca anterior para bater
     }
-    return false;
+    return { recorde: false, nota };
 }
 
 function statusTitularidade() {
@@ -5245,6 +7082,10 @@ function conversarComTecnico(escalacao, contexto, onFechar) {
     if (statusAnterior === null) { onFechar(); return; } // primeiro jogo: não interrompe com aviso
 
     const nomeTecnico = contexto.nomeTecnico || "O treinador";
+    const tecnicoObj = contexto.clube ? (treinadoresIA || []).find(t => t.clubeId === contexto.clube.id) : null;
+    const avatarTecnicoHTML = tecnicoObj
+        ? `<img loading="lazy" decoding="async" data-tecnico-id="${tecnicoObj.id}" src="${obterUrlImagem(tecnicoObj, 'tecnico')}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'🧑\\u200d💼'}))">`
+        : "🧑\u200d💼";
     let tag = "", frase = "";
     if (escalacao.statusAtual === "titular") {
         tag = "titular";
@@ -5275,7 +7116,7 @@ function conversarComTecnico(escalacao, contexto, onFechar) {
     modal.className = "modal";
     modal.innerHTML = `
         <div class="coach-talk-card">
-            <div class="coach-talk-avatar">🧑‍💼</div>
+            <div class="coach-talk-avatar">${avatarTecnicoHTML}</div>
             <span class="coach-talk-tag ${tag}">Conversa com ${nomeTecnico}</span>
             <p class="coach-talk-quote">${frase}</p>
             <button class="coach-talk-btn" id="btnFecharConversaTecnico">Entendido ➔</button>
@@ -5607,11 +7448,18 @@ window.responderEntrevista = function(tipo, idx) {
     if(cb) cb();
 };
 
+// 🏆 Animação de título — antes esta função criava os confetes mas NUNCA
+// anexava o modal ao body nem desenhava nada além deles (nomeTime,
+// nomeCompeticao e logoTimeUrl eram recebidos e simplesmente ignorados), então
+// na prática nada aparecia na tela. Agora monta a taça (imagem real da
+// competição via obterUrlImagem/'trofeu', com emoji de reserva se a imagem
+// falhar), o nome do título e o escudo do campeão, e efetivamente insere tudo
+// no documento — fechando sozinho se o jogador não clicar em "Continuar".
 function dispararAnimacaoCampeao(nomeTime, nomeCompeticao, logoTimeUrl) {
     const modal = document.createElement("div");
     modal.className = "modal-campeao";
-    modal.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:linear-gradient(135deg, rgba(0,0,0,0.95), rgba(20,20,30,0.98)); z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; animation:fadeIn 0.5s ease-out;";
-    
+    modal.style.cssText = "position:fixed; top:0; left:0; width:100vw; height:100vh; background:linear-gradient(135deg, rgba(0,0,0,0.95), rgba(20,20,30,0.98)); z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; animation:fadeIn 0.5s ease-out; overflow:hidden; text-align:center; padding:20px;";
+
     // Enhanced confetti
     for (let i = 0; i < 200; i++) {
         let confete = document.createElement("div");
@@ -5629,7 +7477,29 @@ function dispararAnimacaoCampeao(nomeTime, nomeCompeticao, logoTimeUrl) {
         `;
         modal.appendChild(confete);
     }
-    
+
+    const trofeuUrl = obterUrlImagem(nomeCompeticao, 'trofeu');
+    const conteudo = document.createElement("div");
+    conteudo.style.cssText = "position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; max-width:90vw;";
+    conteudo.innerHTML = `
+        <div style="width:170px; height:170px; margin-bottom:6px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:5.5rem; background:radial-gradient(circle at 35% 30%, #fff7ad, #facc15 40%, #b45309 78%); box-shadow:0 0 40px rgba(250,204,21,0.4); animation:popIn 0.6s ease-out both, erguerTaca 1.6s ease-in-out 0.6s infinite alternate, glowTaca 1.6s ease-in-out 0.6s infinite alternate; padding:20px; overflow:hidden;">
+            <img loading="lazy" decoding="async" src="${trofeuUrl}" alt="${nomeCompeticao}" style="width:100%; height:100%; object-fit:contain;" onerror="this.outerHTML='🏆'">
+        </div>
+        <span style="color:#facc15; font-weight:900; text-transform:uppercase; letter-spacing:2px; font-size:0.95rem; margin-top:10px; opacity:0; animation:popIn 0.5s ease-out 0.3s forwards;">🏆 Campeão</span>
+        <h1 style="margin:6px 0 2px; font-size:2.5rem; color:#fff; text-transform:uppercase; text-shadow:0 0 24px rgba(255,255,255,0.25); opacity:0; animation:popIn 0.5s ease-out 0.42s forwards;">${nomeCompeticao}</h1>
+        <div style="display:flex; align-items:center; gap:14px; margin-top:14px; opacity:0; animation:popIn 0.5s ease-out 0.55s forwards;">
+            ${logoTimeUrl ? `<img loading="lazy" decoding="async" src="${logoTimeUrl}" alt="${nomeTime}" style="width:56px; height:56px; object-fit:contain; background:#fff; border-radius:12px; padding:6px;" onerror="this.style.display='none'">` : ""}
+            <span style="font-size:1.4rem; font-weight:900; color:#facc15;">${nomeTime}</span>
+        </div>
+        <button id="btnFecharModalCampeao" style="margin-top:32px; padding:14px 38px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.25); opacity:0; animation:popIn 0.5s ease-out 0.7s forwards;">Continuar ➔</button>
+    `;
+    modal.appendChild(conteudo);
+    document.body.appendChild(modal);
+
+    const fechar = () => modal.remove();
+    conteudo.querySelector("#btnFecharModalCampeao").onclick = fechar;
+    modal.addEventListener("click", (e) => { if (e.target === modal) fechar(); });
+    setTimeout(fechar, 9000); // fecha sozinho se ninguém clicar
 }
 
 // ==========================================
@@ -5647,10 +7517,10 @@ document.getElementById("inputPesquisa")?.addEventListener("input", (e) => {
     let html = "";
     resS.forEach(s => {
         const titulos = selecoesEstado.campeoes?.[s.id]?.length || 0;
-        html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilSelecao('${s.id}')"><img src="${s.logo}" style="width:60px; height:42px; margin-right:20px; object-fit:cover; border-radius:6px;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--warning);">Seleção ${s.nome}</h4><p style="margin:0; font-size:0.95rem; color:#aaa;">${s.conf} • Força ${Math.round(calcularForcaSelecao(s.id))} • ${titulos} título(s)</p></div></div>`;
+        html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilSelecao('${s.id}')"><img loading="lazy" decoding="async" src="${s.logo}" style="width:60px; height:42px; margin-right:20px; object-fit:cover; border-radius:6px;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--warning);">Seleção ${s.nome}</h4><p style="margin:0; font-size:0.95rem; color:#aaa;">${s.conf} • Força ${Math.round(calcularForcaSelecao(s.id))} • ${titulos} título(s)</p></div></div>`;
     });
-    resC.forEach(c => html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilClube('${c.id}')"><img src="${obterUrlImagem(c, 'clube')}" style="border-radius:8px; width:60px; height:60px; margin-right:20px; object-fit: contain;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--success);">${c.nome}</h4><p style="margin:0; font-size:0.95rem; color:#aaa;">OVR: ${c.reputacao} | Orçamento: ${formatarMoeda(c.orcamento||0)}</p></div></div>`);
-    resJ.forEach(j => html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilJogador('${j.id}')"><img src="${obterUrlImagem(j, 'jogador')}" style="width:60px; height:60px; margin-right:20px; border-radius:50%; filter: ${j.aposentado ? 'grayscale(100%)' : 'none'}; object-fit: cover;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--theme-primary);">${j.nome} ${j.aposentado ? '<span class="aposentado-tag">APOSENTADO</span>' : ''}</h4><p style="margin:5px 0 0; font-size:0.95rem; color:#ccc;">OVR: <strong style="color:#fff;">${j.geral}</strong> | ${j.posicao || 'Base'}</p></div></div>`);
+    resC.forEach(c => html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilClube('${c.id}')"><img loading="lazy" decoding="async" src="${obterUrlImagem(c, 'clube')}" style="border-radius:8px; width:60px; height:60px; margin-right:20px; object-fit: contain;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--success);">${c.nome}</h4><p style="margin:0; font-size:0.95rem; color:#aaa;">OVR: ${c.reputacao} | Orçamento: ${formatarMoeda(c.orcamento||0)}</p></div></div>`);
+    resJ.forEach(j => html += `<div style="background:rgba(0,0,0,0.5); padding:15px; border-radius:8px; border:1px solid var(--border); margin-bottom:10px; cursor:pointer; display:flex; align-items:center;" onclick="abrirPerfilJogador('${j.id}')"><img loading="lazy" decoding="async" src="${obterUrlImagem(j, 'jogador')}" style="width:60px; height:60px; margin-right:20px; border-radius:50%; filter: ${j.aposentado ? 'grayscale(100%)' : 'none'}; object-fit: cover;"><div><h4 style="margin:0; font-size:1.3rem; color:var(--theme-primary);">${j.nome} ${j.aposentado ? '<span class="aposentado-tag">APOSENTADO</span>' : ''}</h4><p style="margin:5px 0 0; font-size:0.95rem; color:#ccc;">OVR: <strong style="color:#fff;">${j.geral}</strong> | ${j.posicao || 'Base'}</p></div></div>`);
     
     if(resBox) resBox.innerHTML = html || "<p style='text-align:center; font-size:1.2rem; color:#aaa;'>Nenhum resultado.</p>"; 
     if(modalP) modalP.classList.remove("oculto");
@@ -5664,11 +7534,11 @@ window.abrirPerfilJogador = function(id) {
     
     // Puxa a bandeira do banco de dados das seleções
     let selecaoInfo = obterSelecaoPorNacionalidade(j.nacionalidade);
-    let bandeiraHTML = selecaoInfo.logo ? `<img src="${selecaoInfo.logo}" style="width: 26px; height: 18px; border-radius: 3px; object-fit: cover; box-shadow: 0 0 5px rgba(0,0,0,0.6);">` : `🌍`;
+    let bandeiraHTML = selecaoInfo.logo ? `<img loading="lazy" decoding="async" src="${selecaoInfo.logo}" style="width: 26px; height: 18px; border-radius: 3px; object-fit: cover; box-shadow: 0 0 5px rgba(0,0,0,0.6);">` : `🌍`;
 
     let conteudoHTML = `
         <div style="display: flex; gap: 30px; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #333;">
-            <img src="${obterUrlImagem(j, 'jogador')}" class="foto-perfil-gigante" style="${j.aposentado ? 'filter: grayscale(100%);' : ''}">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(j, 'jogador')}" class="foto-perfil-gigante" style="${j.aposentado ? 'filter: grayscale(100%);' : ''}">
             <div style="flex-grow:1;">
                 <h1 style="margin: 0; font-size: 3rem; text-transform: uppercase; color:var(--theme-primary); line-height: 1.1;">${j.nome} ${j.aposentado ? '<span class="aposentado-tag" style="font-size:1rem;">APOSENTADO</span>' : ''}</h1>
                 
@@ -5679,7 +7549,7 @@ window.abrirPerfilJogador = function(id) {
                 <p class="status-texto-grande" style="color: #fff; font-size: 1.8rem; margin:10px 0;">OVR: <strong style="color:var(--success); font-size:2.2rem;">${j.geral}</strong> | <span class='pos-badge pos-${(j.posicao||'').replace(" ","-")}'>${j.posicao || 'Base'}</span></p>
                 <div style="display:flex; gap:30px; margin-top:20px;">
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Idade</span> <strong>${j.idade} Anos</strong></p>
-                    <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Clube</span> <strong style="color:var(--success); cursor:pointer; display:flex; align-items:center; gap:8px;" onclick="abrirPerfilClube('${j.clubeId}')"><img src="${cAtual ? obterUrlImagem(cAtual, 'clube') : ''}" style="width:28px; height:28px; object-fit:contain; background:#fff; border-radius:6px; padding:2px;" onerror="this.style.display='none'">${cAtual ? cAtual.nome : (j.aposentado ? 'Lenda' : 'Livre')}</strong></p>
+                    <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Clube</span> <strong style="color:var(--success); cursor:pointer; display:flex; align-items:center; gap:8px;" onclick="abrirPerfilClube('${j.clubeId}')"><img loading="lazy" decoding="async" src="${cAtual ? obterUrlImagem(cAtual, 'clube') : ''}" style="width:28px; height:28px; object-fit:contain; background:#fff; border-radius:6px; padding:2px;" onerror="this.style.display='none'">${cAtual ? cAtual.nome : (j.aposentado ? 'Lenda' : 'Livre')}</strong></p>
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Contrato</span> <strong>${j.contrato || 0} anos</strong></p>
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Mercado</span> <strong>${j.aposentado ? 'Lenda' : formatarMoeda(calcularValorMercadoJogador(j))}</strong></p>
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Felicidade</span> <strong>${Math.round(j.felicidade || 60)}/100</strong></p>
@@ -5748,7 +7618,7 @@ window.abrirPerfilJogador = function(id) {
     let histHTML = (j.historicoCarreira && j.historicoCarreira.length > 0) ? j.historicoCarreira.map(h => `
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; padding:15px 20px; background:rgba(255,255,255,0.02); margin-bottom:5px; border-radius:8px;">
             <span style="color:#aaa; width:90px; font-size:1.2rem; font-weight:bold;">${h.ano}${h.real ? '<br><small style="color:var(--gold); font-size:0.65rem;"></small>' : ''}</span> 
-            <span style="flex-grow:1; display:flex; align-items:center; gap:12px; font-size:1.2rem; font-weight:bold;"><img src="${obterUrlImagem(h.clube, 'clube')}" style="width:35px; height:35px; object-fit:contain; border-radius:8px;"> ${h.clube}</span> 
+            <span style="flex-grow:1; display:flex; align-items:center; gap:12px; font-size:1.2rem; font-weight:bold;"><img loading="lazy" decoding="async" src="${obterUrlImagem(h.clube, 'clube')}" style="width:35px; height:35px; object-fit:contain; border-radius:8px;"> ${h.clube}</span> 
             <span style="font-weight:900; color:var(--success); min-width:150px; text-align:right; font-size:1.2rem;">⚽ ${h.gols} | 👟 ${h.assistencias||0} <span style="color:#aaa; font-size:1rem; font-weight:normal;">(${h.jogos || 0}J)</span></span>
         </div>`).join("") : "<div style='text-align:center; padding:30px; color:#aaa; font-size:1.2rem;'>Nenhum registo histórico.</div>";
     
@@ -5757,7 +7627,7 @@ window.abrirPerfilJogador = function(id) {
     const stSel = j.statsSelecao || { jogos:0, gols:0, assistencias:0, convocacoes:0 };
     const htmlSelecao = `
         <div class="selecao-perfil-hero">
-            <img src="${selecaoInfo.logo}" alt="${selecaoInfo.nome}" onerror="this.style.display='none'">
+            <img loading="lazy" decoding="async" src="${selecaoInfo.logo}" alt="${selecaoInfo.nome}" onerror="this.style.display='none'">
             <div>
                 <span style="color:var(--theme-primary); font-weight:900; text-transform:uppercase; font-size:0.8rem;">Carreira internacional</span>
                 <h3 style="margin:4px 0 0; font-size:1.6rem;">Seleção ${selecaoInfo.nome || j.nacionalidade}</h3>
@@ -5771,8 +7641,8 @@ window.abrirPerfilJogador = function(id) {
                 <div class="selecao-stat-card"><strong style="color:var(--theme-primary);">${stSel.assistencias}</strong><span>Assistências</span></div>
                 <div class="selecao-stat-card"><strong style="color:var(--gold);">${stSel.convocacoes || 0}</strong><span>Convocações</span></div>
             </div>
-            <p style="margin:16px 0 0; color:#cbd5e1; line-height:1.6;">Clube atual: <img src="${cAtual ? obterUrlImagem(cAtual,'clube') : ''}" style="width:22px;height:22px;vertical-align:middle;border-radius:4px;background:#fff;padding:1px;" onerror="this.style.display='none'"> <strong>${cAtual?.nome || 'Livre'}</strong> — estatísticas de seleção são independentes do clube.</p>
-            ${(j.titulosSelecao?.length) ? `<div style="margin-top:18px;"><h4 style="color:var(--gold); margin:0 0 10px;">Títulos pela Seleção</h4>${j.titulosSelecao.map(t => `<div class="card-conquista"><img src="${obterUrlImagem(t.trofeu,'trofeu')}" class="trofeu-icon" style="width:44px;height:44px;"><div><strong style="color:var(--gold);">${t.trofeu}</strong><br><span style="color:#aaa;">${t.selecao} • ${t.ano}</span></div></div>`).join("")}</div>` : ""}
+            <p style="margin:16px 0 0; color:#cbd5e1; line-height:1.6;">Clube atual: <img loading="lazy" decoding="async" src="${cAtual ? obterUrlImagem(cAtual,'clube') : ''}" style="width:22px;height:22px;vertical-align:middle;border-radius:4px;background:#fff;padding:1px;" onerror="this.style.display='none'"> <strong>${cAtual?.nome || 'Livre'}</strong> — estatísticas de seleção são independentes do clube.</p>
+            ${(j.titulosSelecao?.length) ? `<div style="margin-top:18px;"><h4 style="color:var(--gold); margin:0 0 10px;">Títulos pela Seleção</h4>${j.titulosSelecao.map(t => `<div class="card-conquista"><img loading="lazy" decoding="async" src="${obterUrlImagem(t.trofeu,'trofeu')}" class="trofeu-icon" style="width:44px;height:44px;"><div><strong style="color:var(--gold);">${t.trofeu}</strong><br><span style="color:#aaa;">${t.selecao} • ${t.ano}</span></div></div>`).join("")}</div>` : ""}
         </div>`;
 
     conteudoHTML += `
@@ -5796,15 +7666,19 @@ window.abrirPerfilJogador = function(id) {
 
 window.abrirPerfilClube = function(clubeId) {
     let c = clubes.find(x => x.id === clubeId); if(!c) return;
+    const tecnicoObj = (treinadoresIA || []).find(t => t.clubeId === c.id);
+    const fotoTecnicoHTML = tecnicoObj
+        ? `<img loading="lazy" decoding="async" data-tecnico-id="${tecnicoObj.id}" src="${obterUrlImagem(tecnicoObj, 'tecnico')}" style="width:34px; height:34px; border-radius:50%; object-fit:cover; border:2px solid var(--theme-primary); vertical-align:middle; margin-right:8px;" onerror="this.style.display='none'">`
+        : "";
     let conteudoHTML = `
         <div style="display: flex; gap: 30px; align-items: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #333;">
-            <img src="${obterUrlImagem(c, 'clube')}" class="foto-perfil-gigante" style="border-radius:16px; object-fit: contain !important;">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(c, 'clube')}" class="foto-perfil-gigante" style="border-radius:16px; object-fit: contain !important;">
             <div style="flex-grow:1;">
                 <h1 style="margin: 0; font-size: 3rem; text-transform: uppercase; color:var(--success);">${c.nome}</h1>
                 <p class="status-texto-grande" style="color: #fff; font-size: 1.6rem; margin:15px 0;">OVR Plantel: <strong style="color:var(--success); font-size:2rem;">${c.reputacao}</strong></p>
                 <div style="display:flex; gap:28px; margin-top:20px; flex-wrap:wrap;">
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Orçamento</span> <strong style="color:var(--gold);">${formatarMoeda(c.orcamento || 0)}</strong></p>
-                    <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Técnico</span> <strong>${c.tecnico || "Interino"}</strong></p>
+                    <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Técnico</span> <strong ${tecnicoObj ? `style="cursor:pointer;" onclick="window.abrirPerfilTecnico('${tecnicoObj.id}')" title="Ver perfil do técnico"` : ""}>${fotoTecnicoHTML}${c.tecnico || "Interino"}${tecnicoObj?.nacionalidade ? ` <small style="color:#aaa; font-weight:400;">(${tecnicoObj.nacionalidade})</small>` : ""}</strong></p>
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Tática</span> <strong style="color:var(--theme-primary);">${c.tatica || "Equilibrado"}</strong></p>
                     <p class="status-texto-grande" style="margin:0;"><span style="color:#aaa; font-size:1.1rem; display:block;">Scout</span> <strong>${c.inteligenciaMercado || 60}/100</strong></p>
                 </div>
@@ -5817,7 +7691,7 @@ window.abrirPerfilClube = function(clubeId) {
 
     let htmlElenco = elenco.sort((a,b)=>b.geral - a.geral).map(j => `
         <div style="background:rgba(0,0,0,0.4); padding:15px; border-radius:12px; border:2px solid ${j.isMe ? 'var(--theme-primary)' : '#222'}; margin-bottom:12px; cursor:pointer; display:flex; align-items:center; transition:0.2s;" onclick="abrirPerfilJogador('${j.id}')">
-            <img src="${obterUrlImagem(j, 'jogador')}" style="width:60px; height:60px; border-radius:50%; margin-right:20px; object-fit:cover; border:3px solid ${j.isMe ? 'var(--theme-primary)' : 'transparent'};">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(j, 'jogador')}" style="width:60px; height:60px; border-radius:50%; margin-right:20px; object-fit:cover; border:3px solid ${j.isMe ? 'var(--theme-primary)' : 'transparent'};">
             <div style="flex-grow:1;">
                 <div style="font-weight:900; font-size:1.3rem; color:${j.isMe ? 'var(--theme-primary)' : '#fff'};">${j.nome} ${j.isMe ? '<span style="font-size:0.8rem; background:var(--theme-primary); color:#000; padding:2px 6px; border-radius:4px;">TU</span>' : ''}</div>
                 <div style="font-size:1rem; color:#ccc; margin-top:4px;">OVR: <strong style="color:var(--success); font-size:1.2rem;">${j.geral}</strong> | <span class='pos-badge pos-${(j.posicao||'').replace(" ","-")}'>${j.posicao || 'Base'}</span></div>
@@ -5844,10 +7718,23 @@ window.abrirPerfilClube = function(clubeId) {
 // ==========================================
 // 💼 SISTEMA DE TRANSFERÊNCIAS E OVR
 // ==========================================
+// 💰 Orçamento de transferências a partir da reputação do clube — curva
+// exponencial (não linear!) porque na vida real a diferença entre um gigante
+// e um time pequeno é de ORDENS DE GRANDEZA, não só um múltiplo pequeno.
+// Calibrada em dois pontos reais do próprio banco de clubes: reputação ~49
+// (fundo da Série D) ≈ €60 mil; reputação ~92 (Real Madrid) ≈ €200 milhões.
+// Usada tanto pelo mundo simulado (c.orcamento) quanto pelo Modo Manager
+// (managerEstado.orcamentoTransferencias), pra nunca haver dois números
+// diferentes de "quanto esse clube tem pra gastar".
+function calcularOrcamentoBaseClube(reputacao) {
+    const rep = Math.max(41, reputacao || 60);
+    return Math.round(2.45 * Math.pow(rep - 40, 4.61)) + 25000;
+}
+
 function inicializarOrcamentosEContratos() {
     const tecnicos = ["Ofensivo", "Equilibrado", "Defensivo", "Pressão Alta", "Posse de Bola", "Contra-ataque"];
     clubes.forEach(c => {
-        if(!c.orcamento) c.orcamento = Math.pow(c.reputacao || 60, 3) * 150;
+        if(!c.orcamento) c.orcamento = calcularOrcamentoBaseClube(c.reputacao);
         if(!c.tecnico) c.tecnico = `Treinador ${c.nome.split(" ")[0]}`;
         if(!c.tatica) c.tatica = tecnicos[Math.floor(Math.random() * tecnicos.length)];
         if(typeof c.inteligenciaMercado === "undefined") c.inteligenciaMercado = Math.max(45, Math.min(95, (c.reputacao || 60) + Math.floor(Math.random()*16) - 6));
@@ -5859,8 +7746,12 @@ function inicializarOrcamentosEContratos() {
         j.valorMercadoNum = calcularValorMercadoJogador(j);
         j.pontosPremio = 0;
     });
-    if(typeof jogador.contrato === 'undefined') jogador.contrato = 3;
-    jogador.pontosPremio = 0;
+    // 🛡️ FIX: no Modo Manager não existe nenhum "jogador" jogável — sem essa
+    // proteção, iniciar uma carreira de treinador quebrava aqui mesmo.
+    if (jogador) {
+        if(typeof jogador.contrato === 'undefined') jogador.contrato = 3;
+        jogador.pontosPremio = 0;
+    }
 }
 
 function atualizarOVRClubes() {
@@ -5981,7 +7872,7 @@ function processarMercadoTransferencias(modoJanela = "principal") {
     if(modoJanela === "principal") jogador.contrato--;
 
     clubes.forEach(c => {
-        const base = Math.pow(c.baseOvr || c.reputacao || 60, 3) * (focoEmprestimo ? 42 : 115);
+        const base = calcularOrcamentoBaseClube(c.baseOvr || c.reputacao) * (focoEmprestimo ? 0.35 : 1);
         c.orcamento = Math.max(c.orcamento || 0, Math.floor(base * (0.75 + Math.random() * 0.65)));
     });
 
@@ -6092,7 +7983,7 @@ function renderizarMercado() {
         if (!c) return "";
         const isAlvo = jogador.clubeAlvoId === id;
         return `<div class="desejo-clube">
-            <img src="${obterUrlImagem(c,'clube')}" onclick="abrirPerfilClube('${id}')">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(c,'clube')}" onclick="abrirPerfilClube('${id}')">
             <div style="flex:1;"><strong>${c.nome}</strong><br><small>OVR ${c.reputacao}</small></div>
             ${isAlvo ? `<span class="meta-pill">Alvo</span>` : `<button class="btn btn-primary" style="padding:6px 10px;font-size:0.75rem;" onclick="definirClubeAlvo('${id}')">Definir alvo</button>`}
             <button class="btn btn-danger" style="padding:6px 10px;font-size:0.75rem;" onclick="removerClubeDesejos('${id}')">✖</button>
@@ -6100,7 +7991,7 @@ function renderizarMercado() {
     }).join("") || `<p style="color:#888;font-size:0.9rem;">Adiciona até 5 clubes dos sonhos.</p>`;
     const propostasHtml = propostasPendentes.length ? propostasPendentes.map((c, i) => `
         <div style="background:rgba(0,255,136,0.05);padding:16px;border-radius:10px;border:1px solid var(--theme-primary);display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div style="display:flex;align-items:center;gap:12px;"><img src="${obterUrlImagem(c,'clube')}" style="width:56px;height:56px;border-radius:8px;object-fit:contain;background:#fff;padding:4px;">
+            <div style="display:flex;align-items:center;gap:12px;"><img loading="lazy" decoding="async" src="${obterUrlImagem(c,'clube')}" style="width:56px;height:56px;border-radius:8px;object-fit:contain;background:#fff;padding:4px;">
             <div><h4 style="margin:0;cursor:pointer;" onclick="abrirPerfilClube('${c.id}')">${c.nome}</h4><p style="margin:4px 0 0;color:#aaa;font-size:0.9rem;">${c.tipo === "renovacao" ? "Renovação" : (c.tipo === "emprestimo" ? "Empréstimo" : "Transferência")} • ${c.janela}</p></div></div>
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn btn-primary" style="padding:8px 14px;font-size:0.85rem;" onclick="iniciarNegociacao(${i})">🤝 Negociar</button>
@@ -6123,14 +8014,14 @@ function renderizarMercado() {
                     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:12px;max-height:200px;overflow-y:auto;">
                         ${topClubes.filter(c => !(jogador.listaDesejos||[]).includes(c.id)).slice(0, 16).map(c => `
                             <button type="button" class="btn-pais-filtro" style="min-height:56px;padding:8px;" onclick="adicionarClubeDesejos('${c.id}')">
-                                <img src="${obterUrlImagem(c,'clube')}" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;">
+                                <img loading="lazy" decoding="async" src="${obterUrlImagem(c,'clube')}" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;">
                                 <span class="pais-label" style="font-size:0.75rem;">${c.nome.slice(0, 14)}</span>
                             </button>`).join("")}
                     </div></details>
                 </div>
                 <div class="mercado-panel">
                     <h3>🎯 Objetivos de transferência</h3>
-                    ${alvo ? `<p style="color:#ccc;margin:0 0 12px;">Clube alvo: <img src="${obterUrlImagem(alvo,'clube')}" style="width:22px;height:22px;vertical-align:middle;background:#fff;border-radius:4px;padding:1px;"> <strong>${alvo.nome}</strong></p>${objsHtml}
+                    ${alvo ? `<p style="color:#ccc;margin:0 0 12px;">Clube alvo: <img loading="lazy" decoding="async" src="${obterUrlImagem(alvo,'clube')}" style="width:22px;height:22px;vertical-align:middle;background:#fff;border-radius:4px;padding:1px;"> <strong>${alvo.nome}</strong></p>${objsHtml}
                     <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
                         <button class="btn btn-primary" ${objetivosTransferenciaCumpridos() ? "" : "disabled style='opacity:0.5'"} onclick="pedirTransferenciaClube('${alvo.id}','transferencia')">Pedir transferência</button>
                         <button class="btn btn-warning" ${objetivosTransferenciaCumpridos() ? "" : "disabled style='opacity:0.5'"} onclick="pedirTransferenciaClube('${alvo.id}','emprestimo')" style="color:#000;">Pedir empréstimo</button>
@@ -6182,11 +8073,11 @@ function renderizarTransferencias() {
         return `
         <div class="transfer-card">
             <div class="transfer-person">
-                <img src="${obterUrlImagem(jogadorMov || m.jogadorNome, 'jogador')}" alt="${m.jogadorNome}">
+                <img loading="lazy" decoding="async" src="${obterUrlImagem(jogadorMov || m.jogadorNome, 'jogador')}" alt="${m.jogadorNome}">
                 <div><strong style="color:#fff; font-size:1.05rem;">${m.jogadorNome}</strong><br><span style="color:#aaa; font-weight:700;">${m.ano} • Rodada ${m.rodada}</span></div>
             </div>
-            <div class="transfer-club"><img src="${obterUrlImagem(origem, 'clube')}" alt="${m.origem}"><div><span style="color:#aaa; font-size:0.75rem; font-weight:900; text-transform:uppercase;">De</span><br><strong>${m.origem}</strong></div></div>
-            <div class="transfer-club"><img src="${obterUrlImagem(destino, 'clube')}" alt="${m.destino}"><div><span style="color:#aaa; font-size:0.75rem; font-weight:900; text-transform:uppercase;">Para</span><br><strong style="color:var(--theme-primary);">${m.destino}</strong></div></div>
+            <div class="transfer-club"><img loading="lazy" decoding="async" src="${obterUrlImagem(origem, 'clube')}" alt="${m.origem}"><div><span style="color:#aaa; font-size:0.75rem; font-weight:900; text-transform:uppercase;">De</span><br><strong>${m.origem}</strong></div></div>
+            <div class="transfer-club"><img loading="lazy" decoding="async" src="${obterUrlImagem(destino, 'clube')}" alt="${m.destino}"><div><span style="color:#aaa; font-size:0.75rem; font-weight:900; text-transform:uppercase;">Para</span><br><strong style="color:var(--theme-primary);">${m.destino}</strong></div></div>
             <div style="text-align:right;"><span class="meta-pill">${m.tipo === "emprestimo" ? "Empréstimo" : "Transferência"}</span><br><strong style="display:block; margin-top:8px; color:var(--gold);">${m.tipo === "emprestimo" ? "Taxa " + formatarMoeda(m.valor) : formatarMoeda(m.valor)}</strong><span style="color:#aaa; font-size:0.82rem;">${m.janela}</span></div>
         </div>`;
     }).join("") : `<div style="text-align:center; color:#aaa; padding:30px;">Nenhum movimento registrado ainda.</div>`;
@@ -6197,6 +8088,241 @@ function renderizarTransferencias() {
             ${cards}
         </div>`;
 }
+// 🎽➡️👔 Modal de despedida — aparece UMA vez, no primeiro atualizarHub()
+// depois que window.carreiraRecemEncerrada foi ligado em avancarTemporada().
+// Reaproveita os mesmos dados (historicoCarreira, troféus) que o Hall da Fama usa.
+// Resumo cobre AS DUAS carreiras — clube ("normal") e seleção — já que uma
+// aposentadoria de vez encerra as duas.
+function mostrarModalAposentadoria() {
+    if (document.getElementById("modalAposentadoria")) return;
+    const hist = jogador.historicoCarreira || [];
+    const carreira = obterEstatisticasCarreira(jogador);
+    const sel = jogador.statsSelecao || { jogos: 0, gols: 0, assistencias: 0 };
+    const contagemTrofeus = {};
+    hist.forEach(h => {
+        if (!h.trofeus || h.trofeus === "-") return;
+        h.trofeus.split(",").map(t => t.trim()).filter(Boolean).forEach(nome => {
+            contagemTrofeus[nome] = (contagemTrofeus[nome] || 0) + 1;
+        });
+    });
+    (jogador.titulosSelecao || []).forEach(t => { contagemTrofeus[t.trofeu] = (contagemTrofeus[t.trofeu] || 0) + 1; });
+    const totalTrofeus = Object.values(contagemTrofeus).reduce((a, b) => a + b, 0);
+    const jogouPelaSelecao = sel.jogos > 0 || (jogador.titulosSelecao || []).length > 0;
+
+    const modal = document.createElement("div");
+    modal.id = "modalAposentadoria";
+    modal.className = "modal";
+    modal.style.cssText = "z-index:1000; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);";
+    modal.innerHTML = `
+        <div class="coach-talk-card" style="width:min(640px, 92vw); text-align:center; border-top-color:var(--gold);">
+            <div class="hof-avatar" style="width:96px; height:96px; margin:0 auto 14px;">
+                <img loading="lazy" decoding="async" src="${obterUrlImagem(jogador, 'jogador')}" onerror="this.style.display='none'"><span>🐐</span>
+            </div>
+            <span class="coach-talk-tag" style="color:var(--gold);">📜 Fim de uma carreira</span>
+            <h2 style="margin:10px 0 4px;">${jogador.nome}</h2>
+            <p class="coach-talk-quote" style="font-style:normal; color:#d4d4d8;">Depois de ${hist.length} temporada${hist.length === 1 ? "" : "s"} em campo, chegou a hora de pendurar as chuteiras.</p>
+            <p style="text-transform:uppercase; font-size:0.72rem; font-weight:800; letter-spacing:1px; color:#888; margin:16px 0 6px; text-align:left;">⚽ Carreira de clube</p>
+            <div class="hof-stats-grid" style="margin:0 0 16px;">
+                <div class="hof-stat-card"><strong>${carreira.jogos}</strong><span>Jogos</span></div>
+                <div class="hof-stat-card"><strong>${carreira.gols}</strong><span>Golos</span></div>
+                <div class="hof-stat-card"><strong>${carreira.assistencias}</strong><span>Assistências</span></div>
+                <div class="hof-stat-card destaque"><strong>${totalTrofeus}</strong><span>Troféus</span></div>
+            </div>
+            ${jogouPelaSelecao ? `
+            <p style="text-transform:uppercase; font-size:0.72rem; font-weight:800; letter-spacing:1px; color:#888; margin:16px 0 6px; text-align:left;">🌍 Carreira pela seleção</p>
+            <div class="hof-stats-grid" style="margin:0 0 18px;">
+                <div class="hof-stat-card"><strong>${sel.jogos}</strong><span>Jogos</span></div>
+                <div class="hof-stat-card"><strong>${sel.gols}</strong><span>Golos</span></div>
+                <div class="hof-stat-card"><strong>${sel.assistencias}</strong><span>Assistências</span></div>
+                <div class="hof-stat-card destaque"><strong>${(jogador.titulosSelecao || []).length}</strong><span>Títulos</span></div>
+            </div>` : ""}
+            <button class="coach-talk-btn" id="btnVerHallDaFama">Ver Hall da Fama ➔</button>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("btnVerHallDaFama").onclick = () => {
+        modal.remove();
+        document.querySelector('[data-view="view-historico"]')?.click();
+    };
+}
+
+// A aposentadoria internacional é independente da carreira de clube. Depois
+// dela, o jogador continua jogando normalmente pelo seu time.
+window.abrirConfirmacaoAposentadoriaSelecao = function() {
+    if (!jogador || jogador.aposentado || jogador.aposentadoSelecao || document.getElementById("modalConfirmarAposentadoriaSelecao")) return;
+    const tevePassagem = jogador.naSelecao || (jogador.statsSelecao?.jogos || 0) > 0 || (jogador.statsSelecao?.convocacoes || 0) > 0;
+    if (!tevePassagem) {
+        mostrarToast("Seleção", "Só podes encerrar a carreira internacional depois de seres convocado.", "warning");
+        return;
+    }
+    const nomeSelecao = (typeof SELECOES !== "undefined" ? SELECOES.find(s => s.id === jogador.selecaoId)?.pais : null) || jogador.statsSelecao?.selecao || jogador.nacionalidade || "seleção";
+    const modal = document.createElement("div");
+    modal.id = "modalConfirmarAposentadoriaSelecao";
+    modal.className = "modal";
+    modal.style.cssText = "z-index:1100; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);";
+    modal.innerHTML = `
+        <div class="coach-talk-card" style="width:min(520px, 92vw); text-align:center; border-top-color:#3b82f6;">
+            <span class="coach-talk-tag" style="color:#60a5fa;">🌍 Carreira internacional</span>
+            <h2 style="margin:10px 0;">Aposentar da ${nomeSelecao}?</h2>
+            <p class="coach-talk-quote" style="font-style:normal; color:#d4d4d8;">Não serás mais convocado, mas a tua carreira de clube continuará normalmente.</p>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="coach-talk-btn" id="btnCancelarAposentadoriaSelecao" style="flex:1; background:#303036; color:#fff;">Continuar disponível</button>
+                <button class="coach-talk-btn" id="btnConfirmarAposentadoriaSelecao" style="flex:1; background:#3b82f6; color:#fff;">Aposentar da seleção</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("btnCancelarAposentadoriaSelecao").onclick = () => modal.remove();
+    document.getElementById("btnConfirmarAposentadoriaSelecao").onclick = () => {
+        jogador.aposentadoSelecao = true;
+        jogador.naSelecao = false;
+        jogador.anoAposentadoriaSelecao = anoAtual;
+        jogador.selecaoIdAntesAposentadoria = jogador.selecaoId;
+        jogador.selecaoId = "none";
+        jogador.statsSelecao = { ...(jogador.statsSelecao || {}), selecao: nomeSelecao };
+        registrarNoticia("Adeus à seleção", `${jogador.nome} decidiu encerrar a carreira internacional pela ${nomeSelecao}, mas segue em atividade pelo clube.`, "Carreira");
+        window.despedidaSelecaoRecente = true;
+        modal.remove();
+        window.salvarJogo();
+        atualizarHub();
+    };
+};
+
+// A carreira do personagem não termina por sorteio: este é o único caminho
+// para encerrar a atividade. A confirmação evita que um clique acidental
+// torne o save irrecuperável.
+window.abrirConfirmacaoAposentadoria = function() {
+    if (!jogador || jogador.aposentado || document.getElementById("modalConfirmarAposentadoria")) return;
+    const modal = document.createElement("div");
+    modal.id = "modalConfirmarAposentadoria";
+    modal.className = "modal";
+    modal.style.cssText = "z-index:1100; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);";
+    modal.innerHTML = `
+        <div class="coach-talk-card" style="width:min(520px, 92vw); text-align:center; border-top-color:var(--gold);">
+            <span class="coach-talk-tag" style="color:var(--gold);">🏁 Decisão de carreira</span>
+            <h2 style="margin:10px 0;">Encerrar a carreira?</h2>
+            <p class="coach-talk-quote" style="font-style:normal; color:#d4d4d8;">${jogador.nome} deixará o clube e a seleção definitivamente. Esta decisão não pode ser desfeita neste save.</p>
+            <div style="display:flex; gap:10px; margin-top:20px;">
+                <button class="coach-talk-btn" id="btnCancelarAposentadoria" style="flex:1; background:#303036; color:#fff;">Continuar jogando</button>
+                <button class="coach-talk-btn" id="btnConfirmarAposentadoria" style="flex:1; background:var(--gold); color:#111;">Aposentar-me</button>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("btnCancelarAposentadoria").onclick = () => modal.remove();
+    document.getElementById("btnConfirmarAposentadoria").onclick = () => {
+        jogador.aposentado = true;
+        jogador.aposentadoSelecao = true;
+        jogador.naSelecao = false;
+        jogador.clubeIdAntesAposentadoria = jogador.clubeId;
+        jogador.anoAposentadoria = anoAtual;
+        jogador.anoAposentadoriaSelecao = anoAtual;
+        jogador.clubeId = "aposentado";
+        jogador.contrato = 0;
+        registrarNoticia("Fim de uma carreira", `${jogador.nome} decidiu encerrar a carreira após ${jogador.historicoCarreira?.length || 0} temporadas.`, "Carreira");
+        window.carreiraRecemEncerrada = true;
+        modal.remove();
+        window.salvarJogo();
+        atualizarHub();
+    };
+};
+
+// 🌍👋 Modal de despedida SÓ da seleção — o jogador continua ativo pelo
+// clube, então este resumo mostra apenas a carreira internacional, sem
+// mexer no Hall da Fama geral (que é sobre a carreira inteira).
+function mostrarModalAposentadoriaSelecao() {
+    if (document.getElementById("modalAposentadoriaSelecao")) return;
+    const sel = jogador.statsSelecao || { jogos: 0, gols: 0, assistencias: 0 };
+    const nomeSel = (typeof SELECOES !== "undefined" ? SELECOES.find(s => s.pais === sel.selecao || s.nome === sel.selecao)?.pais : null) || sel.selecao || jogador.nacionalidade || "seleção";
+    const modal = document.createElement("div");
+    modal.id = "modalAposentadoriaSelecao";
+    modal.className = "modal";
+    modal.style.cssText = "z-index:1000; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);";
+    modal.innerHTML = `
+        <div class="coach-talk-card" style="width:min(560px, 92vw); text-align:center; border-top-color:var(--theme-primary);">
+            <div class="hof-avatar" style="width:88px; height:88px; margin:0 auto 14px; border-color:var(--theme-primary); background:rgba(0,255,136,0.1);">
+                <img loading="lazy" decoding="async" src="${obterUrlImagem(jogador, 'jogador')}" onerror="this.style.display='none'"><span>🌍</span>
+            </div>
+            <span class="coach-talk-tag">🌍 Adeus à Seleção</span>
+            <h2 style="margin:10px 0 4px;">${jogador.nome}</h2>
+            <p class="coach-talk-quote" style="font-style:normal; color:#d4d4d8;">Encerrou a carreira internacional pela ${nomeSel} — mas segue em campo pelo clube.</p>
+            <div class="hof-stats-grid" style="margin:18px 0;">
+                <div class="hof-stat-card"><strong>${sel.jogos || 0}</strong><span>Jogos</span></div>
+                <div class="hof-stat-card"><strong>${sel.gols || 0}</strong><span>Golos</span></div>
+                <div class="hof-stat-card"><strong>${sel.assistencias || 0}</strong><span>Assistências</span></div>
+                <div class="hof-stat-card destaque"><strong>${(jogador.titulosSelecao || []).length}</strong><span>Títulos</span></div>
+            </div>
+            <button class="coach-talk-btn" id="btnFecharAposentadoriaSelecao">Continuar carreira ➔</button>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("btnFecharAposentadoriaSelecao").onclick = () => modal.remove();
+}
+
+// 📈 ATRIBUTOS — visão geral de todos os atributos do teu jogador, com a
+// mesma escala de cores (fraco/médio/forte) já usada na tela de criação.
+const GRUPOS_ATRIBUTOS_JOGADOR = [
+    { titulo: "⚽ Ataque & Técnica", campos: [["finalizacao", "Finalização"], ["drible", "Drible"], ["passe", "Passe"], ["cabeceamento", "Cabeceamento"]] },
+    { titulo: "💪 Físico", campos: [["velocidade", "Velocidade"], ["forca", "Força"], ["resistencia", "Resistência"]] },
+    { titulo: "🛡️ Defesa & Inteligência", campos: [["defesa", "Defesa"], ["inteligencia", "Inteligência"]] },
+    { titulo: "🧤 Guarda-Redes", campos: [["reflexos", "Reflexos"], ["reposicao", "Reposição"], ["jogoAereo", "Jogo Aéreo"]] }
+];
+
+function renderizarAtributosJogador() {
+    const el = document.getElementById("view-atributos");
+    if (!el || !jogador) return;
+    const ehGoleiro = jogador.posicao === "Goleiro" || jogador.posicao === "Goleiro Libero";
+    const moral = jogador.moral ?? 55;
+
+    const barra = (rotulo, valor) => {
+        const v = Math.max(1, Math.min(99, Math.round(valor)));
+        const classe = classeForcaAtributo(v);
+        return `<div class="atributo-jogador-linha">
+            <span class="atributo-jogador-rotulo">${rotulo}</span>
+            <div class="atributo-jogador-track"><div class="atributo-jogador-fill ${classe}" style="width:${v}%"></div></div>
+            <span class="atributo-jogador-valor ${classe}">${v}</span>
+        </div>`;
+    };
+
+    const grupos = GRUPOS_ATRIBUTOS_JOGADOR
+        .filter(g => g.titulo !== "🧤 Guarda-Redes" || ehGoleiro) // grupo de goleiro só aparece pra quem joga no gol
+        .map(g => `<div class="atributos-jogador-grupo"><h4>${g.titulo}</h4>${g.campos.map(([campo, rotulo]) => barra(rotulo, jogador[campo] ?? 60)).join("")}</div>`)
+        .join("");
+
+    // 🎯 Notas derivadas usadas na disputa de pênaltis (ver notaPenaltiCobranca/
+    // notaPenaltiDefesa) — mostradas aqui pra dar contexto de onde vêm.
+    const notaExtra = ehGoleiro
+        ? barra("Nota de defesa em pênaltis", notaPenaltiDefesa({ ...jogador, isMe: true }))
+        : barra("Nota de cobrança de pênaltis", notaPenaltiCobranca({ ...jogador, isMe: true }));
+
+    el.innerHTML = `
+        <div class="dashboard-card atributos-jogador-header">
+            <img src="${obterUrlImagem(jogador, 'jogador')}" onerror="this.style.visibility='hidden'" class="atributos-jogador-foto">
+            <div>
+                <h2 style="margin:0;">${jogador.nome}</h2>
+                <p style="margin:4px 0 0; color:var(--text-muted);">${jogador.posicao} • ${jogador.idade || "?"} anos • ${jogador.nacionalidade || "—"}</p>
+            </div>
+            <div class="atributos-jogador-geral">
+                <span>OVR</span>
+                <strong>${jogador.geral ?? "—"}</strong>
+            </div>
+            <div class="atributos-jogador-geral">
+                <span>Moral</span>
+                <strong class="${classeForcaAtributo(moral)}">${moral}</strong>
+            </div>
+            <div class="atributos-jogador-geral">
+                <span>Nível ${jogador.nivel ?? 1}</span>
+                <strong style="font-size:1.1rem;">${jogador.xp ?? 0}/${jogador.xpProximoNivel ?? 100} XP</strong>
+            </div>
+            <div class="atributos-jogador-geral">
+                <span>Pontos de treino</span>
+                <strong class="${(jogador.pontosTreino || 0) > 0 ? "forte" : ""}">${jogador.pontosTreino ?? 0}</strong>
+            </div>
+        </div>
+        <div class="atributos-jogador-grid">${grupos}</div>
+        <div class="atributos-jogador-grupo">
+            <h4>🎯 Pênaltis (nota derivada)</h4>
+            ${notaExtra}
+            <p style="margin:8px 0 0; color:var(--text-muted); font-size:.8rem;">Calculada a partir dos atributos acima — não é um atributo treinável à parte.</p>
+        </div>`;
+}
+
 // 📜 HALL DA FAMA — antes a view existia no HTML mas nenhuma função a
 // preenchia (a tabela #corpoHistorico ficava sempre vazia). Os dados em si
 // já eram gravados certinho em jogador.historicoCarreira (ano a ano) e em
@@ -6204,8 +8330,14 @@ function renderizarTransferencias() {
 function renderizarHistorico() {
     const el = document.getElementById("view-historico");
     if(!el) return;
+    // 📖 O resumo de carreira fica disponível o tempo todo — enquanto o
+    // jogador ainda está ativo, mostra o progresso ATÉ AGORA (não precisa
+    // aposentar pra ver estatísticas e troféus já conquistados).
     const hist = jogador.historicoCarreira || [];
+
     const carreira = obterEstatisticasCarreira(jogador);
+    const sel = jogador.statsSelecao || { jogos: 0, gols: 0, assistencias: 0 };
+    const jogouPelaSelecao = sel.jogos > 0 || (jogador.titulosSelecao || []).length > 0;
 
     // Conta cada troféu distinto ganho ao longo da carreira: de clube +
     // prêmios individuais (guardados como texto em historicoCarreira.trofeus)
@@ -6234,25 +8366,34 @@ function renderizarHistorico() {
 
     el.innerHTML = `
         <div class="dashboard-card hof-header">
-            <div class="hof-avatar"><img src="${jogador.foto || ''}" onerror="this.style.display='none'"><span>🐐</span></div>
+            <div class="hof-avatar"><img loading="lazy" decoding="async" src="${jogador.foto || ''}" onerror="this.style.display='none'"><span>🐐</span></div>
             <div>
                 <span style="text-transform:uppercase; font-weight:900; color:var(--gold); letter-spacing:1px; font-size:0.8rem;">📜 Hall da Fama</span>
                 <h2 style="margin:6px 0;">${jogador.nome}</h2>
-                <p style="margin:0; color:#aaa;">${hist.length} temporada${hist.length === 1 ? "" : "s"} de carreira registada${hist.length === 1 ? "" : "s"}${jogador.aposentado ? " • Carreira encerrada" : ""}</p>
+                <p style="margin:0; color:#aaa;">${hist.length} temporada${hist.length === 1 ? "" : "s"} de carreira registada${hist.length === 1 ? "" : "s"} • ${jogador.aposentado ? `Carreira encerrada em ${jogador.anoAposentadoria || anoAtual}` : "Carreira em andamento"}</p>
             </div>
         </div>
+        <p style="text-transform:uppercase; font-size:0.75rem; font-weight:800; letter-spacing:1px; color:#888; margin:18px 4px 6px;">⚽ Carreira de clube</p>
         <div class="hof-stats-grid">
             <div class="hof-stat-card"><strong>${carreira.jogos}</strong><span>Jogos</span></div>
             <div class="hof-stat-card"><strong>${carreira.gols}</strong><span>Gols</span></div>
             <div class="hof-stat-card"><strong>${carreira.assistencias}</strong><span>Assistências</span></div>
             <div class="hof-stat-card destaque"><strong>${totalTrofeus}</strong><span>Troféus</span></div>
         </div>
+        ${jogouPelaSelecao ? `
+        <p style="text-transform:uppercase; font-size:0.75rem; font-weight:800; letter-spacing:1px; color:#888; margin:18px 4px 6px;">🌍 Carreira pela seleção</p>
+        <div class="hof-stats-grid">
+            <div class="hof-stat-card"><strong>${sel.jogos}</strong><span>Jogos</span></div>
+            <div class="hof-stat-card"><strong>${sel.gols}</strong><span>Gols</span></div>
+            <div class="hof-stat-card"><strong>${sel.assistencias}</strong><span>Assistências</span></div>
+            <div class="hof-stat-card destaque"><strong>${(jogador.titulosSelecao || []).length}</strong><span>Títulos</span></div>
+        </div>` : ""}
         <div class="dashboard-card" style="padding:25px; margin-top:18px;">
             <h3 style="margin:0 0 16px;">🏆 Vitrine de Troféus</h3>
             ${trofeusOrdenados.length ? `<div class="hof-trofeu-grid">
                 ${trofeusOrdenados.map(([nome, qtd]) => `
                     <div class="hof-trofeu-item" title="${nome}">
-                        <img src="${obterUrlImagem(nome, 'trofeu')}" onerror="this.outerHTML='<span class=&quot;hof-trofeu-fallback&quot;>🏆</span>'">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(nome, 'trofeu')}" onerror="this.outerHTML='<span class=&quot;hof-trofeu-fallback&quot;>🏆</span>'">
                         <span>${nome}</span>
                         ${qtd > 1 ? `<em>×${qtd}</em>` : ""}
                     </div>`).join("")}
@@ -6266,6 +8407,97 @@ function renderizarHistorico() {
             </table>
         </div>`;
 }
+
+// 👔 GALERIA DE TÉCNICOS — todos os treinadores (curados ou gerados), com
+// foto (Wikipedia, buscada sob demanda por obterUrlImagem/carregarFotoTecnico),
+// clube ou seleção atual, nacionalidade, estilo de jogo e reputação. Filtro
+// de texto reconstrói só a grade (desenharGridTecnicos), não a view inteira.
+const ROTULOS_ESTILO_TECNICO = { pressao: "Pressão", posse: "Posse de Bola", retranca: "Retranca", contra: "Contra-Ataque", equilibrado: "Equilibrado" };
+
+function renderizarTecnicos() {
+    const el = document.getElementById("view-tecnicos");
+    if (!el) return;
+    el.innerHTML = `
+        <div class="dashboard-card" style="padding:25px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:15px; flex-wrap:wrap; margin-bottom:18px;">
+                <h3 style="margin:0;">👔 Técnicos <span style="color:#888; font-weight:400; font-size:0.95rem;">(${(treinadoresIA || []).length})</span></h3>
+                <input type="text" id="filtroTecnicos" placeholder="🔎 Nome, clube, seleção ou nacionalidade..." style="flex:1; min-width:220px; max-width:420px; padding:10px 14px; border-radius:8px; border:1px solid #333; background:#18181b; color:#fff;">
+            </div>
+            <div id="gridTecnicos" class="tecnicos-grid"></div>
+        </div>`;
+    document.getElementById("filtroTecnicos")?.addEventListener("input", (e) => desenharGridTecnicos(e.target.value));
+    desenharGridTecnicos("");
+}
+
+function desenharGridTecnicos(filtro) {
+    const grid = document.getElementById("gridTecnicos");
+    if (!grid) return;
+    const termo = _normalizarNomeParaComparacao(filtro);
+    const lista = (treinadoresIA || []).filter(t => {
+        if (!termo) return true;
+        const clube = clubes.find(c => c.id === t.clubeId);
+        const sel = (typeof SELECOES !== "undefined" && Array.isArray(SELECOES)) ? SELECOES.find(s => s.id === t.selecaoId) : null;
+        const alvo = [t.nome, t.nacionalidade, clube?.nome, sel?.pais || sel?.nome].filter(Boolean).map(_normalizarNomeParaComparacao).join(" ");
+        return alvo.includes(termo);
+    }).sort((a, b) => (b.reputacao || 0) - (a.reputacao || 0));
+
+    if (!lista.length) { grid.innerHTML = `<p style="color:#aaa; grid-column:1/-1;">Nenhum técnico encontrado para "${filtro}".</p>`; return; }
+
+    grid.innerHTML = lista.map(t => {
+        const clube = clubes.find(c => c.id === t.clubeId);
+        const sel = (typeof SELECOES !== "undefined" && Array.isArray(SELECOES)) ? SELECOES.find(s => s.id === t.selecaoId) : null;
+        const vinculo = clube ? `⚽ ${clube.nome}` : (sel ? `🌍 ${sel.pais || sel.nome}` : `<span style="color:#666;">Sem clube</span>`);
+        return `
+        <button type="button" class="tecnico-card" onclick="window.abrirPerfilTecnico('${t.id}')" title="Ver histórico de ${t.nome}">
+            <img loading="lazy" decoding="async" class="tecnico-foto" data-tecnico-id="${t.id}" src="${obterUrlImagem(t, 'tecnico')}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.nome)}&background=27272a&color=00ff88'">
+            <p class="tecnico-nome">${t.nome}</p>
+            <p class="tecnico-vinculo">${vinculo}</p>
+            <div class="tecnico-meta"><span>🌐 ${t.nacionalidade || "—"}</span></div>
+            <span class="tecnico-estilo-chip">${ROTULOS_ESTILO_TECNICO[t.estiloJogo] || t.estiloJogo || "—"}</span>
+            <div class="tecnico-rep">⭐ ${t.reputacao ?? "-"} REP</div>
+            <small style="display:block; margin-top:9px; color:#9ca3af; font-size:0.68rem;">Clique para ver histórico</small>
+        </button>`;
+    }).join("");
+}
+
+// Perfil clicável do técnico. O histórico é mantido no próprio save e registra
+// cada passagem por clube a partir do início da carreira.
+window.abrirPerfilTecnico = function(tecnicoId) {
+    const t = (treinadoresIA || []).find(x => x.id === tecnicoId);
+    if (!t) return;
+    const clubeAtual = clubes.find(c => c.id === t.clubeId);
+    const selecaoAtual = (typeof SELECOES !== "undefined" && Array.isArray(SELECOES)) ? SELECOES.find(s => s.id === t.selecaoId) : null;
+    garantirHistoricoTecnico(t, clubeAtual, selecaoAtual);
+    const historico = [...(t.historicoTecnico || [])].reverse();
+    const vinculo = clubeAtual ? `⚽ ${clubeAtual.nome}` : (selecaoAtual ? `🌍 ${selecaoAtual.pais || selecaoAtual.nome}` : "Livre no mercado");
+    const linhas = historico.length ? historico.map(h => {
+        const periodo = h.fim ? `${h.inicio}–${h.fim}` : `${h.inicio}–atual`;
+        return `<tr><td>${periodo}</td><td>${h.nome}</td><td>${h.motivo || "Em atividade"}</td></tr>`;
+    }).join("") : `<tr><td colspan="3" style="color:#aaa; text-align:center; padding:14px;">Ainda sem passagens registadas.</td></tr>`;
+    const modal = document.createElement("div");
+    modal.id = "modalPerfilTecnico";
+    modal.className = "modal";
+    modal.style.cssText = "z-index:1100; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);";
+    modal.innerHTML = `
+        <div class="coach-talk-card" style="width:min(660px, 94vw); max-height:88vh; overflow:auto; border-top-color:var(--theme-primary);">
+            <button class="close-btn" id="btnFecharPerfilTecnico" style="float:right;">✖</button>
+            <div style="display:flex; gap:16px; align-items:center; padding-right:26px;">
+                <img loading="lazy" decoding="async" data-tecnico-id="${t.id}" src="${obterUrlImagem(t, 'tecnico')}" onerror="this.src='https://ui-avatars.com/api/?name=${encodeURIComponent(t.nome)}&background=27272a&color=00ff88'" style="width:82px; height:82px; object-fit:cover; border-radius:50%; border:3px solid var(--theme-primary);">
+                <div><span class="coach-talk-tag">👔 Perfil de técnico</span><h2 style="margin:7px 0 4px;">${t.nome}</h2><p style="margin:0; color:#aaa;">${vinculo}</p></div>
+            </div>
+            <div class="hof-stats-grid" style="margin:20px 0 18px;">
+                <div class="hof-stat-card"><strong>${t.reputacao ?? "-"}</strong><span>Reputação</span></div>
+                <div class="hof-stat-card"><strong>${t.temporadasNoCargo || 0}</strong><span>Temporadas</span></div>
+                <div class="hof-stat-card"><strong>${t.titulos || 0}</strong><span>Títulos</span></div>
+                <div class="hof-stat-card"><strong>${t.demissoes || 0}</strong><span>Demissões</span></div>
+            </div>
+            <p style="margin:0 0 6px; color:#aaa; font-size:.86rem;">🌐 ${t.nacionalidade || "—"} &nbsp; • &nbsp; ${ROTULOS_ESTILO_TECNICO[t.estiloJogo] || t.estiloJogo || "—"} &nbsp; • &nbsp; ${t.curado ? "Configurado na database" : "Técnico genérico"}</p>
+            <h3 style="margin:20px 0 8px;">Histórico de clubes</h3>
+            <div style="overflow:auto;"><table class="tabela-historico"><thead><tr><th>Período</th><th>Clube / Seleção</th><th>Saída</th></tr></thead><tbody>${linhas}</tbody></table></div>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById("btnFecharPerfilTecnico").onclick = () => modal.remove();
+};
 
 function renderizarNoticias() {
     const el = document.getElementById("view-noticias");
@@ -6304,7 +8536,7 @@ function renderizarNoticias() {
                         <div class="noticia-manchete-card">
                             <span class="noticia-manchete-tag">🔴 ÚLTIMA HORA</span>
                             <div class="noticia-manchete-body">
-                                ${img ? `<img class="noticia-manchete-img" src="${img}" onerror="this.remove()">` : ""}
+                                ${img ? `<img loading="lazy" decoding="async" class="noticia-manchete-img" src="${img}" onerror="this.remove()">` : ""}
                                 <div>
                                     <h2 class="noticia-manchete-headline">${n.manchete}</h2>
                                     <p class="noticia-manchete-texto">${n.corpo}</p>
@@ -6317,7 +8549,7 @@ function renderizarNoticias() {
                         return `
                         <div class="noticia-post-card">
                             <div class="noticia-post-header">
-                                ${img ? `<img class="noticia-post-avatar" src="${img}" onerror="this.outerHTML='<div class=&quot;noticia-post-avatar-fallback&quot;>${est.icone}</div>'">` : `<div class="noticia-post-avatar-fallback">${est.icone}</div>`}                                <div>
+                                ${img ? `<img loading="lazy" decoding="async" class="noticia-post-avatar" src="${img}" onerror="this.outerHTML='<div class=&quot;noticia-post-avatar-fallback&quot;>${est.icone}</div>'">` : `<div class="noticia-post-avatar-fallback">${est.icone}</div>`}                                <div>
                                     <strong>${n.handle || "@ImprensaGlobal"}${n.verificado === false ? "" : " ✔️"}</strong>
                                     <span class="noticia-post-cat" style="color:${est.cor};">${est.icone} ${cat}</span>
                                 </div>
@@ -6335,7 +8567,7 @@ function renderizarNoticias() {
                     <div class="noticia-jornal-card">
                         <div class="noticia-jornal-masthead"><span>${est.icone} ${cat.toUpperCase()}</span><span>${n.data}</span></div>
                         <div class="noticia-jornal-body">
-                            ${img ? `<img class="noticia-jornal-img" src="${img}" onerror="this.remove()">` : ""}
+                            ${img ? `<img loading="lazy" decoding="async" class="noticia-jornal-img" src="${img}" onerror="this.remove()">` : ""}
                             <div>
                                 <h3 class="noticia-jornal-headline">${n.manchete}</h3>
                                 <p class="noticia-jornal-texto">${n.corpo}</p>
@@ -6604,6 +8836,7 @@ function evoluirAtributosEGeral(j, delta) {
 // uma queda de OVR, os atributos TÊM de acompanhar essa queda (e vice-versa
 // se o OVR ficou pra trás de atributos que já subiram).
 function sincronizarAtributosComOver(j) {
+    if (!j) return;
     if (typeof j.finalizacao !== "number" && typeof j.reflexos !== "number") return;
     const geralEsperado = calcularGeralDeAtributos(j);
     const diff = (j.geral || 60) - geralEsperado;
@@ -6692,7 +8925,7 @@ function atribuirEstatisticaNPC(clubeId, golsFeitos, compId = null, golsSofridos
 function inicializarTabelas() {
     for (let key in tabelasLigas) delete tabelasLigas[key];
     competicoes.forEach(comp => { 
-        if(comp.tipo === "liga") {
+        if(comp.tipo === "liga" || comp.tipo === "liga_grupos" || comp.tipo === "liga_conferencias") {
             tabelasLigas[comp.id] = [];
             clubes.filter(c => c.ligaId === comp.id).forEach(c => { tabelasLigas[comp.id].push({ id: c.id, nome: c.nome, pontos: 0, jogos: 0, vitorias: 0, empates: 0, derrotas: 0, gols: 0, golsSofridos: 0 }); });
         }
@@ -6872,6 +9105,196 @@ function gerarFaseDeGrupos(compId, times) {
     copasEstado[compId].tipo = "grupos"; copasEstado[compId].fase = "Fase de Grupos"; copasEstado[compId].grupos = grupos; copasEstado[compId].rodadaAtual = 1;
 }
 
+// ==========================================
+// 🏆 SÉRIE D (Brasil) — FORMATO ESPECIAL
+// ==========================================
+// - 96 clubes, 16 grupos de 6, turno e returno (ver processarFimGruposClube/
+//   estado.avancam/maxRodadas). Os 4 melhores de cada grupo avançam ao
+//   mata-mata → 16 x 4 = 64 classificados.
+// - Mata-mata 100% ida e volta, em 6 fases: 1/32 de Final (64) → 1/16 de
+//   Final (32) → Oitavas de Final (16) → Quartas de Final (8) → Semifinal
+//   (4) → Final (2, também ida e volta — ver pernasFinal=2 no início da
+//   temporada, mais abaixo).
+// - Os 4 semifinalistas (vencedores das quartas de final) já garantem acesso
+//   automático à Série C, só por chegarem lá.
+// - Os 4 eliminados nas quartas de final disputam o Playoff de Acesso
+//   (br_4_acesso): 2 semifinais em ida e volta, e os 2 VENCEDORES já ficam
+//   com as 2 vagas restantes — não há uma "final" extra do playoff, os dois
+//   vencedores das semifinais sobem direto (os 2 perdedores continuam na
+//   Série D). Total promovido à Série C: 4 + 2 = 6.
+// - faseSerieDPorQtd() é o único lugar que decide o nome da fase a partir da
+//   quantidade de times classificados — usado tanto pra abrir o mata-mata
+//   quanto pra avançar de uma fase pra outra, pra nunca reaproveitar o nome
+//   errado de fase (bug antigo: com só 4 nomes de fase pra 64 classificados,
+//   "Quartas de Final" chegava a ser usado em 3 rodadas diferentes seguidas,
+//   disparando a promoção/repescagem de forma duplicada).
+function faseSerieDPorQtd(qtd) {
+    if (qtd >= 64) return "1/32 de Final";
+    if (qtd >= 32) return "1/16 de Final";
+    if (qtd >= 16) return "Oitavas de Final";
+    if (qtd >= 8) return "Quartas de Final";
+    if (qtd >= 4) return "Semifinal";
+    return "Final";
+}
+
+function iniciarMataMataSerieD(compId, times) {
+    if (!copasEstado[compId]) copasEstado[compId] = { historicoFases: [] };
+    if (!Array.isArray(copasEstado[compId].promovidosSerieC)) copasEstado[compId].promovidosSerieC = [];
+    const fase = faseSerieDPorQtd(times.length);
+    gerarChaveamentoMataMata(compId, times, fase);
+    if (fase === "Semifinal" || fase === "Final") {
+        // Dataset pequeno (menos clubes reais do que o padrão de 96): a fase
+        // de grupos já entrega os classificados direto pra semifinal (ou
+        // final), sem fase de quartas — então não há como gerar o playoff de
+        // acesso entre eliminados de quartas. Nesse caso os classificados que
+        // já chegam nessa fase garantem o acesso direto.
+        copasEstado[compId].promovidosSerieC = [...new Set([...copasEstado[compId].promovidosSerieC, ...times.map(t => t.id)])];
+    }
+    agendarConfrontoContinentalDoJogador(compId);
+}
+
+function avancarMataMataSerieD(compId) {
+    let estado = copasEstado[compId];
+    if (!estado || !estado.confrontos) return;
+    let vencedores = estado.confrontos.map(c => c.vencedorId).filter(Boolean);
+    if (vencedores.length === 0) return;
+    let perdedores = estado.confrontos.map(c => c.vencedorId ? (c.timeA.id === c.vencedorId ? c.timeB.id : c.timeA.id) : null).filter(Boolean);
+    const faseConcluida = estado.fase;
+    arquivarFase(compId);
+    if (!Array.isArray(estado.promovidosSerieC)) estado.promovidosSerieC = [];
+
+    if (faseConcluida === "Final") {
+        // A final só decide o campeão — os semifinalistas já estavam promovidos.
+        estado.campeaoId = vencedores[0];
+        estado.fase = "Campeão Definido";
+        estado.confrontos = [];
+        return;
+    }
+
+    // 1/32 → 1/16 → Oitavas → Quartas → Semifinal: todas ida e volta.
+    let times = vencedores.map(id => clubes.find(c => c.id === id) || clubePorIdOuRepresentante(id, "Classificado Série D", 68));
+    let novaFase = faseSerieDPorQtd(times.length);
+    gerarChaveamentoMataMata(compId, times, novaFase);
+    agendarConfrontoContinentalDoJogador(compId);
+
+    if (faseConcluida === "Quartas de Final") {
+        // Os 4 vencedores das quartas (agora semifinalistas) já garantem
+        // acesso automático à Série C.
+        estado.promovidosSerieC = [...new Set([...estado.promovidosSerieC, ...vencedores])];
+
+        // Os 4 eliminados nas quartas disputam o Playoff de Acesso.
+        let candidatosRepescagem = perdedores.map(id => clubes.find(c => c.id === id) || clubePorIdOuRepresentante(id, "Eliminado nas Quartas Série D", 64));
+        if (candidatosRepescagem.length >= 2) {
+            gerarChaveamentoMataMata("br_4_acesso", candidatosRepescagem, "Repescagem");
+            copasEstado["br_4_acesso"].serieDRef = compId;
+            agendarConfrontoContinentalDoJogador("br_4_acesso");
+        } else if (candidatosRepescagem.length === 1) {
+            // Só sobrou 1 eliminado (dataset pequeno): garante a vaga direto.
+            estado.promovidosSerieC = [...new Set([...estado.promovidosSerieC, candidatosRepescagem[0].id])];
+        }
+    }
+}
+
+// 🏆 PLAYOFF DE ACESSO (br_4_acesso): 4 clubes eliminados nas quartas da
+// Série D, 2 semifinais em ida e volta — e os 2 VENCEDORES já ficam com as
+// 2 vagas restantes de acesso à Série C (os 2 perdedores continuam na Série
+// D). Não existe uma "final" do playoff — isso reduziria os 2 vencedores a
+// só 1 promovido, quando o formato oficial promove os DOIS.
+function avancarPlayoffAcessoSerieD() {
+    let estado = copasEstado["br_4_acesso"];
+    if (!estado || !estado.confrontos || estado.confrontos.length === 0) return;
+    let vencedores = estado.confrontos.map(c => c.vencedorId).filter(Boolean);
+    if (vencedores.length === 0) return;
+    arquivarFase("br_4_acesso");
+    estado.fase = "Vagas Definidas";
+    estado.classificados = vencedores;
+    estado.confrontos = [];
+    let refCompId = estado.serieDRef || "br_4";
+    let ref = copasEstado[refCompId];
+    if (ref) {
+        if (!Array.isArray(ref.promovidosSerieC)) ref.promovidosSerieC = [];
+        ref.promovidosSerieC = [...new Set([...ref.promovidosSerieC, ...vencedores])];
+    }
+}
+
+// Ponto único de decisão: mata-matas normais usam o motor genérico
+// (avancarFaseMataMata), mas a Série D e sua repescagem de acesso precisam da
+// lógica especial acima (semifinalistas promovidos direto + repescagem).
+function avancarFaseMataMataDispatch(compId) {
+    // Mantemos br_4 original para a simulação avançar corretamente
+    if (compId === "br_4") {
+        avancarMataMataSerieD(compId);
+    } else if (compId === "br_4_acesso") {
+        avancarPlayoffAcessoSerieD();
+    } else {
+        avancarFaseMataMata(compId);
+    }
+}
+
+// Fecha a fase de grupos de uma competição de clubes (Série D e similares),
+// respeitando quantos times avançam de cada grupo (estado.avancam) — e
+// direciona a Série D para o mata-mata especial em vez do genérico.
+function processarFimGruposClube(compId, estado) {
+    const avancamPorGrupo = estado.avancam || 4;
+    let classificados = [];
+
+    estado.grupos.forEach(grp => {
+        let listaTimes = grp.equipas || grp.times || [];
+
+        listaTimes.sort((a, b) =>
+            (b.pts - a.pts) ||
+            ((b.gf - b.gs) - (a.gf - a.gs)) ||
+            (b.gf - a.gf)
+        );
+
+        for (let i = 0; i < avancamPorGrupo; i++) {
+            if (listaTimes[i]) {
+                let idOuClube = listaTimes[i].id !== undefined ? listaTimes[i].id : listaTimes[i];
+                let clubeObj = clubes.find(c => c.id === idOuClube) || listaTimes[i];
+
+                if (clubeObj) classificados.push(clubeObj);
+            }
+        }
+    });
+
+    classificados = classificados.filter((c, index, self) => c && self.findIndex(t => t.id === c.id) === index);
+
+    arquivarFase(compId);
+
+    // Remove os grupos do estado atual para a interface parar de tentar
+    // renderizar a tabela de grupo (ver exibirTabelaLigaCodigo, que agora
+    // sabe cair pro chaveamento assim que estado.grupos some).
+    delete estado.grupos;
+
+    const compTorneio = competicoes.find(c => c.id === compId);
+    if (compTorneio?.tipo === "liga_grupos") {
+        // 🛡️ A Série D usa a lógica especial (iniciarMataMataSerieD, acima) —
+        // ela já cuida de: setar estado.tipo = "mata-mata" (com HÍFEN — é o
+        // valor que toda a simulação de fundo, o dispatch de avanço de fase e
+        // a tela de chaveamento esperam; um "mata_mata" com underscore aqui
+        // fazia o mata-mata simplesmente nunca avançar nem aparecer) e usar
+        // faseSerieDPorQtd() pra escolher a fase certa em cascata (1/32 → 1/16
+        // → Oitavas → Quartas → Semifinal → Final) a partir da quantidade real
+        // de classificados, em vez de uma fase fixa que não cobria os 64.
+        iniciarMataMataSerieD(compId, classificados);
+    } else {
+        gerarChaveamentoMataMata(compId, classificados, classificados.length >= 16 ? "Oitavos de Final" : "Quartos de Final");
+        agendarConfrontoContinentalDoJogador(compId);
+    }
+}
+
+// Verifica se o PRÓPRIO jogador já disputou todos os seus jogos da fase de
+// grupos (contagem "j" do seu próprio time dentro de estado.grupos, que só
+// é incrementada quando a partida dele é realmente jogada via calendário).
+// Se o jogador nem está nesse grupo/competição, não há nada a esperar.
+function grupoDoJogadorCompleto(estado, minJogos) {
+    if (!estado.grupos) return true;
+    const meuGrupo = estado.grupos.find(g => g.equipas.some(e => e.id === jogador?.clubeId));
+    if (!meuGrupo) return true;
+    const meuTime = meuGrupo.equipas.find(e => e.id === jogador.clubeId);
+    return !meuTime || meuTime.j >= minJogos;
+}
+
 function clubePorIdOuRepresentante(id, nome, reputacao = 76) {
     const repId = id || `rep_${normalizarTexto(nome).replace(/\s+/g, "_")}`;
     return clubes.find(c => c.id === repId) || clubes.find(c => c.id === id) || { id: repId, nome, reputacao, ligaId: "int_rep", generico: true };
@@ -6884,6 +9307,24 @@ function clubePorIdOuRepresentante(id, nome, reputacao = 76) {
 // mata-mata minúsculo com jogos 0-0 esquisitos). Assim que existirem clubes
 // reais suficientes classificados, eles automaticamente tomam essas vagas —
 // isso aqui é só um "preenchimento" (nunca substitui um clube real por um genérico).
+// Igual ao criarClubeGenerico acima, mas para a Série D (liga_grupos): o
+// clube genérico entra de fato na divisão (ligaId = comp.id, ex: "br_4"),
+// não numa "liga genérica" à parte — assim ele participa normalmente do
+// grupo, da tabela, do mata-mata e, se for o caso, é promovido como
+// qualquer outro clube da Série D.
+function criarClubeGenericoSerieD(compId, indice) {
+    const repBase = 42 + Math.floor(Math.random() * 18); // 42-59: nível modesto, condizente com a 4ª divisão
+    return {
+        id: `generico_${compId}_${indice}`,
+        nome: `Clube Genérico D-${indice}`,
+        logo: "",
+        reputacao: repBase,
+        ligaId: compId,
+        pais: "Brasil",
+        generico: true
+    };
+}
+
 function criarClubeGenerico(compId, indice) {
     const repBase = 58 + Math.floor(Math.random() * 14); // 58-71: nível modesto, mas variado
     return {
@@ -6969,6 +9410,74 @@ function inicializarCopasNacionaisEContinentais() {
         if(timesPais.length >= 8) gerarChaveamentoMataMata(copa.id, timesPais.slice(0, 32), timesPais.length >= 16 ? "Oitavos de Final" : "Quartos de Final");
     });
 
+    // 🏆 SÉRIE D (Brasil) - formato de grupos
+    // 🆕 CLUBES GENÉRICOS: enquanto o database.js não tiver os 96 clubes reais
+    // necessários para fechar os 16 grupos de 6 da Série D, completamos as
+    // vagas que faltarem com clubes genéricos (mesmo princípio já usado nas
+    // copas continentais — nunca removem/substituem um clube real; assim que
+    // existirem clubes reais suficientes, eles tomam essas vagas automatica-
+    // mente e os genéricos que sobrarem são descartados).
+    competicoes.filter(c => c.tipo === "liga_grupos").forEach(comp => {
+        const ALVO_SERIE_D = 96; // 16 grupos de 6 times
+        let timesReais = clubes.filter(c => c.ligaId === comp.id && !c.generico);
+        let genericosExistentes = clubes.filter(c => c.ligaId === comp.id && c.generico);
+
+        if (timesReais.length >= ALVO_SERIE_D) {
+            // Clubes reais já bastam: descarta quaisquer genéricos remanescentes
+            // de temporadas anteriores em que ainda faltavam clubes.
+            genericosExistentes.forEach(g => { const idx = clubes.indexOf(g); if (idx !== -1) clubes.splice(idx, 1); });
+            genericosExistentes = [];
+        } else {
+            const faltamNoTotal = ALVO_SERIE_D - timesReais.length;
+            if (genericosExistentes.length > faltamNoTotal) {
+                // Sobraram genéricos de vagas que clubes reais novos já ocuparam.
+                genericosExistentes.slice(faltamNoTotal).forEach(g => { const idx = clubes.indexOf(g); if (idx !== -1) clubes.splice(idx, 1); });
+                genericosExistentes = genericosExistentes.slice(0, faltamNoTotal);
+            } else if (genericosExistentes.length < faltamNoTotal) {
+                let n = genericosExistentes.length + 1;
+                while (genericosExistentes.length < faltamNoTotal) {
+                    const generico = criarClubeGenericoSerieD(comp.id, n);
+                    clubes.push(generico);
+                    genericosExistentes.push(generico);
+                    n++;
+                }
+            }
+        }
+
+        let timesPais = [...timesReais, ...genericosExistentes];
+        if(timesPais.length >= 6) {
+            if(!copasEstado[comp.id]) copasEstado[comp.id] = {};
+            copasEstado[comp.id].tipo = "grupos";
+            copasEstado[comp.id].fase = "Fase de Grupos";
+            copasEstado[comp.id].rodadaAtual = 1;
+            copasEstado[comp.id].maxRodadas = 10;
+            // 🏆 Formato oficial: 16 grupos x 4 classificados = 64 times no
+            // mata-mata (1/32 → 1/16 → Oitavas → Quartas → Semifinal → Final).
+            // Ver faseSerieDPorQtd()/iniciarMataMataSerieD()/avancarMataMataSerieD()
+            // mais abaixo, que cobrem as 6 fases.
+            copasEstado[comp.id].avancam = 4;
+            // A final é em dois jogos (ida e volta) — precisa deste flag porque
+            // "Final" cai por padrão em perna única (ver numeroPernasConfronto).
+            copasEstado[comp.id].pernasFinal = 2;
+            copasEstado[comp.id].promovidosSerieC = [];
+            
+            // Criar grupos (16 grupos de 6 times)
+            const numGrupos = Math.min(16, Math.floor(timesPais.length / 6));
+            const shuffled = [...timesPais].sort(() => Math.random() - 0.5);
+            const grupos = [];
+            for(let g = 0; g < numGrupos; g++) {
+                const timesGrupo = shuffled.slice(g * 6, (g + 1) * 6);
+                if(timesGrupo.length >= 2) {
+                    grupos.push({
+                        nome: `Grupo ${String.fromCharCode(65 + g)}`,
+                        equipas: timesGrupo.map(t => ({ id: t.id, nome: t.nome, pts: 0, j: 0, gf: 0, gs: 0 }))
+                    });
+                }
+            }
+            copasEstado[comp.id].grupos = grupos;
+        }
+    });
+
     competicoes.filter(c => c.tipo === "supercopa").forEach(sc => {
         let pais = obterPaisCompeticaoId(sc.id); 
         let idCampLiga = campeoesAnoAnterior.ligas[`${pais}_1`];
@@ -6994,6 +9503,46 @@ function inicializarCopasNacionaisEContinentais() {
     // cujo grupo de participantes são os clubes daquele estado específico.
     // NOTA: por simplicidade, corre ao longo da temporada como a Copa do
     // Brasil, em vez de ficar restrito a janeiro-abril como no futebol real.
+    const REGULAMENTOS_ESTADUAIS = {
+    // Regulamento Especial: Campeonato Paulista
+    "est_sp": (estadual, times) => {
+        console.log("Iniciando Paulistão com Fase de Liga + Mata-Mata...");
+        
+        // 1. Organiza os 8 jogos da Fase de Liga (garantindo os clássicos)
+        const calendarioLiga = gerarJogosFaseLigaPaulista(times);
+        
+        // 2. Define estrutura da competição para o banco do jogo
+        return {
+            id: estadual.id,
+            faseAtual: "fase_de_liga",
+            rodadaAtual: 1,
+            totalRodadas: 8,
+            tabelaUnica: times.map(t => ({ clubeId: t.id, pontos: 0, v: 0, e: 0, d: 0, gp: 0, gc: 0, sg: 0 })),
+            classificadosMataMata: 8,
+            rebaixadosDiretos: 2,
+            regrasMataMata: {
+                quartas: { jogos: 1, mando: "melhor_campanha" },
+                semifinal: { jogos: 1, mando: "melhor_campanha" },
+                final: { jogos: 2, desempate: "saldo_penaltis" }
+            },
+            jogos: calendarioLiga
+        };
+    },
+
+    // Regulamento Especial: Campeonato Carioca (Exemplo com Taça Guanabara se quiser no futuro)
+    "est_rj": (estadual, times) => {
+        // Implementação do formato do Rio
+    },
+
+    // REGULAMENTO PADRÃO / FALLBACK (Sua lógica antiga de 4, 8 ou 16 times)
+    "padrao": (estadual, times) => {
+        let tamanho = times.length >= 16 ? 16 : times.length >= 8 ? 8 : 4;
+        const timesFiltrados = [...times].sort((a, b) => b.reputacao - a.reputacao).slice(0, tamanho);
+        const faseInicial = tamanho === 16 ? "Oitavas de Final" : tamanho === 8 ? "Quartas de Final" : "Semifinal";
+        
+        return gerarChaveamentoMataMata(estadual.id, timesFiltrados, faseInicial);
+    }
+};
     competicoes.filter(c => c.tipo === "estadual").forEach(estadual => {
         let timesEstado = clubes.filter(c => c.estado === estadual.estado);
         if (timesEstado.length < 4) return; // não há clubes suficientes deste estado carregados
@@ -7130,6 +9679,10 @@ function avancarFaseMataMata(compId) {
 // 📅 ENGENHARIA DE CALENDÁRIO E SIMULAÇÃO MUNDIAL
 // ==========================================
 function gerarAgenda() {
+    // 🛡️ FIX: esta função monta o calendário de partidas do PRÓPRIO jogador —
+    // no Modo Manager não existe personagem jogável, então não há agenda
+    // pessoal pra gerar aqui (o Manager tem seu próprio calendário de clube).
+    if (!jogador) return;
     let meuClube = clubes.find(c => c.id === jogador.clubeId); if (!meuClube) return;
     let pais = meuClube.ligaId.split("_")[0];
     const perfilPais = obterPerfilCalendarioPais(pais);
@@ -7155,27 +9708,43 @@ function gerarAgenda() {
     });
 
     let nomeLiga = competicoes.find(c=>c.id===meuClube.ligaId)?.nome || "Liga Nacional";
-    const jogosLiga = adversariosLiga.filter(a => a.id !== "folga_temp").length * 2;
+    // 🛡️ SÉRIE D (liga_grupos): NÃO usa este gerador genérico de calendário
+    // (que cria turno/returno contra TODOS os clubes da divisão) — o clube só
+    // enfrenta os times do seu próprio grupo, e isso já é tratado no bloco
+    // dedicado "🏆 SÉRIE D (Brasil) - formato de grupos" mais abaixo. Sem esta
+    // trava, o jogador acabava jogando contra a divisão inteira (~96 clubes)
+    // em vez de só os 5 adversários do seu grupo de 6.
+    const ligaDoJogadorInfo = competicoes.find(c => c.id === meuClube.ligaId);
+    const jogadorEstaEmLigaDeGrupos = ligaDoJogadorInfo?.tipo === "liga_grupos";
+    const jogosLiga = jogadorEstaEmLigaDeGrupos ? 0 : adversariosLiga.filter(a => a.id !== "folga_temp").length * 2;
     const slotsLiga = distribuirSlots(jogosLiga || 1, perfilPais.ligaInicio, perfilPais.ligaFim);
     let jogoLigaIdx = 0;
     
-    // Inject bye weeks (folga) at strategic points in the season
-    const byeWeekSlots = [Math.floor(jogosLiga * 0.25), Math.floor(jogosLiga * 0.5), Math.floor(jogosLiga * 0.75)];
+    // 📅 Calendário realista com folgas estratégicas distribuídas ao longo da temporada
+    // Adiciona folgas em pontos estratégicos: 25%, 50%, 75% da temporada + período de Natal/férias
+    const byeWeekSlots = [
+        Math.floor(jogosLiga * 0.25),
+        Math.floor(jogosLiga * 0.5),
+        Math.floor(jogosLiga * 0.75),
+        Math.floor(jogosLiga * 0.9) // Folga antes das rodadas finais
+    ];
     
-    for(let r = 0; r < adversariosLiga.length * 2; r++) {
-        let adv = adversariosLiga[r % adversariosLiga.length];
-        
-        // Check if this round should be a bye week
-        if (byeWeekSlots.includes(jogoLigaIdx)) {
-            adicionarEventoCalendario({ tipo: "Folga (Recuperação)", compId: "folga", adversarioId: null, isMataMata: false, fase: "Folga", isFolga: true }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, "Folga", "europeu");
-        } else if(adv.id !== "folga_temp") {
-            // 🌐 MUNDO COMPARTILHADO: se o adversário desta rodada de liga é
-            // exatamente o clube do amigo online, marca como confronto direto —
-            // o jogo vai sincronizar essa partida em tempo real para os dois.
-            const isConfrontoDireto = !!(window.connectionMode === 'online' && window.onlinePartnerClubeId && adv.id === window.onlinePartnerClubeId);
-            adicionarEventoCalendario({ tipo: `${nomeLiga} (J${jogoLigaIdx + 1})`, compId: meuClube.ligaId, adversarioId: adv.id, isMataMata: false, fase: "Liga", isConfrontoDireto }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, nomeLiga, perfilPais.modelo);
+    if (!jogadorEstaEmLigaDeGrupos) {
+        for(let r = 0; r < adversariosLiga.length * 2; r++) {
+            let adv = adversariosLiga[r % adversariosLiga.length];
+            
+            // Check if this round should be a bye week
+            if (byeWeekSlots.includes(jogoLigaIdx)) {
+                adicionarEventoCalendario({ tipo: "Folga (Recuperação)", compId: "folga", adversarioId: null, isMataMata: false, fase: "Folga", isFolga: true }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, "Folga", "europeu");
+            } else if(adv.id !== "folga_temp") {
+                // 🌐 MUNDO COMPARTILHADO: se o adversário desta rodada de liga é
+                // exatamente o clube do amigo online, marca como confronto direto —
+                // o jogo vai sincronizar essa partida em tempo real para os dois.
+                const isConfrontoDireto = !!(window.connectionMode === 'online' && window.onlinePartnerClubeId && adv.id === window.onlinePartnerClubeId);
+                adicionarEventoCalendario({ tipo: `${nomeLiga} (J${jogoLigaIdx + 1})`, compId: meuClube.ligaId, adversarioId: adv.id, isMataMata: false, fase: "Liga", isConfrontoDireto }, slotsLiga[jogoLigaIdx] || perfilPais.ligaFim, nomeLiga, perfilPais.modelo);
+            }
+            jogoLigaIdx++;
         }
-        jogoLigaIdx++;
     }
     
     // 🏆 CAMPEONATOS ESTADUAIS (Brasil): usa o mesmo mecanismo genérico das
@@ -7196,6 +9765,29 @@ function gerarAgenda() {
 
     for (const [torneioId, estado] of Object.entries(copasEstado)) {
         const compTorneio = competicoes.find(c=>c.id===torneioId);
+        
+        // 🏆 SÉRIE D (Brasil) - formato de grupos com jogos ida e volta
+        if (compTorneio?.tipo === "liga_grupos" && estado.tipo === "grupos") {
+            estado.grupos.forEach(grp => {
+                if(grp.equipas.find(e => e.id === meuClube.id)) {
+                    let advs = grp.equipas.filter(e => e.id !== meuClube.id);
+                    let nome = compTorneio.nome || "Série D";
+                    const cfgCal = obterConfigCalendarioCompeticao(torneioId);
+                    
+                    // Jogos ida e volta contra cada adversário do grupo (10 jogos no total)
+                    let rodada = 1;
+                    advs.forEach(adv => {
+                        // Jogo de ida
+                        adicionarEventoCalendario({ tipo: `${nome} (${grp.nome} - Ida)`, compId: torneioId, fase: "Grupos", adversarioId: adv.id, isMataMata: false, emCasa: true, rodadaGrupo: rodada }, obterSlotCompeticaoCalendario(torneioId, "Grupos", 1, rodada), cfgCal.janela, cfgCal.modelo);
+                        rodada++;
+                        // Jogo de volta
+                        adicionarEventoCalendario({ tipo: `${nome} (${grp.nome} - Volta)`, compId: torneioId, fase: "Grupos", adversarioId: adv.id, isMataMata: false, emCasa: false, rodadaGrupo: rodada }, obterSlotCompeticaoCalendario(torneioId, "Grupos", 1, rodada), cfgCal.janela, cfgCal.modelo);
+                        rodada++;
+                    });
+                }
+            });
+        }
+        
         if (compTorneio?.isContinental || ["continental", "supercopa_continental", "torneio_intercontinental"].includes(compTorneio?.tipo)) {
             if (estado.tipo === "liga_unica" && estado.fixtures) {
                 let meusJogos = estado.fixtures.filter(f => f.home.id === meuClube.id || f.away.id === meuClube.id).sort((a,b) => a.rodada - b.rodada);
@@ -7269,24 +9861,26 @@ function simularRodadaMundial() {
     }
 
     for (const [compId, estado] of Object.entries(copasEstado)) {
-        if (estado.tipo === "grupos" && estado.rodadaAtual <= 6) {
-            // FIX: Only simulate if player has an active fixture in this cup
-            const hasPlayerFixture = agendaTemporada.some(a =>
-                a.compId === compId &&
-                (a.adversarioId === jogador?.clubeId || a.mandanteId === jogador?.clubeId)
-            );
-
-            // CRITICAL FIX: Only simulate if player has fixture or with strict conditions
-            // Use the same logic as international tournaments to prevent round skipping
-            const isContinentalCup = compId.includes("libertadores") || 
-                                    compId.includes("champions") ||
-                                    compId.includes("uefa_el") ||
-                                    compId.includes("conmebol_sul");
-
-            const shouldAdvance = hasPlayerFixture || 
-                                 (isContinentalCup ? rodadaAtual % 4 === 0 : Math.random() < 0.25);
-
-            if (shouldAdvance) {
+        if (estado.tipo === "grupos") {
+            // 🛡️ FIX (Série D nunca chegava ao mata-mata — "o ano acabava antes"):
+            // esta competição "grupos" no nível de clube é usada SÓ pela Série D
+            // (br_4). O "hasPlayerFixture" abaixo comparava adversarioId/
+            // mandanteId ao ID DO PRÓPRIO CLUBE do jogador — campos que nunca
+            // guardam isso (adversarioId é sempre o ADVERSÁRIO, e os jogos da
+            // Série D nem têm "mandanteId", usam "emCasa"). Ou seja,
+            // hasPlayerFixture era SEMPRE falso, e como "br_4" também não bate
+            // em nenhum dos includes() de isContinentalCup, a simulação de
+            // fundo (as OUTRAS 15 equipas do grupo) só avançava com 25% de
+            // chance por semana — precisando de ~40 semanas em média para
+            // completar as 10 rodadas, quando só há ~27 disponíveis (slots
+            // 12 a 39) antes do failsafe de fim de temporada forçar a Gala.
+            // Resultado: o grupo nunca fechava e o mata-mata da Série D nunca
+            // começava. Como o fechamento já é protegido corretamente logo
+            // abaixo por grupoDoJogadorCompleto (só fecha depois que os
+            // jogos do PRÓPRIO jogador realmente terminaram), não há motivo
+            // pra também travar o avanço de fundo — agora ele roda toda
+            // semana, como qualquer rodada normal de liga.
+            if (estado.rodadaAtual <= (estado.maxRodadas || 6)) {
                 estado.grupos.forEach(grp => {
                     let tSim = grp.equipas.filter(e => e.id !== jogador.clubeId); tSim.sort(() => Math.random() - 0.5);
                     for(let i=0; i<tSim.length-1; i+=2) {
@@ -7300,15 +9894,9 @@ function simularRodadaMundial() {
                     }
                 });
                 estado.rodadaAtual++;
-                if(estado.rodadaAtual > 6) {
-                    let classificados = [];
-                    estado.grupos.forEach(grp => {
-                        grp.equipas.sort((a,b) => b.pts - a.pts || (b.gf-b.gs) - (a.gf-a.gs));
-                        classificados.push(clubes.find(c=>c.id===grp.equipas[0].id), clubes.find(c=>c.id===grp.equipas[1].id));
-                    });
-                    arquivarFase(compId); gerarChaveamentoMataMata(compId, classificados.filter(Boolean), classificados.length === 16 ? "Oitavos de Final" : "Quartos de Final");
-                    agendarConfrontoContinentalDoJogador(compId);
-                }
+            }
+            if (estado.rodadaAtual > (estado.maxRodadas || 6) && grupoDoJogadorCompleto(estado, estado.maxRodadas || 6)) {
+                processarFimGruposClube(compId, estado);
             }
         } else if (estado.tipo === "liga_unica" && estado.fixtures && estado.rodadaAtual <= 8) {
             // Mesmo princípio da correção acima: só considera que "tenho jogo
@@ -7378,7 +9966,7 @@ function simularRodadaMundial() {
                         atribuirEstatisticaNPC(conf.timeA.id, gC, compId, gV); atribuirEstatisticaNPC(conf.timeB.id, gV, compId, gC);
                     }
                 });
-                if(estado.confrontos.every(c => c.vencedorId) && estado.confrontos.length >= 1) avancarFaseMataMata(compId);
+                if(estado.confrontos.every(c => c.vencedorId) && estado.confrontos.length >= 1) avancarFaseMataMataDispatch(compId);
             }
         }
     }
@@ -7454,17 +10042,10 @@ function forcarFimDeCopas() {
             }
             if (estado.tipo === "grupos" && estado.grupos && estado.fase !== "Campeão Definido") {
                 pendente = true;
-                let classificados = [];
-                estado.grupos.forEach(grp => {
-                    grp.equipas.sort((a,b) => b.pts - a.pts || (b.gf-b.gs) - (a.gf-a.gs));
-                    classificados.push(clubes.find(c=>c.id===grp.equipas[0]?.id), clubes.find(c=>c.id===grp.equipas[1]?.id));
-                });
-                arquivarFase(compId);
-                gerarChaveamentoMataMata(compId, classificados.filter(Boolean), classificados.length >= 16 ? "Oitavos de Final" : "Quartos de Final");
-                agendarConfrontoContinentalDoJogador(compId);
+                processarFimGruposClube(compId, estado);
                 continue;
             }
-            if (estado.fase !== "Campeão Definido" && estado.confrontos && estado.confrontos.length > 0) {
+            if (estado.fase !== "Campeão Definido" && estado.fase !== "Vaga Definida" && estado.confrontos && estado.confrontos.length > 0) {
                 pendente = true;
                 estado.confrontos.forEach(conf => {
                     if(!conf.vencedorId) {
@@ -7480,7 +10061,7 @@ function forcarFimDeCopas() {
                         }
                     }
                 });
-                if(estado.confrontos.every(c => c.vencedorId)) avancarFaseMataMata(compId);
+                if(estado.confrontos.every(c => c.vencedorId)) avancarFaseMataMataDispatch(compId);
             }
         }
         if(!pendente) break;
@@ -7510,10 +10091,14 @@ window.avancarTemporada = function() {
             let deltaJogador = 0;
             if(jogador.idade <= 22) deltaJogador += Math.floor(Math.random() * 2) + 1;
             else if(jogador.idade <= 27 && Math.random() > 0.55) deltaJogador += 1;
-            if(jogador.idade >= 32 && jogador.idade <= 35 && Math.random() > 0.55) deltaJogador -= 1;
-            else if(jogador.idade >= 36) deltaJogador -= Math.floor(Math.random() * 2) + 1;
+            // O declínio só começa DEPOIS dos 35. A partir daí, os atributos
+            // individuais (e por consequência o OVR) caem a cada temporada.
+            if(jogador.idade > 35) deltaJogador -= Math.floor(Math.random() * 2) + 1;
             evoluirAtributosEGeral(jogador, deltaJogador);
         }
+
+        // A aposentadoria do personagem é uma decisão exclusiva do jogador.
+        // Não há mais sorteio automático, nem para clube nem para seleção.
 
         // Clear rejected clubs at start of new season (fresh start)
         if(jogador.clubesRejeitados) jogador.clubesRejeitados = [];
@@ -7532,7 +10117,7 @@ window.avancarTemporada = function() {
             {
                 let deltaJ = 0;
                 if (j.idade <= 22) deltaJ += Math.floor(Math.random() * 3) + 1; else if (j.idade <= 25 && Math.random() > 0.6) deltaJ += 1;
-                if (j.idade >= 31 && j.idade <= 34) deltaJ -= Math.floor(Math.random() * 2); else if (j.idade >= 35) deltaJ -= Math.floor(Math.random() * 3) + 1;
+                if (j.idade > 35) deltaJ -= Math.floor(Math.random() * 3) + 1;
                 // 🆕 Desacelera perto do teto de potencial — sem isto, um jovem
                 // "mediano" continuava subindo até virar craque só por causa da
                 // idade, sem nenhum limite pessoal de talento.
@@ -7589,16 +10174,40 @@ window.avancarTemporada = function() {
                 }
 
                 // 📈 REGRA DE ACESSO (Subir)
+                // 🛡️ SÉRIE D (liga_grupos): não usa a tabela genérica de bastidores
+                // para decidir o acesso — o acesso já é decidido pelo próprio
+                // mata-mata (2 finalistas + vencedor do playoff de acesso), ver bloco
+                // dedicado logo abaixo.
+                const compInfoAtual = competicoes.find(c => c.id === ligaId);
                 let divAnteriorId = ligaId.replace(`_${divAtual}`, `_${divAtual - 1}`);
-                if (divAtual > 1 && tabelasLigas[divAnteriorId] && tabOrd.length > 3) {
+                if (divAtual > 1 && tabelasLigas[divAnteriorId] && tabOrd.length > 3 && compInfoAtual?.tipo !== "liga_grupos") {
                     subidas.push({ from: ligaId, to: divAnteriorId, teams: tabOrd.slice(0, 3).map(t => t.id) });
                 }
             }
         }
 
+        // 🏆 SÉRIE D (Brasil): acesso à Série C é definido pelo mata-mata — os 2
+        // finalistas (garantidos ao chegarem à final) e o vencedor do Playoff de
+        // Acesso entre os 2 eliminados nas semifinais (jogo único).
+        competicoes.filter(c => c.tipo === "liga_grupos").forEach(comp => {
+            const estadoSerieD = copasEstado[comp.id];
+            if (estadoSerieD && Array.isArray(estadoSerieD.promovidosSerieC) && estadoSerieD.promovidosSerieC.length > 0) {
+                const divAnteriorId = comp.id.replace(`_${comp.div}`, `_${comp.div - 1}`);
+                if (tabelasLigas[divAnteriorId]) {
+                    subidas.push({ from: comp.id, to: divAnteriorId, teams: estadoSerieD.promovidosSerieC.slice(0, 3) });
+                }
+            }
+        });
+
         // Executa as transferências de liga de forma definitiva
         descidas.forEach(d => d.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = d.to; }));
         subidas.forEach(s => s.teams.forEach(tId => { let c = clubes.find(x=>x.id===tId); if(c) c.ligaId = s.to; }));
+
+        // 👔 Carrossel de treinadores da temporada — precisa correr AQUI, com
+        // a tabelasLigas ainda com os dados da época que terminou (antes de
+        // advanceSeasonInternal() limpar tudo para a próxima).
+        processarCarrosselTreinadores(tabelasLigas);
+        avaliarContinuidadeManagerJogador();
 
         // Check if all players are ready before advancing season (online mode)
         if (window.firebaseIntegration && window.firebaseIntegration.isOnlineMode()) {
@@ -7653,16 +10262,21 @@ function advanceSeasonInternal() {
 // ou seja, antes da Gala — assim quem foi campeão da Champions em maio concorre à
 // Bola de Ouro de junho com esse troféu já valendo, e não só no ano seguinte.
 function apurarCampeoesTemporada() {
-    window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [] };
+    window.vagasContinentais = { uefa_cl: [], uefa_el: [], uefa_col: [], conmebol_lib: [], conmebol_sul: [], concacaf_clc: [], afc_cla: [], afc_cla2: [] };
     campeoesAnoAnterior = { ligas: {}, copas: {} };
     titulosClubesPendentes = [];
 
     for (const [ligaId, tabela] of Object.entries(tabelasLigas)) {
+        let comp = competicoes.find(c => c.id === ligaId);
+        // 🛡️ SÉRIE D (liga_grupos): não tem "campeão de tabela" — o campeão real
+        // é decidido pelo mata-mata (ver loop de copasEstado abaixo), então esta
+        // tabela "de bastidores" (só usada pelo modo Manager) não deve coroar
+        // ninguém aqui, ou geraríamos um segundo campeão falso e conflitante.
+        if (comp?.tipo === "liga_grupos") continue;
         let tabOrd = [...tabela].sort((a,b) => b.pontos - a.pontos || ((b.gols||0) - (b.golsSofridos||0)) - ((a.gols||0) - (a.golsSofridos||0)) || (b.gols||0) - (a.gols||0));
 
         if(tabOrd[0]) {
             let campeaoClube = clubes.find(c => c.id === tabOrd[0].id);
-            let comp = competicoes.find(c => c.id === ligaId);
             if(campeaoClube) {
                 campeoesAnoAnterior.ligas[ligaId] = campeaoClube.id;
                 if(!campeaoClube.historicoTitulos) campeaoClube.historicoTitulos = [];
@@ -7690,13 +10304,16 @@ function apurarCampeoesTemporada() {
             let rV = CONFIG_VAGAS_CONTINENTAIS[ligaId] || (ligaId.includes("br")||ligaId.includes("arg") ? CONFIG_VAGAS_CONTINENTAIS["default_conmebol"] : (ligaId.includes("ara") ? CONFIG_VAGAS_CONTINENTAIS["default_asia"] : (ligaId.includes("usa") ? CONFIG_VAGAS_CONTINENTAIS["default_concacaf"] : CONFIG_VAGAS_CONTINENTAIS["default_uefa"])));
             if (rV.cl !== undefined) { window.vagasContinentais.uefa_cl.push(...tabOrd.slice(0, rV.cl).map(t=>t.id)); window.vagasContinentais.uefa_el.push(...tabOrd.slice(rV.cl, rV.cl + rV.el).map(t=>t.id)); window.vagasContinentais.uefa_col.push(...tabOrd.slice(rV.cl + rV.el, rV.cl + rV.el + rV.col).map(t=>t.id)); }
             else if (rV.lib !== undefined) { window.vagasContinentais.conmebol_lib.push(...tabOrd.slice(0, rV.lib).map(t=>t.id)); window.vagasContinentais.conmebol_sul.push(...tabOrd.slice(rV.lib, rV.lib + rV.sul).map(t=>t.id)); }
-            else if (rV.cla !== undefined) { window.vagasContinentais.afc_cla.push(...tabOrd.slice(0, rV.cla).map(t=>t.id)); }
+            else if (rV.cla !== undefined) { window.vagasContinentais.afc_cla.push(...tabOrd.slice(0, rV.cla).map(t=>t.id)); if (rV.cla2 > 0) window.vagasContinentais.afc_cla2.push(...tabOrd.slice(rV.cla, rV.cla + rV.cla2).map(t=>t.id)); }
             else if (rV.clc !== undefined) { window.vagasContinentais.concacaf_clc.push(...tabOrd.slice(0, rV.clc).map(t=>t.id)); }
         }
     }
 
     for (const [compId, estado] of Object.entries(copasEstado)) {
         let comp = competicoes.find(c => c.id === compId); if(!comp) continue;
+        // 🛡️ PLAYOFF DE ACESSO DA SÉRIE D: decide só a última vaga de acesso à
+        // Série C, não é uma "taça" — não deve virar troféu/notícia de título.
+        if (compId === "br_4_acesso") continue;
         let campeaoCopaId = estado.campeaoId || estado.confrontos?.[0]?.vencedorId;
         if(campeaoCopaId) {
             let campeaoClube = clubes.find(c=>c.id===campeaoCopaId);
@@ -7769,8 +10386,21 @@ function processarFimTemporada() {
 
         // Normaliza a métrica bruta (0-100) dentro do próprio grupo de posição,
         // para que atacantes não dominem sempre o prêmio.
+        // 🛡️ FIX (zagueiros vencendo tudo): o teto de cada grupo era calculado com
+        // TODOS os jogadores do mundo, inclusive ligas fracas/obscuras. Gols têm
+        // variância enorme (um artilheiro fora da curva numa liga fraquinha podia
+        // acumular uma quantidade absurda), enquanto estatísticas defensivas
+        // (desarmes, interceptações, jogos sem sofrer gol) são bem mais "amontoadas"
+        // entre si. Resultado: esse outlier virava o teto do grupo "atacante" e
+        // achatava a nota normalizada até dos verdadeiros craques das 5 grandes
+        // ligas — enquanto o zagueiro top de verdade batia perto do teto do
+        // próprio grupo com facilidade. Agora o teto de cada grupo é calculado
+        // só entre os candidatos de elite (top 5 ligas europeias ou clubes de
+        // alta reputação), que é o universo que realmente disputa esses prêmios.
+        const candidatosElite = todos.filter(x => TOP5_LIGAS_EUROPA.includes(x.ligaId) || (obterClubeJogador(x.p)?.reputacao >= 80));
+        const poolTeto = candidatosElite.length > 0 ? candidatosElite : todos;
         const maxPorGrupo = {};
-        todos.forEach(x => { maxPorGrupo[x.grupo] = Math.max(maxPorGrupo[x.grupo] || 0, x.metricaBruta); });
+        poolTeto.forEach(x => { maxPorGrupo[x.grupo] = Math.max(maxPorGrupo[x.grupo] || 0, x.metricaBruta); });
         todos.forEach(x => {
             let posicional = normalizarNoGrupo(x.metricaBruta, maxPorGrupo[x.grupo]);
             // Prêmios individuais imitam o viés real do futebol: praticamente sempre
@@ -7779,9 +10409,14 @@ function processarFimTemporada() {
             // isso é um desconto forte na força do desempenho, não um teto rígido.
             const forcaLiga = TOP5_LIGAS_EUROPA.includes(x.ligaId) ? 1.0 : (obterClubeJogador(x.p)?.reputacao >= 85 ? 0.55 : 0.3);
             posicional *= forcaLiga;
-            // Goleiros já venceram a Bola de Ouro na vida real (Yashin, 1963) mas é
-            // raríssimo — reduzimos bastante a força sem zerar a chance.
+            // 🛡️ REALISMO POR GRUPO DE POSIÇÃO: no mundo real, atacantes e meias
+            // dominam Bola de Ouro / The Best / UEFA Player quase sempre — zagueiros
+            // venceram raras vezes (Beckenbauer, Matthäus, Sammer, Cannavaro) e
+            // goleiros praticamente nunca (só Yashin, 1963). Antes só o goleiro
+            // tinha desconto; agora o zagueiro/lateral também recebe um desconto
+            // forte (mas não zero, pra ainda ser possível numa temporada excepcional).
             if(x.grupo === "goleiro") posicional *= 0.62;
+            if(x.grupo === "defensor") posicional *= 0.45;
             const prestigioLiga = TOP5_LIGAS_EUROPA.includes(x.ligaId) ? 8 : (obterClubeJogador(x.p)?.reputacao >= 85 ? 4 : 0);
             const prestigioSelecao = Math.min(10, ((x.p.statsSelecao?.gols || 0) + (x.p.statsSelecao?.assistencias || 0)) * 0.4);
             x.scoreFinal = posicional + (x.p.pontosPremioTemporada || 0) + prestigioLiga + prestigioSelecao;
@@ -7829,6 +10464,8 @@ function processarFimTemporada() {
                     // Refresh transfer budget and bring through a new youth intake for the new season.
                     managerEstado.orcamentoTransferencias += Math.floor((clubeMgr.reputacao || 70) * (clubeMgr.reputacao >= 84 ? 900000 : 350000));
                     managerEstado.base = gerarBaseManager(clubeMgr);
+                    managerEstado.promocoesBaseTemporada = 0;
+                    managerEstado.auxiliaresDisponiveis = gerarAuxiliaresDisponiveis(clubeMgr);
                 }
             }
         }
@@ -7943,12 +10580,35 @@ function montarMelhor11(ranking) {
     });
 }
 
+// 🎉 Confete da Gala — reaproveita a keyframe cairConfete (já existia no CSS
+// mas nunca tinha sido usada aqui). Uma rajada de 50 partículas douradas,
+// disparada nos dois momentos altos: a revelação do vencedor da Bola de Ouro
+// e o resumo final. Some sozinha depois de alguns segundos.
+function dispararConfeteGala() {
+    const camada = document.createElement("div");
+    camada.style.cssText = "position:fixed; inset:0; z-index:99999; pointer-events:none; overflow:hidden;";
+    const cores = ["#facc15", "#fff7ad", "#f59e0b", "#ffffff", "#fde68a"];
+    for (let i = 0; i < 50; i++) {
+        const p = document.createElement("div");
+        const cor = cores[Math.floor(Math.random() * cores.length)];
+        p.style.cssText = `position:absolute; left:${Math.random() * 100}vw; top:-24px; width:${6 + Math.random() * 7}px; height:${10 + Math.random() * 8}px; background:${cor}; border-radius:${Math.random() > 0.5 ? '50%' : '2px'}; opacity:${0.6 + Math.random() * 0.4}; animation:cairConfete ${2.4 + Math.random() * 2}s linear forwards; animation-delay:${(Math.random() * 0.5).toFixed(2)}s;`;
+        camada.appendChild(p);
+    }
+    document.body.appendChild(camada);
+    setTimeout(() => camada.remove(), 4800);
+}
+
 function simularGalaEpica(ranking) {
     const top30 = ranking.slice(0, 30);
     let top1 = top30[0]; let top2 = top30[1]; let top3 = top30[2];
     if (!top1 || !top2 || !top3) { mostrarToast("Gala", "Ainda nao ha jogadores suficientes para a premiacao.", "warning"); return; }
 
-    const porGols = [...ranking].sort((a,b) => b.g - a.g || b.scoreFinal - a.scoreFinal);
+    // 🥇 CHUTEIRA DE OURO (mundial, da Gala): agora só concorre quem joga numa
+    // das 5 grandes ligas europeias (Premier League, La Liga, Serie A,
+    // Bundesliga, Ligue 1) — do jeito que o prêmio realmente funciona no
+    // mundo real (nenhum artilheiro de liga menor levanta essa taça).
+    const porGolsTop5 = ranking.filter(x => TOP5_LIGAS_EUROPA.includes(x.ligaId)).sort((a,b) => b.g - a.g || b.scoreFinal - a.scoreFinal);
+    const porGols = porGolsTop5.length > 0 ? porGolsTop5 : [...ranking].sort((a,b) => b.g - a.g || b.scoreFinal - a.scoreFinal);
     const porAssistencias = [...ranking].sort((a,b) => b.a - a.a || b.scoreFinal - a.scoreFinal);
     const sub21 = ranking.filter(x => x.idade <= 21).sort((a,b) => b.scoreFinal - a.scoreFinal);
     const goleiros = ranking.filter(x => x.pos === "Goleiro").sort((a,b) => b.ovr - a.ovr || b.scoreFinal - a.scoreFinal);
@@ -7959,7 +10619,7 @@ function simularGalaEpica(ranking) {
     // Ícone de cada prêmio: para os troféus ligados a uma competição real (UEFA / FIFA),
     // usamos a logo verdadeira da competição em vez de um emoji genérico.
     const iconEmoji = (e) => e;
-    const iconLogoComp = (nomeComp) => `<img src="${obterUrlImagem(nomeComp, 'trofeu')}" alt="${nomeComp}" style="height:1.1em;width:1.1em;object-fit:contain;vertical-align:-0.2em;">`;
+    const iconLogoComp = (nomeComp) => `<img loading="lazy" decoding="async" src="${obterUrlImagem(nomeComp, 'trofeu')}" alt="${nomeComp}" style="height:1.1em;width:1.1em;object-fit:contain;vertical-align:-0.2em;">`;
 
     // A Bola de Ouro tem tratamento próprio (Top 30 revelado aos poucos) e por isso
     // fica fora da lista genérica de prêmios abaixo.
@@ -7987,7 +10647,7 @@ function simularGalaEpica(ranking) {
     });
     registrarNoticia("Melhor 11 do Mundo revelado", `A seleção com os destaques da temporada por posição foi anunciada: ${melhor11.filter(v=>v.escolhido).map(v=>v.escolhido.p.nome).join(", ")}.`, "Prémios");
 
-    const renderTrofeu = (nome) => `<img src="${obterUrlImagem(nome, 'trofeu')}" alt="${nome}" onerror="this.outerHTML='🏆'">`;
+    const renderTrofeu = (nome) => `<img loading="lazy" decoding="async" src="${obterUrlImagem(nome, 'trofeu')}" alt="${nome}" onerror="this.outerHTML='🏆'">`;
     const atualizarTrofeu = (nome) => { const el = document.getElementById("trofeuGalaAtual"); if(el) el.innerHTML = renderTrofeu(nome); };
     const finalizarGala = () => {
         mB.classList.add("oculto");
@@ -8015,7 +10675,7 @@ function simularGalaEpica(ranking) {
             <div class="gala-candidatos-grid">
                 ${premio.candidatos.map(c => `
                     <div class="gala-candidato ${revelar && c.p.id === premio.vencedor.p.id ? 'vencedor' : ''}">
-                        <img src="${obterUrlImagem(c.p, 'jogador')}" alt="${c.p.nome}">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(c.p, 'jogador')}" alt="${c.p.nome}">
                         <strong>${revelar && c.p.id === premio.vencedor.p.id ? '👑 ' : ''}${c.p.nome}</strong>
                         <span>${premio.metrica(c)}</span>
                     </div>`).join("")}
@@ -8034,7 +10694,7 @@ function simularGalaEpica(ranking) {
                 ${ordemExibicao.map((item) => {
                     const venceu = revelar && item.p.id === premio.vencedor.p.id;
                     return `<div class="finalista-card revelado ${venceu ? 'vencedor' : ''}">
-                        <img src="${obterUrlImagem(item.p, 'jogador')}" alt="${item.p.nome}">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(item.p, 'jogador')}" alt="${item.p.nome}">
                         <span style="color:${venceu ? '#facc15' : '#a1a1aa'}; font-weight:900; text-transform:uppercase; font-size:0.78rem;">${venceu ? '👑 Vencedor' : 'Nomeado'}</span>
                         <h4>${item.p.nome}</h4>
                         <div class="finalista-stats"><span>OVR ${item.ovr}</span><span>${item.g} Gols</span><span>${item.a} Ast</span></div>
@@ -8053,7 +10713,7 @@ function simularGalaEpica(ranking) {
                     <div class="melhor11-linha melhor11-linha-${linha}">
                         ${melhor11.filter(v => v.linha === linha).map((v, i) => `
                             <div class="melhor11-vaga" style="animation-delay:${(i*0.09).toFixed(2)}s;">
-                                ${v.escolhido ? `<img src="${obterUrlImagem(v.escolhido.p, 'jogador')}" alt="${v.escolhido.p.nome}">` : `<div class="melhor11-avatar-vazio">?</div>`}
+                                ${v.escolhido ? `<img loading="lazy" decoding="async" src="${obterUrlImagem(v.escolhido.p, 'jogador')}" alt="${v.escolhido.p.nome}">` : `<div class="melhor11-avatar-vazio">?</div>`}
                                 <strong>${v.escolhido ? v.escolhido.p.nome : "—"}</strong>
                                 <span>${v.label}</span>
                             </div>`).join("")}
@@ -8074,7 +10734,7 @@ function simularGalaEpica(ranking) {
                     const revelado = posDoFim <= reveladosDoFim;
                     return `<div class="top30-slot ${revelado ? 'revelado' : ''} ${rank <= 3 ? 'top3' : ''}">
                         <span class="top30-rank">${rank}º</span>
-                        ${revelado ? `<img src="${obterUrlImagem(x.p, 'jogador')}" alt="${x.p.nome}">` : `<div class="top30-avatar-oculto">?</div>`}
+                        ${revelado ? `<img loading="lazy" decoding="async" src="${obterUrlImagem(x.p, 'jogador')}" alt="${x.p.nome}">` : `<div class="top30-avatar-oculto">?</div>`}
                         <div class="top30-info">
                             <strong>${revelado ? x.p.nome : '???'}</strong>
                             <span>${revelado ? `${x.g}G ${x.a}A • OVR ${x.ovr}` : ''}</span>
@@ -8121,11 +10781,12 @@ function simularGalaEpica(ranking) {
 
     function mostrarResumoFinal() {
         marcarConcluido("Melhor 11 do Mundo");
+        dispararConfeteGala();
         if(ctx()) ctx().innerHTML = `
             <h1 class="gala-winner-name">👑 ${top1.p.nome}</h1>
             <p style="margin:0; color:#d4d4d8; font-weight:800;">Bola de Ouro confirmada: ${top1.g} gols, ${top1.a} assistencias e OVR ${top1.ovr}</p>
             <div class="gala-awards-grid">
-                ${todosPremiosResumo.map(p => `<div class="gala-award ${p.grande ? 'premio-especial' : ''}"><img src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
+                ${todosPremiosResumo.map(p => `<div class="gala-award ${p.grande ? 'premio-especial' : ''}"><img loading="lazy" decoding="async" src="${obterUrlImagem(p.nome, 'trofeu')}" alt="${p.nome}"><small>${p.icon} ${p.nome}</small><strong>${p.vencedor.p.nome}</strong><span>${p.metrica(p.vencedor)}</span></div>`).join("")}
             </div>
             ${renderMelhor11()}
             <div class="gala-final-actions"><button id="btnFecharGalaNovo" style="padding:15px 40px; background:linear-gradient(90deg, #facc15, #f59e0b); color:#000; border:none; border-radius:12px; font-weight:900; font-size:1.05rem; cursor:pointer; text-transform:uppercase; box-shadow:0 12px 26px rgba(250,204,21,0.22);">Avancar Temporada ➔</button></div>`;
@@ -8176,6 +10837,7 @@ function simularGalaEpica(ranking) {
             setTimeout(() => {
                 if(ctx()) ctx().innerHTML = renderTop30Board(totalFundo + 3);
                 marcarConcluido("Bola de Ouro");
+                dispararConfeteGala();
                 setTimeout(revelarMelhor11, 2600);
             }, 1800);
         }
@@ -8204,9 +10866,433 @@ function simularGalaEpica(ranking) {
 // ==========================================
 // 🧠 MODO MANAGER
 // ==========================================
-function estadoManagerPadrao() {
-    return { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [] };
+// ==========================================
+// 👔 MERCADO DE TREINADORES
+// ==========================================
+// Cada treinador tem nome, ESTILO DE JOGO próprio (mesmo vocabulário do
+// bonusTaticoManager: pressao/posse/retranca/contra/equilibrado) e reputação
+// — e está sempre ligado a um clube OU a uma seleção, nunca aos dois. O
+// campo clube.tecnico continua a existir como string simples (usado em toda
+// a parte de "conversa com o técnico" do Modo Jogador) mas passa a ser só um
+// reflexo do treinador de verdade — nunca a fonte da informação.
+const ESTILOS_TREINADOR = ["pressao", "posse", "retranca", "contra", "equilibrado"];
+const NOMES_TREINADOR = ["Marcelo","Fernando","Ricardo","Paulo","André","Bruno","Vitor","Nuno","Jorge","Luís","Hernán","Diego","Mauricio","Roberto","Carlos","Sergio","Thiago","Renato","Ivan","Klaus","Hans","Marco","Luca","Antoine","Didier","José","Pedro"];
+const SOBRENOMES_TREINADOR = ["Almeida","Santos","Ferreira","Ribeiro","Cardoso","Teixeira","Moreira","Barros","Correia","Pinto","Guardiola","Bielsa","Sampaoli","Ancelotti","Conte","Klopp","Nagelsmann","Deschamps","Martins","Azevedo","Rocha","Duarte"];
+
+function gerarNomeTreinador() {
+    return `${NOMES_TREINADOR[Math.floor(Math.random() * NOMES_TREINADOR.length)]} ${SOBRENOMES_TREINADOR[Math.floor(Math.random() * SOBRENOMES_TREINADOR.length)]}`;
 }
+
+// 🌍 Nacionalidades usadas para preencher treinadores 100% aleatórios (sem
+// entrada na base curada). Reaproveita a lista de seleções quando disponível.
+function sortearNacionalidadeTreinador() {
+    if (typeof SELECOES !== "undefined" && Array.isArray(SELECOES) && SELECOES.length) {
+        return SELECOES[Math.floor(Math.random() * SELECOES.length)].pais;
+    }
+    return "Brasil";
+}
+
+// 🎯 Puxa um técnico ainda não usado da base curada (data/tecnicos.js) — nomes,
+// nacionalidades e estilos de técnicos reais/conhecidos. Retorna null quando a
+// base já foi toda usada (aí quem chamar cai no gerador de nomes aleatório).
+function sortearTecnicoCurado() {
+    const usados = new Set((treinadoresIA || []).map(t => t.nome));
+    const disponiveis = TECNICOS_REAIS.filter(t => !usados.has(t.nome));
+    if (!disponiveis.length) return null;
+    return disponiveis[Math.floor(Math.random() * disponiveis.length)];
+}
+
+// Cria um treinador novo (sem clube/seleção ainda — quem chama atribui).
+// Prioriza puxar da base curada de técnicos reais (data/tecnicos.js); só cai
+// no gerador de nome aleatório quando a base já foi toda distribuída.
+function criarTreinador(reputacaoBase = 65) {
+    const curado = sortearTecnicoCurado();
+    if (curado) {
+        return {
+            id: `tec_${Date.now().toString(36)}_${Math.floor(Math.random() * 99999)}`,
+            nome: curado.nome,
+            wikiNome: curado.wikiNome || curado.nome,
+            nacionalidade: curado.nacionalidade,
+            estiloJogo: curado.estiloJogo,
+            foto: curado.foto || "", fotoIndisponivel: false,
+            reputacao: Math.max(35, Math.min(96, Math.round(((curado.reputacaoBase ?? reputacaoBase) + reputacaoBase) / 2 + (Math.random() * 10 - 5)))),
+            clubeId: null, selecaoId: null,
+            temporadasNoCargo: 0, demissoes: 0, titulos: 0, historicoTecnico: [],
+            exJogadorId: null, aposentado: false, curado: true
+        };
+    }
+    return {
+        id: `tec_${Date.now().toString(36)}_${Math.floor(Math.random() * 99999)}`,
+        nome: gerarNomeTreinador(),
+        wikiNome: null,
+        nacionalidade: sortearNacionalidadeTreinador(),
+        estiloJogo: ESTILOS_TREINADOR[Math.floor(Math.random() * ESTILOS_TREINADOR.length)],
+        foto: "", fotoIndisponivel: false,
+        reputacao: Math.max(35, Math.min(96, Math.round(reputacaoBase + (Math.random() * 20 - 10)))),
+        clubeId: null, selecaoId: null,
+        temporadasNoCargo: 0, demissoes: 0, titulos: 0, historicoTecnico: [],
+        exJogadorId: null, aposentado: false, curado: false
+    };
+}
+
+// Usado para vagas sem técnico explicitamente definido em data/tecnicos.js.
+// Assim um clube não recebe por acidente um técnico real que estava reservado
+// para outro clube da database.
+function criarTreinadorGenerico(reputacaoBase = 65) {
+    return {
+        id: `tec_${Date.now().toString(36)}_${Math.floor(Math.random() * 99999)}`,
+        nome: gerarNomeTreinador(), wikiNome: null,
+        nacionalidade: sortearNacionalidadeTreinador(),
+        estiloJogo: ESTILOS_TREINADOR[Math.floor(Math.random() * ESTILOS_TREINADOR.length)],
+        foto: "", fotoIndisponivel: false,
+        reputacao: Math.max(35, Math.min(96, Math.round(reputacaoBase + (Math.random() * 20 - 10)))),
+        clubeId: null, selecaoId: null,
+        temporadasNoCargo: 0, demissoes: 0, titulos: 0, historicoTecnico: [],
+        exJogadorId: null, aposentado: false, curado: false
+    };
+}
+
+// 🌱 Uma fatia BEM pequena de jogadores recém-aposentados vira treinador —
+// herda um pouco da reputação de jogador (OVR de pico) mas começa sempre
+// modesto como técnico, precisando construir reputação própria do zero.
+function criarTreinadorDeExJogador(jogadorAposentado) {
+    const t = criarTreinador(Math.max(40, Math.min(70, (jogadorAposentado.geral || 65) - 12)));
+    t.nome = jogadorAposentado.nome;
+    t.exJogadorId = jogadorAposentado.id;
+    t.curado = false; t.wikiNome = null;
+    // Herda a foto e nacionalidade que o jogador já tinha no elenco (mais
+    // fiel do que sortear ou tentar buscar na Wikipedia pelo nome).
+    if (jogadorAposentado.foto) { t.foto = jogadorAposentado.foto; t.fotoIndisponivel = false; }
+    if (jogadorAposentado.nacionalidade) t.nacionalidade = jogadorAposentado.nacionalidade;
+    return t;
+}
+
+function garantirHistoricoTecnico(treinador, clube = null, selecao = null) {
+    if (!treinador) return;
+    if (!Array.isArray(treinador.historicoTecnico)) treinador.historicoTecnico = [];
+    const alvo = clube || selecao;
+    const chave = clube ? clube.id : (selecao ? selecao.id : null);
+    if (!alvo || treinador.historicoTecnico.some(h => h.id === chave && !h.fim)) return;
+    treinador.historicoTecnico.push({ id: chave, nome: clube?.nome || selecao?.pais || selecao?.nome, inicio: anoAtual, fim: null, motivo: "Em atividade" });
+}
+
+function encerrarHistoricoTecnico(treinador, clube, motivo) {
+    if (!treinador || !clube) return;
+    garantirHistoricoTecnico(treinador, clube);
+    const passagem = [...treinador.historicoTecnico].reverse().find(h => h.id === clube.id && !h.fim);
+    if (passagem) { passagem.fim = anoAtual; passagem.motivo = motivo; }
+}
+
+// 🔤 Compara nomes de clube/seleção de forma tolerante (sem acento, minúsculo,
+// substring) — usado só pra tentar casar TECNICOS_REAIS.clubeNome/selecaoNome
+// com o `nome`/`pais` reais do teu save. Nunca lança erro; na dúvida, não bate.
+function _normalizarNomeParaComparacao(s) {
+    return (s || "").toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+}
+function _nomesParecidos(a, b) {
+    const na = _normalizarNomeParaComparacao(a), nb = _normalizarNomeParaComparacao(b);
+    if (!na || !nb) return false;
+    return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+// Garante que TODOS os clubes e TODAS as seleções têm um treinador atribuído
+// — chamado uma vez no arranque (jogo novo ou save antigo sem o mercado).
+// Antes de sortear um técnico curado qualquer, tenta achar na base um técnico
+// cujo clubeNome/selecaoNome bate com ESTE clube/seleção específico — assim
+// Guardiola nasce no City, Ancelotti na Seleção Brasileira, etc.
+function garantirTreinadoresIniciais() {
+    if (!Array.isArray(treinadoresIA)) treinadoresIA = [];
+    clubes.forEach(clube => {
+        const existente = treinadoresIA.find(t => t.clubeId === clube.id);
+        if (existente) { garantirHistoricoTecnico(existente, clube); sincronizarNomeTecnico(clube); return; }
+        const t = criarTreinadorParaVaga({ tipo: "clube", nome: clube.nome, reputacaoBase: clube.reputacao || 65 });
+        t.clubeId = clube.id;
+        garantirHistoricoTecnico(t, clube);
+        treinadoresIA.push(t);
+        sincronizarNomeTecnico(clube);
+    });
+    if (typeof SELECOES !== "undefined") {
+        SELECOES.forEach(sel => {
+            const existente = treinadoresIA.find(t => t.selecaoId === sel.id);
+            if (existente) { garantirHistoricoTecnico(existente, null, sel); return; }
+            const t = criarTreinadorParaVaga({ tipo: "selecao", nome: sel.pais || sel.nome, reputacaoBase: 70 });
+            t.selecaoId = sel.id;
+            garantirHistoricoTecnico(t, null, sel);
+            treinadoresIA.push(t);
+        });
+    }
+}
+
+// Tenta achar, na base curada, um técnico real associado a este clube/seleção
+// específico (por id ou nome) e ainda não usado; se achar, cria o treinador já
+// com esses dados. Se não achar, usa um técnico genérico.
+function criarTreinadorParaVaga({ tipo, nome, reputacaoBase }) {
+    const usados = new Set((treinadoresIA || []).map(t => t.nome));
+    const campo = tipo === "clube" ? "clubeNome" : "selecaoNome";
+    const entidade = tipo === "clube" ? clubes.find(c => c.nome === nome) : (typeof SELECOES !== "undefined" ? SELECOES.find(s => (s.pais || s.nome) === nome) : null);
+    const campoId = tipo === "clube" ? "clubeId" : "selecaoId";
+    const curado = TECNICOS_REAIS.find(t => !usados.has(t.nome) && (t[campoId] === entidade?.id || (t[campo] && _nomesParecidos(t[campo], nome))));
+    if (!curado) return criarTreinadorGenerico(reputacaoBase);
+    return {
+        id: `tec_${Date.now().toString(36)}_${Math.floor(Math.random() * 99999)}`,
+        nome: curado.nome,
+        wikiNome: curado.wikiNome || curado.nome,
+        nacionalidade: curado.nacionalidade,
+        estiloJogo: curado.estiloJogo,
+        foto: curado.foto || "", fotoIndisponivel: false,
+        reputacao: Math.max(35, Math.min(96, Math.round(((curado.reputacaoBase ?? reputacaoBase) + reputacaoBase) / 2 + (Math.random() * 6 - 3)))),
+        clubeId: null, selecaoId: null,
+        temporadasNoCargo: 0, demissoes: 0, titulos: 0, historicoTecnico: [],
+        exJogadorId: null, aposentado: false, curado: true
+    };
+}
+
+// Mantém clube.tecnico (a string simples usada em todo o Modo Jogador) em
+// sincronia com o treinador de verdade deste clube.
+function sincronizarNomeTecnico(clube) {
+    const t = treinadoresIA.find(x => x.clubeId === clube.id);
+    if (t) clube.tecnico = t.nome;
+}
+
+// Demite o treinador de um clube: ele fica livre no mercado (mais fácil de
+// recontratar outro lugar mais tarde) e o clube fica vago até ser preenchido
+// por contratarNovoTecnico.
+function demitirTecnico(treinador, clube, motivo = "maus resultados") {
+    encerrarHistoricoTecnico(treinador, clube, motivo);
+    treinador.clubeId = null;
+    treinador.demissoes = (treinador.demissoes || 0) + 1;
+    treinador.reputacao = Math.max(30, treinador.reputacao - 4);
+    registrarNoticia("Treinador demitido", `${treinador.nome} foi demitido do ${clube.nome} por ${motivo}.`, "Manager");
+}
+
+// Contrata o melhor treinador LIVRE disponível para um clube vago — dando
+// preferência a alguém com reputação compatível com o tamanho do clube (um
+// gigante não contrata qualquer um, um pequeno não paga por um badalado).
+function contratarNovoTecnico(clube) {
+    const livres = treinadoresIA.filter(t => !t.clubeId && !t.selecaoId && !t.aposentado);
+    let escolhido = null;
+    if (livres.length) {
+        livres.sort((a, b) => Math.abs((a.reputacao || 60) - (clube.reputacao || 60)) - Math.abs((b.reputacao || 60) - (clube.reputacao || 60)));
+        escolhido = livres[0];
+    } else {
+        escolhido = criarTreinador(clube.reputacao || 65);
+        treinadoresIA.push(escolhido);
+    }
+    escolhido.clubeId = clube.id;
+    escolhido.temporadasNoCargo = 0;
+    garantirHistoricoTecnico(escolhido, clube);
+    sincronizarNomeTecnico(clube);
+    registrarNoticia("Novo treinador anunciado", `${escolhido.nome} (estilo ${escolhido.estiloJogo}) é o novo técnico do ${clube.nome}.`, "Manager");
+    return escolhido;
+}
+
+// 🔄 CARROSSEL DE TREINADORES — corre uma vez por temporada (ver
+// advanceSeasonInternal), com a tabela final de cada liga ainda disponível.
+// Decide demissões com base na posição final vs. o objetivo esperado para a
+// reputação do clube (objetivoDiretoria), contrata substitutos para as vagas
+// abertas, e dá a rara chance de um ex-jogador estrear como treinador.
+function processarCarrosselTreinadores(tabelasFinais) {
+    garantirTreinadoresIniciais();
+    const vagas = [];
+    clubes.forEach(clube => {
+        // O clube do próprio jogador (quando ele está no Modo Manager) segue
+        // uma lógica separada — ver avaliarContinuidadeManagerJogador.
+        if (managerEstado?.ativo && managerEstado.clubeId === clube.id) return;
+        const treinador = treinadoresIA.find(t => t.clubeId === clube.id) || contratarNovoTecnico(clube);
+        treinador.temporadasNoCargo = (treinador.temporadasNoCargo || 0) + 1;
+
+        const tabela = tabelasFinais[clube.ligaId];
+        let percentil = 0.5;
+        if (tabela && tabela.length) {
+            const ord = [...tabela].sort((a, b) => b.pontos - a.pontos || ((b.gols || 0) - (b.golsSofridos || 0)) - ((a.gols || 0) - (a.golsSofridos || 0)));
+            const posicao = ord.findIndex(x => x.id === clube.id) + 1;
+            if (posicao > 0) percentil = posicao / ord.length;
+        }
+        let expectativaMax;
+        if (clube.reputacao >= 86) expectativaMax = 0.25;
+        else if (clube.reputacao >= 78) expectativaMax = 0.40;
+        else if (clube.reputacao >= 68) expectativaMax = 0.65;
+        else expectativaMax = 0.88;
+
+        let chanceDemissao = 0.035; // saída "natural" mesmo com época ok
+        if (percentil > expectativaMax) chanceDemissao += 0.28 + (percentil - expectativaMax) * 0.45;
+        if ((treinador.reputacao || 60) < (clube.reputacao || 60) - 15) chanceDemissao += 0.08;
+        if (treinador.temporadasNoCargo >= 4) chanceDemissao += 0.05;
+        chanceDemissao = Math.min(0.85, chanceDemissao);
+
+        if (Math.random() < chanceDemissao) {
+            demitirTecnico(treinador, clube, percentil > expectativaMax ? "resultados abaixo do esperado" : "decisão da diretoria");
+            vagas.push(clube);
+        } else if (percentil <= expectativaMax * 0.55) {
+            treinador.reputacao = Math.min(99, (treinador.reputacao || 60) + 1);
+        }
+    });
+    vagas.forEach(clube => contratarNovoTecnico(clube));
+
+    // 🌱 Chance bem pequena (≈1.2%) de um jogador recém-aposentado virar
+    // treinador — entra livre no mercado, pronto pra ser contratado depois.
+    jogadoresIA.filter(j => j.aposentado && !j.viroutecnico).forEach(j => {
+        if (Math.random() < 0.012) {
+            j.viroutecnico = true;
+            const t = criarTreinadorDeExJogador(j);
+            treinadoresIA.push(t);
+            registrarNoticia("Estreia nos banquinhos", `${j.nome} pendura as chuteiras e inicia a carreira de treinador.`, "Manager");
+        }
+    });
+}
+
+function estadoManagerPadrao() {
+    return { ativo: false, treinador: null, clubeId: null, confianca: 65, tatica: { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" }, orcamentoTransferencias: 0, folhaSalarial: 0, base: [], propostasRecebidas: [], promocoesBaseTemporada: 0, auxiliarTecnico: null, auxiliaresDisponiveis: [] };
+}
+
+// 📈🔥 O que acontece com o treinador-jogador a cada fim de temporada: pode
+// ser demitido (confiança zerada) ou receber propostas de clubes melhores —
+// ou, raramente, de uma seleção — se estiver a fazer um bom trabalho.
+function avaliarContinuidadeManagerJogador() {
+    if (!managerEstado?.ativo) return;
+    if (managerEstado.clubeId) {
+        const clube = clubeManagerAtual();
+        if (!clube) return;
+        if (managerEstado.confianca <= 0) {
+            registrarNoticia("Demitido!", `A diretoria do ${clube.nome} demitiu ${managerEstado.treinador?.nome || "o treinador"} apos uma temporada decepcionante.`, "Manager");
+            mostrarToast("Demitido", `Foste demitido do ${clube.nome}. Hora de procurar um novo desafio.`, "danger");
+            contratarNovoTecnico(clube);
+            managerEstado.clubeId = null;
+            managerEstado.confianca = 55;
+            managerEstado.propostasRecebidas = [];
+            window.salvarJogo();
+            return;
+        }
+        if (managerEstado.confianca < 72 || Math.random() > 0.35) return;
+        const meuTreinador = managerEstado.treinador;
+        const jaPropostos = (managerEstado.propostasRecebidas || []).map(p => p.clubeId || p.selecaoId);
+        const candidatosClube = clubes.filter(c => c.id !== clube.id && (c.reputacao || 60) > (clube.reputacao || 60) + 4 && (c.reputacao || 60) <= (meuTreinador?.reputacao || 65) + 12 && !jaPropostos.includes(c.id));
+        const podeSelecao = typeof SELECOES !== "undefined" && SELECOES.length && Math.random() < 0.15;
+        managerEstado.propostasRecebidas = managerEstado.propostasRecebidas || [];
+        if (podeSelecao && Math.random() < 0.5) {
+            const sel = SELECOES[Math.floor(Math.random() * SELECOES.length)];
+            if (!jaPropostos.includes(sel.id)) {
+                managerEstado.propostasRecebidas.push({ tipo: "selecao", selecaoId: sel.id, nome: sel.nome });
+                mostrarToast("Convite internacional!", `A selecao ${sel.nome} quer voce no comando.`, "success");
+            }
+        } else if (candidatosClube.length) {
+            const alvo = candidatosClube[Math.floor(Math.random() * candidatosClube.length)];
+            managerEstado.propostasRecebidas.push({ tipo: "clube", clubeId: alvo.id, nome: alvo.nome, reputacao: alvo.reputacao });
+            mostrarToast("Proposta recebida!", `O ${alvo.nome} quer contratar voce.`, "success");
+        }
+        window.salvarJogo();
+    } else if (managerEstado.selecaoId) {
+        if (managerEstado.confianca < 75 || Math.random() > 0.25) return;
+        const meuTreinador = managerEstado.treinador;
+        const jaPropostos = (managerEstado.propostasRecebidas || []).map(p => p.clubeId);
+        const candidatosClube = clubes.filter(c => (c.reputacao || 60) <= (meuTreinador?.reputacao || 65) + 10 && (c.reputacao || 60) >= 70 && !jaPropostos.includes(c.id));
+        if (!candidatosClube.length) return;
+        const alvo = candidatosClube[Math.floor(Math.random() * candidatosClube.length)];
+        managerEstado.propostasRecebidas = managerEstado.propostasRecebidas || [];
+        managerEstado.propostasRecebidas.push({ tipo: "clube", clubeId: alvo.id, nome: alvo.nome, reputacao: alvo.reputacao });
+        mostrarToast("Proposta recebida!", `O ${alvo.nome} quer contratar voce.`, "success");
+        window.salvarJogo();
+    }
+}
+
+window.managerAceitarProposta = function(indice) {
+    const proposta = managerEstado.propostasRecebidas?.[indice];
+    if (!proposta) return;
+    managerEstado.propostasRecebidas = [];
+    if (proposta.tipo === "clube") {
+        iniciarManagerNoClube(proposta.clubeId);
+    } else if (proposta.tipo === "selecao") {
+        const clubeAntigo = clubeManagerAtual();
+        if (clubeAntigo) contratarNovoTecnico(clubeAntigo);
+        managerEstado.clubeId = null;
+        managerEstado.selecaoId = proposta.selecaoId;
+        managerEstado.confianca = 68;
+        managerEstado.jogosSelecao = managerEstado.jogosSelecao || { vitorias: 0, empates: 0, derrotas: 0 };
+        const sel = SELECOES.find(s => s.id === proposta.selecaoId);
+        registrarNoticia("Nova selecao, novo desafio", `${managerEstado.treinador?.nome || "O treinador"} assume o comando da selecao ${sel?.nome || ""}.`, "Manager");
+        mostrarToast("Parabens!", `Agora treinas a selecao ${sel?.nome || ""}!`, "success");
+        window.salvarJogo();
+        renderizarManager();
+    }
+};
+window.managerRecusarProposta = function(indice) {
+    if (!managerEstado.propostasRecebidas) return;
+    managerEstado.propostasRecebidas.splice(indice, 1);
+    window.salvarJogo();
+    renderizarManager();
+};
+
+// 🌍 Painel simplificado de gestão de SELEÇÃO — reaproveita a identidade do
+// Modo Manager (treinador, confiança, propostas) mas com um ciclo de jogo
+// mais leve que um clube (sem mercado de transferências/orçamento: não faz
+// sentido "comprar" jogadores para uma seleção).
+function renderizarManagerSelecao(el, treinador) {
+    const sel = SELECOES.find(s => s.id === managerEstado.selecaoId);
+    if (!sel) { managerEstado.selecaoId = null; renderizarManager(); return; }
+    const elenco = (typeof obterJogadoresNacionalidade === "function" ? obterJogadoresNacionalidade(sel.pais) : jogadoresIA.filter(j => j.nacionalidade === sel.pais)).filter(j => !j.aposentado).sort((a, b) => (b.geral || 0) - (a.geral || 0)).slice(0, 26);
+    const stats = managerEstado.jogosSelecao || { vitorias: 0, empates: 0, derrotas: 0 };
+    let painel = document.getElementById("manager-selecao-screen");
+    if (!painel) { painel = document.createElement("div"); painel.id = "manager-selecao-screen"; el.insertBefore(painel, el.firstChild); }
+    painel.style.display = "block";
+    const propostas = managerEstado.propostasRecebidas || [];
+    painel.innerHTML = `
+        <div class="manager-shell">
+            <div class="manager-hero">
+                <div style="display:flex; align-items:center; gap:14px;">
+                    <img loading="lazy" decoding="async" src="${sel.logo}" alt="${sel.nome}" style="width:56px; height:56px; object-fit:contain;" onerror="this.style.visibility='hidden'">
+                    <div><span class="comp-int-kicker">Seleção Nacional</span><h2>${sel.nome}</h2><p>${treinador?.nome || "Treinador"} • Confiança da federação: ${managerEstado.confianca}%</p></div>
+                </div>
+                <div class="manager-license"><strong>REP ${treinador?.reputacao ?? 65}</strong><span>${treinador?.estiloJogo || "Equilibrado"}</span></div>
+            </div>
+            ${propostas.length ? `<div class="dashboard-card" style="padding:18px; margin-top:16px; border:1px solid rgba(250,204,21,.4);">
+                <h3 style="margin:0 0 10px;">📨 Propostas Recebidas</h3>
+                ${propostas.map((p, i) => `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid rgba(255,255,255,.08);">
+                    <span>${p.tipo === "clube" ? `⚽ ${p.nome} (rep. ${p.reputacao})` : `🌍 Seleção ${p.nome}`}</span>
+                    <span style="display:flex; gap:6px;"><button class="btn btn-success btn-sm" onclick="managerAceitarProposta(${i})">Aceitar</button><button class="btn btn-danger btn-sm" onclick="managerRecusarProposta(${i})">Recusar</button></span>
+                </div>`).join("")}
+            </div>` : ""}
+            <div class="manager-hub-grid" style="margin-top:16px;">
+                <div class="manager-next-match">
+                    <h3 style="margin-top:0;">Próximo Compromisso</h3>
+                    <p style="color:#aaa;">Amistoso / janela internacional</p>
+                    <div class="manager-next-clubs"><span>${sel.nome}</span><span>vs</span><span>Adversário a sortear</span></div>
+                    <button class="btn btn-primary" onclick="managerSimularJogoSelecao()">Simular Próximo Jogo</button>
+                </div>
+                <div class="manager-panel">
+                    <h3>📈 Retrospecto</h3>
+                    <div class="manager-summary-list">
+                        <div><span>✅ Vitórias</span><strong style="color:#10b981;">${stats.vitorias}</strong></div>
+                        <div><span>➖ Empates</span><strong style="color:#facc15;">${stats.empates}</strong></div>
+                        <div><span>❌ Derrotas</span><strong style="color:#f87171;">${stats.derrotas}</strong></div>
+                    </div>
+                </div>
+            </div>
+            <div class="dashboard-card" style="padding:20px; margin-top:16px;">
+                <h3 style="margin-top:0;">Convocados (top 26 disponíveis)</h3>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:8px;">
+                    ${elenco.map(j => `<div style="background:rgba(255,255,255,.04); padding:8px 10px; border-radius:8px; font-size:.82rem;">${j.nome} <span style="color:#8a9a90;">(${j.geral})</span></div>`).join("") || "<p style='color:#aaa;'>Sem jogadores elegíveis suficientes.</p>"}
+                </div>
+            </div>
+        </div>`;
+}
+
+window.managerSimularJogoSelecao = function() {
+    const sel = SELECOES.find(s => s.id === managerEstado.selecaoId);
+    if (!sel) return;
+    const outras = SELECOES.filter(s => s.id !== sel.id);
+    const adversario = outras[Math.floor(Math.random() * outras.length)];
+    const forcaMinha = calcularForcaSelecao(sel.id);
+    const forcaAdv = calcularForcaSelecao(adversario.id);
+    const { gA, gB } = simularPlacarSelecao(forcaMinha, forcaAdv);
+    managerEstado.jogosSelecao = managerEstado.jogosSelecao || { vitorias: 0, empates: 0, derrotas: 0 };
+    if (gA > gB) { managerEstado.jogosSelecao.vitorias++; managerEstado.confianca = Math.min(100, managerEstado.confianca + 4); }
+    else if (gA < gB) { managerEstado.jogosSelecao.derrotas++; managerEstado.confianca = Math.max(0, managerEstado.confianca - 5); }
+    else { managerEstado.jogosSelecao.empates++; managerEstado.confianca = Math.min(100, managerEstado.confianca + 1); }
+    registrarNoticia(`${sel.nome} ${gA}-${gB} ${adversario.nome}`, `Resultado do compromisso internacional sob o comando de ${managerEstado.treinador?.nome || "treinador"}.`, "Manager");
+    mostrarToast("Resultado", `${sel.nome} ${gA} x ${gB} ${adversario.nome}`, gA >= gB ? "success" : "danger");
+    window.salvarJogo();
+    renderizarManager();
+};
 
 function clubeManagerAtual() {
     return clubes.find(c => c.id === managerEstado.clubeId);
@@ -8241,23 +11327,104 @@ function gerarBaseManager(clube) {
 function iniciarManagerNoClube(clubeId) {
     const clube = clubes.find(c => c.id === clubeId);
     if(!clube) return;
+    // 🚪 Se já geria outro clube (ou uma seleção), sai de lá — o clube antigo
+    // não pode ficar "órfão", precisa de um treinador de verdade também.
+    const clubeAntigo = managerEstado.ativo && managerEstado.clubeId ? clubes.find(c => c.id === managerEstado.clubeId) : null;
+    if (clubeAntigo && clubeAntigo.id !== clube.id) contratarNovoTecnico(clubeAntigo);
+    window.gameMode = "manager";
     managerEstado = {
         ...estadoManagerPadrao(),
         ativo: true,
         treinador: managerEstado.treinador || { nome: jogador?.nome ? `Mister ${jogador.nome}` : "Novo Treinador", reputacao: Math.max(45, Math.min(88, Math.round((jogador?.geral || 65) * 0.9))), ataque: 62, defesa: 62, tatica: 62 },
         clubeId: clube.id,
+        selecaoId: null,
         confianca: clube.reputacao >= 84 ? 58 : 72,
         tatica: managerEstado.tatica || { formacao: "4-3-3", estilo: "pressao", mentalidade: "equilibrado", pressao: "média", largura: "normal" },
-        orcamentoTransferencias: Math.floor((clube.reputacao || 70) * (clube.reputacao >= 84 ? 1800000 : 650000)),
+        orcamentoTransferencias: calcularOrcamentoBaseClube(clube.reputacao),
         folhaSalarial: calcularFolhaClube(clube.id),
-        base: gerarBaseManager(clube)
+        base: gerarBaseManager(clube),
+        auxiliaresDisponiveis: gerarAuxiliaresDisponiveis(clube)
     };
     registrarNoticia("Novo treinador anunciado", `${managerEstado.treinador.nome} assumiu o comando do ${clube.nome}.`, "Manager");
+    configurarNavegacaoPorModo();
     window.salvarJogo();
     renderizarManager();
 }
 
-function bonusTaticoManager() {
+// 🔻 OVR efetivo de um jogador numa posição diferente da natural dele. Quanto
+// mais distante a posição jogada está da natural (na escala defesa→ataque),
+// maior a queda — jogar de goleiro improvisado (ou colocar um jogador de
+// linha na baliza) é sempre o pior caso. Só afeta a força/exibição do
+// Modo Manager, nunca o "posicao" real do jogador nem a lógica do Match Engine.
+const ORDEM_POSICOES_OVR = ["Goleiro", "Zagueiro", "Lateral", "Volante", "Meio-Campista", "Meia Ofensivo", "Ponta", "Atacante"];
+function calcularOvrNaPosicao(jogadorAlvo, posicaoNoJogo) {
+    const geralBase = jogadorAlvo?.geral || 60;
+    if (!jogadorAlvo || !posicaoNoJogo || jogadorAlvo.posicao === posicaoNoJogo) return geralBase;
+    if (jogadorAlvo.posicao === "Goleiro" || posicaoNoJogo === "Goleiro") return Math.max(20, Math.round(geralBase - 30));
+    const iReal = ORDEM_POSICOES_OVR.indexOf(jogadorAlvo.posicao);
+    const iSlot = ORDEM_POSICOES_OVR.indexOf(posicaoNoJogo);
+    const distancia = (iReal >= 0 && iSlot >= 0) ? Math.abs(iReal - iSlot) : 3;
+    const penalidade = Math.min(30, 5 + distancia * 4);
+    return Math.max(20, Math.round(geralBase - penalidade));
+}
+
+// ==========================================
+// 👥 COMISSÃO TÉCNICA — Auxiliares Técnicos
+// ==========================================
+// Cada especialidade dá um pequeno bônus tático extra (ver bonusTaticoManager)
+// — não é decorativo, soma de verdade na força efetiva do clube nos jogos do
+// Manager. Reutiliza os mesmos geradores de nome/nacionalidade dos técnicos
+// principais (gerarNomeTreinador / sortearNacionalidadeTreinador) pra manter
+// a coerência do elenco de nomes do jogo.
+const ESPECIALIDADES_AUXILIAR = [
+    { tipo: "Auxiliar Ofensivo", icone: "⚔️", desc: "Reforça o entrosamento ofensivo do time." },
+    { tipo: "Auxiliar Defensivo", icone: "🛡️", desc: "Reforça a organização defensiva do time." },
+    { tipo: "Preparador Físico", icone: "💪", desc: "Mantém o elenco em melhor forma física." },
+    { tipo: "Analista de Desempenho", icone: "📊", desc: "Ajuda a extrair o máximo da tática escolhida." }
+];
+
+function gerarAuxiliaresDisponiveis(clube = null) {
+    const fatorClube = Math.max(0.7, (clube?.reputacao || 70) / 70);
+    return ESPECIALIDADES_AUXILIAR.map((esp, i) => ({
+        id: `aux_${Date.now().toString(36)}_${i}_${Math.floor(Math.random() * 9999)}`,
+        nome: gerarNomeTreinador(),
+        nacionalidade: sortearNacionalidadeTreinador(),
+        tipo: esp.tipo,
+        icone: esp.icone,
+        desc: esp.desc,
+        bonus: Math.round((1 + Math.random() * 1.5) * 10) / 10, // 1.0 a 2.5
+        custoAnual: Math.round((70000 + Math.random() * 130000) * fatorClube)
+    }));
+}
+
+window.managerContratarAuxiliar = function(auxId) {
+    const clube = clubeManagerAtual();
+    if (!clube) return;
+    const candidato = (managerEstado.auxiliaresDisponiveis || []).find(a => a.id === auxId);
+    if (!candidato) return;
+    if (managerEstado.auxiliarTecnico) {
+        managerEstado.folhaSalarial = Math.max(0, (managerEstado.folhaSalarial || 0) - managerEstado.auxiliarTecnico.custoAnual);
+    }
+    managerEstado.auxiliarTecnico = candidato;
+    managerEstado.folhaSalarial = (managerEstado.folhaSalarial || 0) + candidato.custoAnual;
+    registrarNoticia("Novo auxiliar técnico", `${candidato.nome} (${candidato.tipo}) se junta à comissão técnica do ${clube.nome}.`, "Manager");
+    mostrarToast("Comissão Técnica", `${candidato.nome} contratado como ${candidato.tipo}.`, "success");
+    window.salvarJogo();
+    renderizarManager();
+};
+
+window.managerDemitirAuxiliar = function() {
+    const clube = clubeManagerAtual();
+    if (!clube || !managerEstado.auxiliarTecnico) return;
+    managerEstado.folhaSalarial = Math.max(0, (managerEstado.folhaSalarial || 0) - managerEstado.auxiliarTecnico.custoAnual);
+    registrarNoticia("Saída da comissão técnica", `${managerEstado.auxiliarTecnico.nome} deixa o ${clube.nome}.`, "Manager");
+    managerEstado.auxiliarTecnico = null;
+    if (!managerEstado.auxiliaresDisponiveis?.length) managerEstado.auxiliaresDisponiveis = gerarAuxiliaresDisponiveis(clube);
+    window.salvarJogo();
+    renderizarManager();
+};
+
+function bonusTaticoManager(clube = null) {
     const t = managerEstado.tatica || {};
     let bonus = 0;
     if(t.formacao === "4-3-3" && t.estilo === "pressao") bonus += 3;
@@ -8271,6 +11438,30 @@ function bonusTaticoManager() {
     if(t.pressao === "baixa" && t.estilo === "retranca") bonus += 1;
     if(t.largura === "larga" && ["4-3-3", "4-2-3-1", "4-4-2"].includes(t.formacao)) bonus += 0.5;
     if(t.largura === "estreita" && ["5-3-2", "3-5-2"].includes(t.formacao)) bonus += 0.5;
+
+    // 🎯 Encaixe posicional: cada titular fora da sua posição natural (o
+    // mesmo aviso ⚠ que aparece no campo tático) perde OVR de verdade — ver
+    // calcularOvrNaPosicao — e essa queda média é o que pesa contra o bónus,
+    // em vez de um desconto fixo igual pra qualquer desencaixe.
+    const alvo = clube || clubeManagerAtual();
+    if (alvo) {
+        const slots = FORMACOES_SLOTS[t.formacao] || FORMACOES_SLOTS["4-3-3"];
+        const esc = managerEstado.escalacao;
+        if (esc && esc.titulares && Object.keys(esc.titulares).length > 0) {
+            let somaPenalidade = 0, preenchidos = 0;
+            slots.forEach(slot => {
+                const pid = esc.titulares[slot.id];
+                if (!pid) return;
+                preenchidos++;
+                const p = jogadorManagerPorId(pid);
+                if (p && p.posicao !== slot.pos) somaPenalidade += (p.geral || 60) - calcularOvrNaPosicao(p, slot.pos);
+            });
+            if (preenchidos > 0) bonus -= (somaPenalidade / preenchidos) * 0.35;
+        }
+    }
+    // 👥 Bônus da comissão técnica: um auxiliar contratado soma força extra,
+    // igual a um bom encaixe tático ou uma boa formação.
+    if (managerEstado.auxiliarTecnico) bonus += managerEstado.auxiliarTecnico.bonus;
     return bonus;
 }
 
@@ -8292,37 +11483,817 @@ window.managerDefinirTatica = function(campo, valor) {
     renderizarManager();
 };
 
-window.managerEnviarProposta = function(playerId) {
-    const alvo = jogadoresIA.find(p => p.id === playerId && !p.aposentado);
+// 💰 Venda um jogador do TEU elenco para outro clube (ou libera como agente
+// livre se não houver comprador plausível). Espelha o mesmo fluxo da compra
+// (managerEnviarProposta): valor derivado do mercado, orçamento e folha
+// salarial atualizados, movimentação registrada no histórico de transferências.
+window.managerVenderJogador = function(playerId) {
     const clube = clubeManagerAtual();
-    if(!alvo || !clube) return;
-    const valor = Math.floor((alvo.valorMercadoNum || calcularValorMercadoJogador(alvo)) * (1.05 + Math.random() * 0.3));
-    if(valor > managerEstado.orcamentoTransferencias) {
-        mostrarToast("Manager", "Orcamento insuficiente para esta proposta.", "warning");
+    const alvo = jogadoresIA.find(p => p.id === playerId && p.clubeId === clube?.id && !p.aposentado);
+    if (!clube || !alvo) return;
+    if (playerId === "player" || (jogador && jogador.id === playerId)) {
+        mostrarToast("Manager", "Não é possível vender o teu próprio jogador (Modo Jogador).", "warning");
         return;
     }
-    const aceitou = valor >= (alvo.valorMercadoNum || calcularValorMercadoJogador(alvo)) * (alvo.geral >= clube.reputacao + 8 ? 1.22 : 1.02);
-    if(!aceitou) {
-        managerEstado.confianca = Math.max(0, managerEstado.confianca - 1);
-        mostrarToast("Proposta recusada", `${alvo.nome} ficou caro demais para o momento.`, "warning");
-    } else {
-        const origem = alvo.clubeId;
-        alvo.clubeId = clube.id;
-        alvo.contrato = Math.max(alvo.contrato || 0, 3);
-        managerEstado.orcamentoTransferencias -= valor;
+    const valorBase = alvo.valorMercadoNum || calcularValorMercadoJogador(alvo);
+    if (!confirm(`Vender ${alvo.nome} por aproximadamente ${formatarMoeda(valorBase)}? Esta ação não pode ser desfeita.`)) return;
+
+    // Compradores plausíveis: clubes de reputação parecida (±25) com a do teu
+    // clube E compatíveis com o NÍVEL do próprio jogador — evita tanto um
+    // reserva "vender" pra um gigante quanto uma joia rara ser desperdiçada
+    // num time muito mais fraco. Sem candidato à altura, vira agente livre.
+    const candidatos = clubes.filter(c => c.id !== clube.id && !String(c.id).startsWith("clube_generico_")
+        && Math.abs((c.reputacao || 70) - (clube.reputacao || 70)) <= 25
+        && (c.reputacao || 70) >= alvo.geral - 16);
+    const comprador = candidatos.length ? candidatos[Math.floor(Math.random() * candidatos.length)] : null;
+    // Clubes mais fortes pagam mais perto (ou acima) do valor de mercado;
+    // mais fracos pechincham. Sem comprador claro, vira liberação (venda mais baixa).
+    const fatorComprador = comprador ? Math.max(0.68, Math.min(1.1, (comprador.reputacao || 70) / 100 + 0.32)) : 0.55;
+    const valorVenda = Math.max(50000, Math.floor(valorBase * (fatorComprador + Math.random() * 0.14)));
+
+    const origemId = alvo.clubeId;
+    alvo.clubeId = comprador ? comprador.id : "";
+    alvo.contrato = comprador ? Math.max(2, alvo.contrato || 2) : 0;
+    managerEstado.orcamentoTransferencias += valorVenda;
+    managerEstado.folhaSalarial = calcularFolhaClube(clube.id);
+    registrarMovimentacao({ jogadorNome: alvo.nome, jogadorId: alvo.id, tipo: "venda", valor: valorVenda, origemId, destinoId: alvo.clubeId || null, janela: "Modo Manager" });
+    mostrarToast("Jogador vendido", `${alvo.nome} foi vendido${comprador ? ` para o ${comprador.nome}` : " e virou agente livre"} por ${formatarMoeda(valorVenda)}.`, "success");
+    window.salvarJogo();
+    renderizarManager();
+};
+
+// 💵 Salário semanal "oficial" de um jogador do elenco. Antes disso o valor
+// era só estimado on-the-fly (calcularFolhaClube) sem nunca ser persistido —
+// agora, assim que alguém negocia ou recebe uma proposta, o número fica
+// gravado no próprio jogador, então uma renovação lembra do salário anterior.
+function salarioAtualJogador(p) {
+    if (p.salarioSemanal) return p.salarioSemanal;
+    const base = Math.max(12000, (p.valorMercadoNum || calcularValorMercadoJogador(p)) * 0.018);
+    p.salarioSemanal = Math.floor(base);
+    return p.salarioSemanal;
+}
+
+// 📨 Chance por rodada de um clube rival mandar uma proposta não-solicitada
+// por alguém do TEU elenco. Pesa mais os jogadores de OVR mais alto (ninguém
+// manda proposta do nada por um reserva genérico) e evita duplicar proposta
+// pendente pro mesmo atleta. Chamada uma vez a cada avanço de rodada do Manager.
+function gerarPropostasRecebidas(clube) {
+    if (!clube) return;
+    managerEstado.propostasRecebidas = (managerEstado.propostasRecebidas || [])
+        .filter(o => o.status === "pendente" || (rodadaAtual - (o.rodada || 0)) <= 3)
+        .slice(0, 25);
+    if (Math.random() > 0.22) return;
+    const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado && p.id !== "player" && !(jogador && p.id === jogador.id));
+    if (elenco.length === 0) return;
+    const jaPendente = new Set(managerEstado.propostasRecebidas.filter(o => o.status === "pendente").map(o => o.jogadorId));
+    const pool = elenco.filter(p => !jaPendente.has(p.id)).map(p => ({ p, peso: Math.max(0.15, (p.geral - 55) / 10) }));
+    if (pool.length === 0) return;
+    const total = pool.reduce((acc, x) => acc + x.peso, 0);
+    let alvo = Math.random() * total;
+    let escolhido = pool[0].p;
+    for (const item of pool) { alvo -= item.peso; if (alvo <= 0) { escolhido = item.p; break; } }
+
+    // 🚫 Um craque já bem estabelecido num clube grande dificilmente recebe (ou
+    // topa considerar) proposta séria — quanto maior a distância entre o nível
+    // dele e o do PRÓPRIO clube atual, menor a chance de sequer chegar oferta.
+    const gapNoClubeAtual = escolhido.geral - (clube.reputacao || 70);
+    if (gapNoClubeAtual > 10 && Math.random() < Math.min(0.85, (gapNoClubeAtual - 10) * 0.07)) return;
+
+    // Só clubes plausíveis (reputação compatível com o nível do jogador) mandam proposta.
+    const candidatos = clubes.filter(c => c.id !== clube.id && !String(c.id).startsWith("clube_generico_") && (c.reputacao || 70) >= (escolhido.geral - 11));
+    const comprador = candidatos.length ? candidatos[Math.floor(Math.random() * candidatos.length)] : null;
+    if (!comprador) return;
+
+    const valorBase = escolhido.valorMercadoNum || calcularValorMercadoJogador(escolhido);
+    // Contrato curto = mais pressão pro comprador oferecer bem (é agora ou nunca).
+    const fatorContrato = (escolhido.contrato || 0) <= 1 ? -0.08 : 0;
+    const fatorComprador = Math.max(0.75, Math.min(1.4, (comprador.reputacao || 70) / 100 + 0.42 + fatorContrato));
+    const valor = Math.max(80000, Math.floor(valorBase * (fatorComprador + Math.random() * 0.18)));
+
+    managerEstado.propostasRecebidas.push({
+        id: `prop_${Date.now().toString(36)}_${Math.floor(Math.random() * 9999)}`,
+        jogadorId: escolhido.id, jogadorNome: escolhido.nome,
+        clubeCompradorId: comprador.id, clubeCompradorNome: comprador.nome,
+        valor, status: "pendente", rodada: rodadaAtual
+    });
+    registrarNoticia("Proposta recebida", `${comprador.nome} apresentou uma proposta de ${formatarMoeda(valor)} por ${escolhido.nome}.`, "Mercado");
+}
+
+// ✅❌🤝 Resolve uma proposta recebida: aceitar (vende de verdade, mesmo fluxo
+// de managerVenderJogador), rejeitar (sem custo, só fecha), ou contrapropor
+// (pede 20% a mais — o comprador pode topar ou desistir, numa única rodada
+// de negociação em vez de um vai-e-vem longo).
+window.managerResponderProposta = function(propostaId, acao) {
+    const clube = clubeManagerAtual();
+    const prop = managerEstado.propostasRecebidas?.find(o => o.id === propostaId);
+    if (!clube || !prop || prop.status !== "pendente") return;
+    const alvo = jogadoresIA.find(p => p.id === prop.jogadorId && p.clubeId === clube.id);
+    if (!alvo) { prop.status = "expirada"; renderizarManager(); return; }
+
+    if (acao === "aceitar") {
+        if (!confirm(`Aceitar a proposta de ${formatarMoeda(prop.valor)} do ${prop.clubeCompradorNome} por ${alvo.nome}?`)) return;
+        alvo.clubeId = prop.clubeCompradorId;
+        alvo.contrato = Math.max(2, alvo.contrato || 2);
+        managerEstado.orcamentoTransferencias += prop.valor;
         managerEstado.folhaSalarial = calcularFolhaClube(clube.id);
-        managerEstado.confianca = Math.min(100, managerEstado.confianca + (alvo.geral >= clube.reputacao ? 4 : 2));
-        registrarMovimentacao({ jogadorNome: alvo.nome, jogadorId: alvo.id, tipo: "transferencia", valor, origemId: origem, destinoId: clube.id, janela: "Modo Manager" });
-        mostrarToast("Reforco contratado", `${alvo.nome} assinou com o ${clube.nome}.`, "success");
+        registrarMovimentacao({ jogadorNome: alvo.nome, jogadorId: alvo.id, tipo: "venda", valor: prop.valor, origemId: clube.id, destinoId: prop.clubeCompradorId, janela: "Modo Manager" });
+        mostrarToast("Proposta aceite", `${alvo.nome} foi vendido para o ${prop.clubeCompradorNome} por ${formatarMoeda(prop.valor)}.`, "success");
+        prop.status = "aceite";
+    } else if (acao === "rejeitar") {
+        prop.status = "rejeitada";
+        mostrarToast("Proposta recusada", `Recusaste a proposta do ${prop.clubeCompradorNome} por ${alvo.nome}.`, "info");
+    } else if (acao === "contraproposta") {
+        const novoValor = Math.floor(prop.valor * 1.2);
+        // Contrato longo = mais poder de barganha (o comprador precisa te convencer mais).
+        const chanceTopar = 0.42 - ((alvo.contrato || 0) >= 3 ? 0.12 : 0);
+        if (Math.random() < chanceTopar) {
+            prop.valor = novoValor;
+            mostrarToast("Contraproposta aceite", `${prop.clubeCompradorNome} topou pagar ${formatarMoeda(novoValor)} por ${alvo.nome}. Aceita para confirmar.`, "success");
+        } else {
+            prop.status = "retirada";
+            mostrarToast("Proposta retirada", `${prop.clubeCompradorNome} desistiu depois da tua contraproposta por ${alvo.nome}.`, "warning");
+        }
     }
     window.salvarJogo();
     renderizarManager();
+};
+
+// 📄 Renegocia o contrato de alguém do TEU elenco: sugere uma proposta (anos
+// + salário) a partir do perfil do jogador, deixa ajustar os números, e
+// resolve a aceitação com base em quão perto a proposta fica da expectativa
+// dele (OVR, idade, felicidade, urgência de quem está a 1 ano de ficar livre).
+window.managerAbrirNegociacaoContrato = function(playerId) {
+    const painel = document.getElementById(`negociacao-contrato-${playerId}`);
+    if (!painel) return;
+    const aberto = painel.classList.toggle("ativo");
+    if (aberto) painel.querySelector("input[data-campo='anos']")?.focus();
+};
+
+window.managerPropoRenovacao = function(playerId) {
+    const clube = clubeManagerAtual();
+    const alvo = jogadoresIA.find(p => p.id === playerId && p.clubeId === clube?.id && !p.aposentado);
+    if (!clube || !alvo) return;
+    const inputAnos = document.getElementById(`renovar-anos-${playerId}`);
+    const inputSalario = document.getElementById(`renovar-salario-${playerId}`);
+    const anos = Math.max(1, Math.min(6, parseInt(inputAnos?.value) || 3));
+    const salario = Math.max(5000, parseInt(inputSalario?.value) || salarioAtualJogador(alvo));
+
+    // Expectativa do jogador: quanto melhor o OVR frente ao clube e quanto
+    // mais feliz ele está, mais salário/tempo ele espera pra assinar.
+    const salarioBase = salarioAtualJogador(alvo);
+    const fatorOvr = 1 + Math.max(0, (alvo.geral - (clube.reputacao || 70))) * 0.03;
+    const fatorFelicidade = 0.9 + ((alvo.felicidade || 60) / 100) * 0.3;
+    const expectativaSalario = salarioBase * fatorOvr * fatorFelicidade;
+    const razaoOferta = salario / expectativaSalario;
+    const urgencia = (alvo.contrato || 0) <= 1 ? 0.15 : 0; // quem tá quase livre topa mais fácil
+    const chanceAceitar = Math.max(0.05, Math.min(0.97, 0.35 + (razaoOferta - 1) * 1.4 + urgencia));
+
+    if (Math.random() < chanceAceitar) {
+        alvo.contrato = anos;
+        alvo.salarioSemanal = salario;
+        alvo.felicidade = Math.min(100, (alvo.felicidade || 60) + 6);
+        managerEstado.folhaSalarial = calcularFolhaClube(clube.id);
+        managerEstado.confianca = Math.min(100, managerEstado.confianca + 1);
+        registrarNoticia("Renovação de contrato", `${alvo.nome} renovou com o ${clube.nome} por mais ${anos} ano(s), a ${formatarMoeda(salario)}/semana.`, "Manager");
+        mostrarToast("Renovação fechada", `${alvo.nome} assinou por ${anos} ano(s) a ${formatarMoeda(salario)}/semana.`, "success");
+    } else {
+        const pedidoJogador = Math.floor(expectativaSalario * (1.03 + Math.random() * 0.08));
+        alvo.felicidade = Math.max(0, (alvo.felicidade || 60) - 3);
+        mostrarToast("Proposta insuficiente", `${alvo.nome} quer algo perto de ${formatarMoeda(pedidoJogador)}/semana para renovar.`, "warning");
+        if (inputSalario) inputSalario.value = pedidoJogador;
+    }
+    window.salvarJogo();
+    renderizarManager();
+};
+
+// 🤝 CONTRATAÇÃO EM DUAS ETAPAS: primeiro se negocia o VALOR da transferência
+// com o clube dono do jogador, e só depois — com o valor já fechado — se
+// negociam os TERMOS PESSOAIS (salário/anos) com o próprio jogador. Reaproveita
+// o mesmo modal do modo Jogador (modalNegociacao/negociacaoBody), mas com
+// estado e funções próprias do Manager pra não colidir com aquele fluxo.
+let managerNegociacaoAtual = null;
+
+window.managerAbrirNegociacaoContratacao = function(playerId) {
+    const alvo = jogadoresIA.find(p => p.id === playerId && !p.aposentado);
+    const clube = clubeManagerAtual();
+    if (!alvo || !clube) return;
+    if (playerId === "player" || (jogador && jogador.id === playerId)) {
+        mostrarToast("Manager", "Não é possível contratar o teu próprio jogador (Modo Jogador).", "warning");
+        return;
+    }
+    const gapNivel = alvo.geral - (clube.reputacao || 70);
+    if (gapNivel > 22) {
+        mostrarToast("Manager", `${alvo.nome} está muito acima do patamar do ${clube.nome} — nem considera a proposta.`, "warning");
+        return;
+    }
+    const valorMercado = alvo.valorMercadoNum || calcularValorMercadoJogador(alvo);
+    const clubeVendedor = clubes.find(c => c.id === alvo.clubeId);
+    managerNegociacaoAtual = {
+        fase: "clube",
+        jogadorId: alvo.id,
+        clubeVendedorId: alvo.clubeId,
+        gapNivel,
+        valorMercado,
+        valorPedido: Math.floor(valorMercado * (1.08 + Math.max(0, gapNivel) * 0.045)),
+        rodadaClube: 1,
+        maxRodadasClube: 3,
+        valorAcordado: 0,
+        rodadaJogador: 1,
+        maxRodadasJogador: 3,
+        historicoClube: [{ autor: "clube", texto: `${clubeVendedor?.nome || "O clube"} sinaliza que só libera ${alvo.nome} por valores próximos de ${formatarMoeda(Math.floor(valorMercado * 1.08))}.` }],
+        historicoJogador: []
+    };
+    document.getElementById("negTituloClube")?.replaceChildren(document.createTextNode(`💼 Contratação — ${alvo.nome}`));
+    document.getElementById("modalNegociacao")?.classList.remove("oculto");
+    renderManagerNegociacaoModal();
+};
+// Compatibilidade: qualquer chamada antiga a managerEnviarProposta agora abre a negociação em duas etapas.
+window.managerEnviarProposta = window.managerAbrirNegociacaoContratacao;
+
+function renderManagerNegociacaoModal() {
+    const n = managerNegociacaoAtual;
+    const body = document.getElementById("negociacaoBody");
+    const tituloEl = document.getElementById("negTituloClube");
+    if (!n || !body) return;
+    const alvo = jogadoresIA.find(p => p.id === n.jogadorId);
+    const clubeComprador = clubeManagerAtual();
+    const clubeVendedor = clubes.find(c => c.id === n.clubeVendedorId);
+    if (!alvo || !clubeComprador) { window.managerFecharNegociacao(); return; }
+    if (tituloEl) tituloEl.textContent = `💼 Contratação — ${alvo.nome}`;
+
+    if (n.fase === "clube") {
+        const historicoHtml = n.historicoClube.map(h => `
+            <div style="display:flex; ${h.autor === "voce" ? "justify-content:flex-end;" : ""} margin-bottom:8px;">
+                <div style="max-width:82%; padding:10px 14px; border-radius:10px; font-size:0.85rem; ${h.autor === "voce" ? "background:rgba(0,255,136,0.15); border:1px solid var(--theme-primary);" : "background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);"}">
+                    <strong style="display:block; margin-bottom:3px; color:${h.autor === "voce" ? "var(--theme-primary)" : "#aaa"};">${h.autor === "voce" ? `${clubeComprador.nome} (tu)` : (clubeVendedor?.nome || "Clube vendedor")}</strong>
+                    ${h.texto}
+                </div>
+            </div>`).join("");
+        body.innerHTML = `
+            <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1);">
+                <img loading="lazy" decoding="async" src="${obterUrlImagem(alvo,'jogador')}" onerror="this.style.visibility='hidden'" style="width:52px; height:52px; object-fit:cover; border-radius:8px;">
+                <div><span class="meta-pill">Etapa 1 de 2 — Valor da transferência</span><h3 style="margin:6px 0 0;">${alvo.nome} <small style="color:#888;">(${clubeVendedor?.nome || "sem clube"})</small></h3></div>
+                <div style="margin-left:auto; text-align:right;"><span style="color:#888; font-size:0.75rem; text-transform:uppercase; font-weight:800;">Rodada</span><br><strong>${n.rodadaClube}/${n.maxRodadasClube}</strong></div>
+            </div>
+            <div style="max-height:170px; overflow-y:auto; margin-bottom:18px; padding-right:4px;">${historicoHtml}</div>
+            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:16px; margin-bottom:16px;">
+                <h4 style="margin:0 0 10px; color:var(--theme-primary);">💰 Pedido atual do ${clubeVendedor?.nome || "clube vendedor"}</h4>
+                <strong style="font-size:1.2rem; color:#fff;">${formatarMoeda(n.valorPedido)}</strong>
+                <p style="margin:6px 0 0; color:#888; font-size:0.78rem;">Valor de mercado estimado: ${formatarMoeda(n.valorMercado)} • Orçamento disponível: ${formatarMoeda(managerEstado.orcamentoTransferencias)}</p>
+            </div>
+            <div style="background:rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; margin-bottom:16px;">
+                <h4 style="margin:0 0 10px;">✍️ A tua oferta</h4>
+                <label style="font-size:0.75rem; color:#888;">Valor a propor (€)</label>
+                <input type="number" id="negManagerValorInput" value="${n.ultimaOferta || Math.floor(n.valorMercado * 1.05)}" step="50000" style="width:100%; padding:8px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); color:#fff;">
+                <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="managerProporValorClube()">📨 Propor valor</button>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-danger" style="flex:1;" onclick="managerFecharNegociacao()">🚪 Desistir da contratação</button>
+            </div>`;
+        return;
+    }
+
+    // fase === "jogador": termos pessoais, com o valor da transferência já fechado.
+    const salarioAtual = salarioAtualJogador(alvo);
+    const historicoHtml = n.historicoJogador.map(h => `
+        <div style="display:flex; ${h.autor === "voce" ? "justify-content:flex-end;" : ""} margin-bottom:8px;">
+            <div style="max-width:82%; padding:10px 14px; border-radius:10px; font-size:0.85rem; ${h.autor === "voce" ? "background:rgba(0,255,136,0.15); border:1px solid var(--theme-primary);" : "background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1);"}">
+                <strong style="display:block; margin-bottom:3px; color:${h.autor === "voce" ? "var(--theme-primary)" : "#aaa"};">${h.autor === "voce" ? `${clubeComprador.nome} (tu)` : alvo.nome}</strong>
+                ${h.texto}
+            </div>
+        </div>`).join("");
+    body.innerHTML = `
+        <div style="display:flex; align-items:center; gap:14px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.1);">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(alvo,'jogador')}" onerror="this.style.visibility='hidden'" style="width:52px; height:52px; object-fit:cover; border-radius:8px;">
+            <div><span class="meta-pill" style="background:var(--success); color:#062512;">✅ Valor fechado: ${formatarMoeda(n.valorAcordado)}</span><h3 style="margin:6px 0 0;">Etapa 2 de 2 — Termos com ${alvo.nome}</h3></div>
+            <div style="margin-left:auto; text-align:right;"><span style="color:#888; font-size:0.75rem; text-transform:uppercase; font-weight:800;">Rodada</span><br><strong>${n.rodadaJogador}/${n.maxRodadasJogador}</strong></div>
+        </div>
+        <div style="max-height:170px; overflow-y:auto; margin-bottom:18px; padding-right:4px;">${historicoHtml || `<p style="color:#888; font-size:0.85rem;">O clube já topou o valor com o ${clubeVendedor?.nome || "clube vendedor"} — agora falta convencer o próprio ${alvo.nome} a assinar.</p>`}</div>
+        <div style="background:rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:16px; margin-bottom:16px;">
+            <h4 style="margin:0 0 10px;">✍️ A tua proposta pessoal</h4>
+            <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px;">
+                <div><label style="font-size:0.75rem; color:#888;">Salário semanal (€)</label>
+                    <input type="number" id="negManagerSalarioInput" value="${n.salarioProposto || salarioAtual}" step="1000" style="width:100%; padding:8px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); color:#fff;"></div>
+                <div><label style="font-size:0.75rem; color:#888;">Anos de contrato</label>
+                    <select id="negManagerAnosInput" style="width:100%; padding:8px; border-radius:6px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.15); color:#fff;">
+                        ${[1,2,3,4,5].map(a => `<option value="${a}" ${a === (n.anosPropostos || 3) ? "selected" : ""}>${a} ano${a > 1 ? "s" : ""}</option>`).join("")}
+                    </select></div>
+            </div>
+            <p style="margin:10px 0 0; color:#888; font-size:0.78rem;">Salário atual dele (${clubeVendedor?.nome || "clube atual"}): ${formatarMoeda(salarioAtual)}/semana.</p>
+            <button class="btn btn-primary btn-block" style="margin-top:14px;" onclick="managerProporTermosJogador()">📨 Propor ao jogador</button>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-danger" style="flex:1;" onclick="managerFecharNegociacao()">🚪 Desistir da contratação</button>
+        </div>`;
+}
+
+// 💰 Etapa 1: negociação do valor com o clube vendedor. Mesma lógica de
+// aceitação por "prêmio necessário" que já existia na contratação instantânea,
+// só que agora iterativa — o clube pode aceitar, contrapor um valor mais alto,
+// ou fechar as portas depois de rodadas demais.
+window.managerProporValorClube = function() {
+    const n = managerNegociacaoAtual;
+    if (!n || n.fase !== "clube") return;
+    const alvo = jogadoresIA.find(p => p.id === n.jogadorId);
+    const clubeComprador = clubeManagerAtual();
+    const clubeVendedor = clubes.find(c => c.id === n.clubeVendedorId);
+    if (!alvo || !clubeComprador) return;
+    const oferta = Math.max(1, parseInt(document.getElementById("negManagerValorInput")?.value) || n.valorPedido);
+    n.ultimaOferta = oferta;
+    n.historicoClube.push({ autor: "voce", texto: `Propõe ${formatarMoeda(oferta)} por ${alvo.nome}.` });
+
+    if (oferta > managerEstado.orcamentoTransferencias) {
+        n.historicoClube.push({ autor: "clube", texto: `Orçamento insuficiente para cobrir essa oferta.` });
+        renderManagerNegociacaoModal();
+        return;
+    }
+
+    const premioNecessario = n.gapNivel >= 15 ? 1.65 : n.gapNivel >= 8 ? 1.22 : 1.02;
+    const pisoAceitavel = n.valorMercado * premioNecessario;
+    n.rodadaClube++;
+
+    if (oferta >= n.valorPedido) {
+        n.valorAcordado = oferta;
+        n.historicoClube.push({ autor: "clube", texto: `Combinado! O ${clubeVendedor?.nome || "clube"} aceita ${formatarMoeda(oferta)} por ${alvo.nome}.` });
+        n.fase = "jogador";
+        n.salarioProposto = Math.floor(salarioAtualJogador(alvo) * 1.1);
+        n.anosPropostos = 3;
+    } else if (oferta >= pisoAceitavel && n.rodadaClube <= n.maxRodadasClube) {
+        // Oferta razoável mas abaixo do pedido: o clube contrapõe um valor intermediário.
+        n.valorPedido = Math.floor((oferta + n.valorPedido) / 2);
+        n.historicoClube.push({ autor: "clube", texto: `O ${clubeVendedor?.nome || "clube"} recua um pouco: aceita a partir de ${formatarMoeda(n.valorPedido)}.` });
+    } else if (n.rodadaClube > n.maxRodadasClube) {
+        n.historicoClube.push({ autor: "clube", texto: `O ${clubeVendedor?.nome || "clube"} encerra as conversas — valor longe demais do esperado.` });
+        setTimeout(() => window.managerFecharNegociacao(true), 1400);
+    } else {
+        n.historicoClube.push({ autor: "clube", texto: `Valor considerado baixo demais. O ${clubeVendedor?.nome || "clube"} mantém o pedido em ${formatarMoeda(n.valorPedido)}.` });
+    }
+    renderManagerNegociacaoModal();
+};
+
+// 🖋️ Etapa 2: termos pessoais com o próprio jogador — mesma lógica de
+// expectativa (OVR frente ao NOVO clube + salário atual) usada em
+// managerPropoRenovacao, adaptada pra uma contratação em vez de renovação.
+window.managerProporTermosJogador = function() {
+    const n = managerNegociacaoAtual;
+    if (!n || n.fase !== "jogador") return;
+    const alvo = jogadoresIA.find(p => p.id === n.jogadorId);
+    const clubeComprador = clubeManagerAtual();
+    if (!alvo || !clubeComprador) return;
+    const salario = Math.max(5000, parseInt(document.getElementById("negManagerSalarioInput")?.value) || salarioAtualJogador(alvo));
+    const anos = Math.max(1, Math.min(5, parseInt(document.getElementById("negManagerAnosInput")?.value) || 3));
+    n.salarioProposto = salario; n.anosPropostos = anos;
+    n.historicoJogador.push({ autor: "voce", texto: `Propõe ${formatarMoeda(salario)}/semana por ${anos} ano(s).` });
+
+    const salarioBase = salarioAtualJogador(alvo);
+    const fatorOvr = 1 + Math.max(0, (alvo.geral - (clubeComprador.reputacao || 70))) * 0.03;
+    const fatorFelicidade = 0.9 + ((alvo.felicidade || 60) / 100) * 0.3;
+    const expectativaSalario = salarioBase * fatorOvr * fatorFelicidade;
+    const razaoOferta = salario / expectativaSalario;
+    n.rodadaJogador++;
+    const chanceAceitar = Math.max(0.05, Math.min(0.97, 0.35 + (razaoOferta - 1) * 1.4));
+
+    if (Math.random() < chanceAceitar) {
+        n.historicoJogador.push({ autor: "jogador", texto: `Topo! Assino por ${formatarMoeda(salario)}/semana, ${anos} ano(s).` });
+        window.managerConcluirContratacao();
+    } else if (n.rodadaJogador > n.maxRodadasJogador) {
+        n.historicoJogador.push({ autor: "jogador", texto: `Não chegamos a um acordo sobre os termos pessoais. Prefiro ficar onde estou.` });
+        setTimeout(() => window.managerFecharNegociacao(true), 1400);
+    } else {
+        const pedidoJogador = Math.floor(expectativaSalario * (1.02 + Math.random() * 0.06));
+        n.historicoJogador.push({ autor: "jogador", texto: `Isso fica curto. Quero algo perto de ${formatarMoeda(pedidoJogador)}/semana.` });
+        n.salarioProposto = pedidoJogador;
+    }
+};
+
+// 🎯 MENU DE CONTEXTO DO JOGADOR - clique direito para definir funções
+window.abrirMenuContextoJogador = function(event, jogadorId) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Remove menu existente
+    const menuExistente = document.getElementById("menu-contexto-jogador");
+    if (menuExistente) menuExistente.remove();
+    
+    const jogador = jogadoresIA.find(p => p.id === jogadorId) || (jogador && jogador.id === jogadorId ? jogador : null);
+    if (!jogador) return;
+    
+    const clube = clubeManagerAtual();
+    if (!clube) return;
+    
+    // Inicializa funções do jogador se não existirem
+    if (!managerEstado.funcoesJogadores) managerEstado.funcoesJogadores = {};
+    if (!managerEstado.funcoesJogadores[jogadorId]) {
+        managerEstado.funcoesJogadores[jogadorId] = {
+            capitao: false,
+            cobradorFalta: false,
+            cobradorPenalti: false,
+            estiloComBola: "equilibrado",
+            estiloSemBola: "equilibrado"
+        };
+    }
+    
+    const funcoes = managerEstado.funcoesJogadores[jogadorId];
+    
+    // Verifica capitão atual
+    let capitaoAtualId = null;
+    Object.values(managerEstado.funcoesJogadores).forEach(f => {
+        if (f.capitao) capitaoAtualId = Object.keys(managerEstado.funcoesJogadores).find(k => managerEstado.funcoesJogadores[k] === f);
+    });
+    
+    const menu = document.createElement("div");
+    menu.id = "menu-contexto-jogador";
+    menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: rgba(20, 20, 30, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        padding: 8px 0;
+        min-width: 220px;
+        z-index: 10000;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+    `;
+    
+    const estilosComBola = ["defensivo", "equilibrado", "ofensivo"];
+    const estilosSemBola = ["passivo", "equilibrado", "agressivo"];
+    
+    menu.innerHTML = `
+        <div style="padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px;">
+            <strong style="color: #fff; font-size: 0.95rem;">${jogador.nome}</strong>
+            <div style="color: #888; font-size: 0.8rem;">${jogador.posicao} • OVR ${jogador.geral}</div>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'capitao')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.capitao ? '#10b981' : '#fff'}; hover:rgba(255,255,255,0.05);">
+            <span>🧢 Capitão</span>
+            <span style="font-size: 0.8rem;">${funcoes.capitao ? '✓' : ''}</span>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'cobradorFalta')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.cobradorFalta ? '#10b981' : '#fff'};">
+            <span>⚽ Cobrador de Falta</span>
+            <span style="font-size: 0.8rem;">${funcoes.cobradorFalta ? '✓' : ''}</span>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'cobradorPenalti')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.cobradorPenalti ? '#10b981' : '#fff'};">
+            <span>🎯 Cobrador de Pênalti</span>
+            <span style="font-size: 0.8rem;">${funcoes.cobradorPenalti ? '✓' : ''}</span>
+        </div>
+        
+        <div style="padding: 8px 16px; margin: 8px 0; border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="color: #888; font-size: 0.75rem; margin-bottom: 4px;">Estilo com Bola</div>
+            ${estilosComBola.map(estilo => `
+                <div onclick="definirEstiloJogador('${jogadorId}', 'estiloComBola', '${estilo}')" 
+                     style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${funcoes.estiloComBola === estilo ? '#10b981' : '#aaa'}; background: ${funcoes.estiloComBola === estilo ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                    ${estilo.charAt(0).toUpperCase() + estilo.slice(1)}${funcoes.estiloComBola === estilo ? ' ✓' : ''}
+                </div>
+            `).join('')}
+        </div>
+        
+        <div style="padding: 8px 16px;">
+            <div style="color: #888; font-size: 0.75rem; margin-bottom: 4px;">Estilo sem Bola</div>
+            ${estilosSemBola.map(estilo => `
+                <div onclick="definirEstiloJogador('${jogadorId}', 'estiloSemBola', '${estilo}')" 
+                     style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${funcoes.estiloSemBola === estilo ? '#10b981' : '#aaa'}; background: ${funcoes.estiloSemBola === estilo ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                    ${estilo.charAt(0).toUpperCase() + estilo.slice(1)}${funcoes.estiloSemBola === estilo ? ' ✓' : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    // Adiciona hover effects
+    menu.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.08)');
+        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+    });
+    
+    document.body.appendChild(menu);
+    
+    // Fecha menu ao clicar fora
+    setTimeout(() => {
+        document.addEventListener('click', fecharMenuContextoJogador, { once: true });
+    }, 0);
+};
+
+window.fecharMenuContextoJogador = function() {
+    const menu = document.getElementById("menu-contexto-jogador");
+    if (menu) menu.remove();
+};
+
+window.alternarFuncaoJogador = function(jogadorId, funcao) {
+    if (!managerEstado.funcoesJogadores) managerEstado.funcoesJogadores = {};
+    if (!managerEstado.funcoesJogadores[jogadorId]) {
+        managerEstado.funcoesJogadores[jogadorId] = {
+            capitao: false,
+            cobradorFalta: false,
+            cobradorPenalti: false,
+            estiloComBola: "equilibrado",
+            estiloSemBola: "equilibrado"
+        };
+    }
+    
+    // Se for capitão, remove de qualquer outro jogador
+    if (funcao === 'capitao') {
+        Object.keys(managerEstado.funcoesJogadores).forEach(id => {
+            if (managerEstado.funcoesJogadores[id].capitao) {
+                managerEstado.funcoesJogadores[id].capitao = false;
+            }
+        });
+    }
+    
+    // Se for cobrador, remove de qualquer outro jogador (apenas um por função)
+    if (funcao === 'cobradorFalta' || funcao === 'cobradorPenalti') {
+        Object.keys(managerEstado.funcoesJogadores).forEach(id => {
+            if (managerEstado.funcoesJogadores[id][funcao]) {
+                managerEstado.funcoesJogadores[id][funcao] = false;
+            }
+        });
+    }
+    
+    managerEstado.funcoesJogadores[jogadorId][funcao] = !managerEstado.funcoesJogadores[jogadorId][funcao];
+    
+    window.salvarJogo();
+    fecharMenuContextoJogador();
+    renderizarManager(); // Re-render para mostrar mudanças
+};
+
+window.definirEstiloJogador = function(jogadorId, tipo, valor) {
+    if (!managerEstado.funcoesJogadores) managerEstado.funcoesJogadores = {};
+    if (!managerEstado.funcoesJogadores[jogadorId]) {
+        managerEstado.funcoesJogadores[jogadorId] = {
+            capitao: false,
+            cobradorFalta: false,
+            cobradorPenalti: false,
+            estiloComBola: "equilibrado",
+            estiloSemBola: "equilibrado",
+            papel: null // Papel tático (Armador, Mezzala, etc.)
+        };
+    }
+    
+    managerEstado.funcoesJogadores[jogadorId][tipo] = valor;
+    
+    window.salvarJogo();
+    fecharMenuContextoJogador();
+    mostrarToast("Funções", `Estilo ${tipo === 'estiloComBola' ? 'com bola' : 'sem bola'} definido para ${valor}`, "success");
+};
+
+// 🎭 PAPÉIS TÁTICOS POR POSIÇÃO
+const PAPÉIS_POR_POSICAO = {
+    "GOL": ["Goleiro Clássico", "Goleiro Libero", "Sweeper Keeper"],
+    "ZAG": ["Zagueiro Central", "Zagueiro Libero", "Zagueiro Bola"],
+    "LE": ["Lateral Clássico", "Lateral Ala", "Lateral Invertido", "Carrilero"],
+    "LD": ["Lateral Clássico", "Lateral Ala", "Lateral Invertido", "Carrilero"],
+    "VOL": ["Volante Defensivo", "Volante Box-to-Box", "Mezzala", "Regista", "Segundo Volante"],
+    "MEI": ["Armador Clássico", "Mezzala", "Segundo Volante", "Box-to-Box", "Organizador Recuado", "Carrilero", "Winger"],
+    "PE": ["Ponta Clássico", "Ponta Invertido", "Winger", "Inside Forward"],
+    "PD": ["Ponta Clássico", "Ponta Invertido", "Winger", "Inside Forward"],
+    "ATA": ["Homem-Alvo", "Falso 9", "Caçador", "Pressionador", "Atacante Completo", "Segundo Atacante"]
+};
+
+// 📋 INSTRUÇÕES INDIVIDUAIS POR POSIÇÃO
+const INSTRUÇÕES_POR_POSICAO = {
+    "ATA": ["Pressionar zagueiros", "Ficar centralizado", "Atacar profundidade", "Recuar para criar", "Segurar a bola", "Virar para o gol"],
+    "PE": ["Cortar para dentro", "Ir à linha de fundo", "Voltar para marcar", "Flutuar livremente", "Cruzar sempre", "Chutar mais"],
+    "PD": ["Cortar para dentro", "Ir à linha de fundo", "Voltar para marcar", "Flutuar livremente", "Cruzar sempre", "Chutar mais"],
+    "MEI": ["Ficar recuado", "Subir ao ataque", "Marcar individualmente", "Cobrir laterais", "Criar jogadas", "Chutar de longe"],
+    "VOL": ["Ficar na frente da defesa", "Subir ao ataque", "Marcar individualmente", "Cobrir laterais", "Iniciar jogadas", "Pressionar alto"],
+    "LE": ["Nunca subir", "Apoiar o ataque", "Atacar sempre", "Inverter para o meio", "Cruzar sempre", "Marcar individualmente"],
+    "LD": ["Nunca subir", "Apoiar o ataque", "Atacar sempre", "Inverter para o meio", "Cruzar sempre", "Marcar individualmente"],
+    "ZAG": ["Marcar por zona", "Marcar individualmente", "Subir em escanteios", "Sair com a bola", "Ficar recuado", "Pressionar alto"],
+    "GOL": ["Sair com os pés", "Ficar na linha", "Antecipar jogadas", "Lançar rápido", "Segurar bola"]
+};
+
+window.abrirMenuContextoJogador = function(event, jogadorId) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Remove menu existente
+    const menuExistente = document.getElementById("menu-contexto-jogador");
+    if (menuExistente) menuExistente.remove();
+    
+    const jogador = jogadoresIA.find(p => p.id === jogadorId) || (jogador && jogador.id === jogadorId ? jogador : null);
+    if (!jogador) return;
+    
+    const clube = clubeManagerAtual();
+    if (!clube) return;
+    
+    // Inicializa funções do jogador se não existirem
+    if (!managerEstado.funcoesJogadores) managerEstado.funcoesJogadores = {};
+    if (!managerEstado.funcoesJogadores[jogadorId]) {
+        managerEstado.funcoesJogadores[jogadorId] = {
+            capitao: false,
+            cobradorFalta: false,
+            cobradorPenalti: false,
+            estiloComBola: "equilibrado",
+            estiloSemBola: "equilibrado",
+            papel: null
+        };
+    }
+    
+    // Inicializa instruções individuais se não existirem
+    if (!managerEstado.instrucoesIndividuais) managerEstado.instrucoesIndividuais = {};
+    if (!managerEstado.instrucoesIndividuais[jogadorId]) {
+        managerEstado.instrucoesIndividuais[jogadorId] = [];
+    }
+    
+    const funcoes = managerEstado.funcoesJogadores[jogadorId];
+    const instrucoes = managerEstado.instrucoesIndividuais[jogadorId];
+    
+    // Obtém papéis disponíveis para a posição
+    const posicaoNormalizada = jogador.posicao.toUpperCase();
+    const papéisDisponiveis = PAPÉIS_POR_POSICAO[posicaoNormalizada] || ["Universal"];
+    const instrucoesDisponiveis = INSTRUÇÕES_POR_POSICAO[posicaoNormalizada] || [];
+    
+    const menu = document.createElement("div");
+    menu.id = "menu-contexto-jogador";
+    menu.style.cssText = `
+        position: fixed;
+        left: ${event.clientX}px;
+        top: ${event.clientY}px;
+        background: rgba(20, 20, 30, 0.98);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 12px;
+        padding: 8px 0;
+        min-width: 260px;
+        max-height: 80vh;
+        overflow-y: auto;
+        z-index: 10000;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+    `;
+    
+    const estilosComBola = ["defensivo", "equilibrado", "ofensivo"];
+    const estilosSemBola = ["passivo", "equilibrado", "agressivo"];
+    
+    let menuHTML = `
+        <div style="padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 8px;">
+            <strong style="color: #fff; font-size: 0.95rem;">${jogador.nome}</strong>
+            <div style="color: #888; font-size: 0.8rem;">${jogador.posicao} • OVR ${jogador.geral}</div>
+        </div>
+        
+        <div style="padding: 8px 16px; margin: 8px 0; border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="color: #10b981; font-size: 0.75rem; font-weight: 700; margin-bottom: 6px;">🎭 PAPEL TÁTICO</div>
+            ${papéisDisponiveis.map(papel => `
+                <div onclick="definirPapelJogador('${jogadorId}', '${papel}')" 
+                     style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${funcoes.papel === papel ? '#10b981' : '#aaa'}; background: ${funcoes.papel === papel ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                    ${papel}${funcoes.papel === papel ? ' ✓' : ''}
+                </div>
+            `).join('')}
+            <div onclick="definirPapelJogador('${jogadorId}', null)" 
+                 style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${!funcoes.papel ? '#10b981' : '#aaa'}; background: ${!funcoes.papel ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                Nenhum${!funcoes.papel ? ' ✓' : ''}
+            </div>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'capitao')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.capitao ? '#10b981' : '#fff'};">
+            <span>🧢 Capitão</span>
+            <span style="font-size: 0.8rem;">${funcoes.capitao ? '✓' : ''}</span>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'cobradorFalta')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.cobradorFalta ? '#10b981' : '#fff'};">
+            <span>⚽ Cobrador de Falta</span>
+            <span style="font-size: 0.8rem;">${funcoes.cobradorFalta ? '✓' : ''}</span>
+        </div>
+        
+        <div class="menu-item" onclick="alternarFuncaoJogador('${jogadorId}', 'cobradorPenalti')" style="padding: 10px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; color: ${funcoes.cobradorPenalti ? '#10b981' : '#fff'};">
+            <span>🎯 Cobrador de Pênalti</span>
+            <span style="font-size: 0.8rem;">${funcoes.cobradorPenalti ? '✓' : ''}</span>
+        </div>
+        
+        <div style="padding: 8px 16px; margin: 8px 0; border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+            <div style="color: #888; font-size: 0.75rem; margin-bottom: 4px;">Estilo com Bola</div>
+            ${estilosComBola.map(estilo => `
+                <div onclick="definirEstiloJogador('${jogadorId}', 'estiloComBola', '${estilo}')" 
+                     style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${funcoes.estiloComBola === estilo ? '#10b981' : '#aaa'}; background: ${funcoes.estiloComBola === estilo ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                    ${estilo.charAt(0).toUpperCase() + estilo.slice(1)}${funcoes.estiloComBola === estilo ? ' ✓' : ''}
+                </div>
+            `).join('')}
+        </div>
+        
+        <div style="padding: 8px 16px;">
+            <div style="color: #888; font-size: 0.75rem; margin-bottom: 4px;">Estilo sem Bola</div>
+            ${estilosSemBola.map(estilo => `
+                <div onclick="definirEstiloJogador('${jogadorId}', 'estiloSemBola', '${estilo}')" 
+                     style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${funcoes.estiloSemBola === estilo ? '#10b981' : '#aaa'}; background: ${funcoes.estiloSemBola === estilo ? 'rgba(16, 185, 129, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                    ${estilo.charAt(0).toUpperCase() + estilo.slice(1)}${funcoes.estiloSemBola === estilo ? ' ✓' : ''}
+                </div>
+            `).join('')}
+        </div>
+    `;
+    
+    // Adiciona instruções individuais se disponíveis
+    if (instrucoesDisponiveis.length > 0) {
+        menuHTML += `
+            <div style="padding: 8px 16px; margin: 8px 0; border-top: 1px solid rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <div style="color: #f59e0b; font-size: 0.75rem; font-weight: 700; margin-bottom: 6px;">📋 INSTRUÇÕES INDIVIDUAIS</div>
+                ${instrucoesDisponiveis.map(inst => `
+                    <div onclick="alternarInstrucaoJogador('${jogadorId}', '${inst}')" 
+                         style="padding: 6px 12px; cursor: pointer; border-radius: 6px; color: ${instrucoes.includes(inst) ? '#f59e0b' : '#aaa'}; background: ${instrucoes.includes(inst) ? 'rgba(245, 158, 11, 0.15)' : 'transparent'}; font-size: 0.85rem; margin-bottom: 2px;">
+                        ${instrucoes.includes(inst) ? '✓ ' : ''}${inst}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    menu.innerHTML = menuHTML;
+    
+    // Adiciona hover effects
+    menu.querySelectorAll('.menu-item').forEach(item => {
+        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.08)');
+        item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+    });
+    
+    document.body.appendChild(menu);
+    
+    // Fecha menu ao clicar fora
+    setTimeout(() => {
+        document.addEventListener('click', fecharMenuContextoJogador, { once: true });
+    }, 0);
+};
+
+window.definirPapelJogador = function(jogadorId, papel) {
+    if (!managerEstado.funcoesJogadores) managerEstado.funcoesJogadores = {};
+    if (!managerEstado.funcoesJogadores[jogadorId]) {
+        managerEstado.funcoesJogadores[jogadorId] = {
+            capitao: false,
+            cobradorFalta: false,
+            cobradorPenalti: false,
+            estiloComBola: "equilibrado",
+            estiloSemBola: "equilibrado",
+            papel: null
+        };
+    }
+    
+    managerEstado.funcoesJogadores[jogadorId].papel = papel;
+    
+    window.salvarJogo();
+    fecharMenuContextoJogador();
+    renderizarManager();
+    mostrarToast("Papel Tático", papel ? `Papel definido: ${papel}` : "Papel removido", "success");
+};
+
+window.alternarInstrucaoJogador = function(jogadorId, instrucao) {
+    if (!managerEstado.instrucoesIndividuais) managerEstado.instrucoesIndividuais = {};
+    if (!managerEstado.instrucoesIndividuais[jogadorId]) {
+        managerEstado.instrucoesIndividuais[jogadorId] = [];
+    }
+    
+    const instrucoes = managerEstado.instrucoesIndividuais[jogadorId];
+    const index = instrucoes.indexOf(instrucao);
+    
+    if (index > -1) {
+        instrucoes.splice(index, 1);
+    } else {
+        instrucoes.push(instrucao);
+    }
+    
+    window.salvarJogo();
+    fecharMenuContextoJogador();
+    renderizarManager();
+};
+
+// ✅ Fecha o acordo de verdade: só agora o dinheiro muda de mãos e o jogador
+// troca de clube — antes disso (enquanto a negociação corre) nada é debitado.
+window.managerConcluirContratacao = function() {
+    const n = managerNegociacaoAtual;
+    if (!n) return;
+    const alvo = jogadoresIA.find(p => p.id === n.jogadorId);
+    const clube = clubeManagerAtual();
+    if (!alvo || !clube) { window.managerFecharNegociacao(); return; }
+    const origem = alvo.clubeId;
+    alvo.clubeId = clube.id;
+    alvo.contrato = n.anosPropostos || 3;
+    alvo.salarioSemanal = n.salarioProposto;
+    alvo.felicidade = Math.min(100, (alvo.felicidade || 60) + 8);
+    managerEstado.orcamentoTransferencias -= n.valorAcordado;
+    managerEstado.folhaSalarial = calcularFolhaClube(clube.id);
+    managerEstado.confianca = Math.min(100, managerEstado.confianca + (alvo.geral >= clube.reputacao ? 4 : 2));
+    registrarMovimentacao({ jogadorNome: alvo.nome, jogadorId: alvo.id, tipo: "transferencia", valor: n.valorAcordado, origemId: origem, destinoId: clube.id, janela: "Modo Manager" });
+    mostrarToast("Reforço contratado", `${alvo.nome} assinou com o ${clube.nome} por ${formatarMoeda(n.valorAcordado)} + ${formatarMoeda(n.salarioProposto)}/semana.`, "success");
+    setTimeout(() => window.managerFecharNegociacao(), 900);
+    window.salvarJogo();
+    renderizarManager();
+};
+
+window.managerFecharNegociacao = function(semAcordo = false) {
+    if (managerNegociacaoAtual && semAcordo) {
+        mostrarToast("Negociação encerrada", "A contratação não foi fechada.", "warning");
+    }
+    managerNegociacaoAtual = null;
+    document.getElementById("modalNegociacao")?.classList.add("oculto");
 };
 
 window.managerPromoverJovem = function(baseId) {
     const clube = clubeManagerAtual();
     const jovem = managerEstado.base?.find(j => j.id === baseId);
     if(!clube || !jovem) return;
+    const jaPromovidos = managerEstado.promocoesBaseTemporada || 0;
+    if (jaPromovidos >= LIMITE_PROMOCOES_BASE_POR_TEMPORADA) {
+        mostrarToast("Limite atingido", `Você já promoveu ${LIMITE_PROMOCOES_BASE_POR_TEMPORADA} jovens da base nesta temporada. Espere a próxima janela para promover mais.`, "danger");
+        return;
+    }
     jogadoresIA.push({
         ...jovem,
         clubeId: clube.id,
@@ -8333,13 +12304,316 @@ window.managerPromoverJovem = function(baseId) {
         historicoCarreira: []
     });
     managerEstado.base = managerEstado.base.filter(j => j.id !== baseId);
+    managerEstado.promocoesBaseTemporada = jaPromovidos + 1;
     managerEstado.confianca = Math.min(100, managerEstado.confianca + 2);
     registrarNoticia("Promocao da base", `${jovem.nome} subiu ao profissional do ${clube.nome}.`, "Base");
     window.salvarJogo();
     renderizarManager();
 };
 
-window.managerSimularPartida = async function() {
+// 🎮 MOTOR REAL DO MANAGER
+// Roda a mesma classe MatchEngine que já move o Modo Jogador — minuto a
+// minuto, com remates, defesas, escanteios e pênaltis de verdade — só que
+// sem um jogador humano em campo, então quem marca/assiste sai sorteado
+// dentro do próprio elenco de cada clube (como já acontece com qualquer NPC).
+window.reproduzirSimulacaoManagerReal = function(engine, casa, visita) {
+    return new Promise(resolve => {
+        const modal = document.getElementById("modalPartida");
+        if (!modal) { resolve({ gc: 0, gv: 0, marcadores: [] }); return; }
+        modal.classList.remove("oculto");
+        setText("placarTimeCasa", casa.nome); setText("placarTimeVisita", visita.nome);
+        setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
+        const imgCasa = document.getElementById("imgTimeCasa"); const imgVisita = document.getElementById("imgTimeVisita");
+        if (imgCasa) imgCasa.src = obterUrlImagem(casa, "clube");
+        if (imgVisita) imgVisita.src = obterUrlImagem(visita, "clube");
+        const botaoFechar = document.getElementById("btnFecharModalPartida");
+        if (botaoFechar) { botaoFechar.classList.add("oculto"); botaoFechar.onclick = null; }
+        // O botão "Simular com visual" do Manager sempre abre a transmissão,
+        // mesmo que o jogador tenha usado a opção rápida na partida anterior.
+        window.visualPartidaAtiva = true;
+        window.engineAoVivo = engine;
+        window.prepararVisualizacaoPartida(casa.nome, visita.nome, casa.id, visita.id);
+        engine.simularPartidaAoVivo((min, gc, gv, evento, snapshot) => {
+            setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
+            window.atualizarVisualizacaoPartida(min, evento || "Bola em jogo", gc, gv);
+            if (evento) {
+                const textoPuro = evento.replace(/<[^>]*>/g, "");
+                if (/GOLO|GOL /i.test(textoPuro)) window.tocarSom?.("gol", 0.5);
+            }
+            window.atualizarCentralPartida(min, evento, snapshot);
+        }, (gc, gv, marcadores) => {
+            window.tocarSom?.("apito_fim");
+            setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
+            const listaEventos = document.getElementById("cpEventosList");
+            if (listaEventos) listaEventos.insertAdjacentHTML("afterbegin", `<div class="cp-event cp-event-fim"><span class="cp-event-min">90'</span><div class="cp-event-main"><span class="cp-event-badge cp-badge-fim">FIM DE JOGO</span><span class="cp-event-body">${casa.nome} ${gc} x ${gv} ${visita.nome}</span></div></div>`);
+            if (botaoFechar) {
+                botaoFechar.textContent = "Confirmar Resultado ➔";
+                botaoFechar.classList.remove("oculto");
+                botaoFechar.onclick = () => { modal.classList.add("oculto"); resolve({ gc, gv, marcadores }); };
+            } else resolve({ gc, gv, marcadores });
+        }, (tipo, callback) => window.abrirMiniJogoPenalti(tipo, callback));
+    });
+};
+
+// Depois do motor terminar, os gols/assistências dos artilheiros já foram
+// creditados ao statsTemporada em tempo real pelo próprio MatchEngine (é ele
+// quem sorteia o autor a cada lance). Falta só o que o motor não faz sozinho
+// para NPCs: contar jogo disputado, gerar estatística defensiva real para
+// zagueiros/laterais/goleiros, e preencher o balde de artilharia POR
+// competição (statsCompeticoes), separado do total da temporada.
+function creditarPartidaManagerReal(clubeMandanteId, clubeVisitanteId, golsCasa, golsVisita, marcadores, compId) {
+    [[clubeMandanteId, golsVisita], [clubeVisitanteId, golsCasa]].forEach(([clubeId, golsSofridos]) => {
+        const elenco = montarEscalacaoJogo(clubeId);
+        if (elenco.length === 0) return;
+        const jogoLimpo = golsSofridos === 0;
+        elenco.forEach(j => {
+            if (!j.statsTemporada) j.statsTemporada = { jogos: 0, gols: 0, assistencias: 0 };
+            j.statsTemporada.jogos++;
+            registrarEstatisticaCompeticao(j, compId, 1, 0, 0);
+            if (["Zagueiro", "Lateral", "Goleiro"].includes(j.posicao)) {
+                if (!j.statsTemporada.desarmes) j.statsTemporada.desarmes = 0;
+                if (!j.statsTemporada.interceptacoes) j.statsTemporada.interceptacoes = 0;
+                if (!j.statsTemporada.defesas) j.statsTemporada.defesas = 0;
+                if (!j.statsTemporada.jogosSemSofrerGol) j.statsTemporada.jogosSemSofrerGol = 0;
+                const fatorOvr = Math.max(0, ((j.geral || 60) - 58)) / 100;
+                if (j.posicao === "Goleiro") {
+                    const fatorReflexos = fatorAtributoIndividual(j, "reflexos");
+                    j.statsTemporada.defesas += Math.round((1.5 + fatorOvr * 3.2) * fatorReflexos + Math.random() * 2 - golsSofridos * 0.3);
+                } else {
+                    const fatorDefesa = fatorAtributoIndividual(j, "defesa");
+                    j.statsTemporada.desarmes += Math.round((0.6 + fatorOvr * 2.0) * fatorDefesa + Math.random() * 1.4);
+                    j.statsTemporada.interceptacoes += Math.round((0.5 + fatorOvr * 1.6) * fatorDefesa + Math.random() * 1.2);
+                }
+                if (jogoLimpo) j.statsTemporada.jogosSemSofrerGol++;
+            }
+        });
+    });
+    (marcadores || []).forEach(id => {
+        const autor = id === "player" ? jogador : jogadoresIA.find(j => j.id === id);
+        if (autor) registrarEstatisticaCompeticao(autor, compId, 0, 1, 0);
+    });
+}
+
+// Reproduz o resultado já decidido pelo Manager como uma transmissão curta.
+// Não usa o MatchEngine para não duplicar a rodada mundial; só apresenta os
+// lances antes de aplicar a mesma atualização de tabela que já existia.
+window.reproduzirSimulacaoManager = function(casa, visita, golsCasa, golsVisita, usarVisual = true) {
+    if (!usarVisual) return Promise.resolve();
+    return new Promise(resolve => {
+        const modal = document.getElementById("modalPartida");
+        if (!modal) { resolve(); return; }
+        modal.classList.remove("oculto");
+        setText("placarTimeCasa", casa.nome); setText("placarTimeVisita", visita.nome);
+        setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
+        const imgCasa = document.getElementById("imgTimeCasa"); const imgVisita = document.getElementById("imgTimeVisita");
+        if (imgCasa) imgCasa.src = obterUrlImagem(casa, "clube");
+        if (imgVisita) imgVisita.src = obterUrlImagem(visita, "clube");
+        const botaoFechar = document.getElementById("btnFecharModalPartida");
+        if (botaoFechar) { botaoFechar.classList.add("oculto"); botaoFechar.onclick = null; }
+        // 🎙️ Minutos mais numerosos e espalhados por todo o jogo (em vez de só
+        // 7 marcas) para que a transmissão pareça uma partida inteira, não uma
+        // sequência de golos. Os golos são distribuídos entre os minutos do
+        // meio do jogo, e o resto é preenchido com lances variados (remates,
+        // defesas, escanteios) que alimentam a barra de estatísticas ao vivo.
+        const minutos = [1, 6, 11, 17, 23, 29, 35, 40, 45, 51, 57, 63, 69, 75, 81, 86, 90];
+        const slotsGol = minutos.map((_, i) => i).filter(i => i > 0 && i < minutos.length - 1);
+        for (let i = slotsGol.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [slotsGol[i], slotsGol[j]] = [slotsGol[j], slotsGol[i]]; }
+        const eventosPorSlot = {};
+        const eventosGols = [...Array(golsCasa).fill(casa.nome), ...Array(golsVisita).fill(visita.nome)];
+        eventosGols.forEach((nomeTime, idx) => {
+            const slot = slotsGol[idx % slotsGol.length];
+            eventosPorSlot[slot] = `GOLO do ${nomeTime}`;
+        });
+        const LANCES = [
+            { tipo: "chute", texto: "chuta ao alvo e obriga a defesa" },
+            { tipo: "ataque", texto: "arranca em contra-ataque" },
+            { tipo: "escanteio", texto: "cobra escanteio na área" },
+            { tipo: "fora", texto: "finaliza mas manda por cima" },
+            { tipo: "pressao", texto: "pressiona a saída de bola" }
+        ];
+        let passo = 0; let exibidosCasa = 0; let exibidosVisita = 0;
+
+        // 📊 Este replay não roda o MatchEngine (o placar já foi decidido em
+        // outro lugar, pra não duplicar a rodada) — mas monta o MESMO formato
+        // de estatísticas/notas que o motor real usa, com autor/assistência
+        // sorteados por posição entre os jogadores de verdade dos dois
+        // elencos, pra Central da Partida ficar consistente em qualquer modo.
+        const elencoCasa = (typeof montarEscalacaoJogo === "function" ? montarEscalacaoJogo(casa.id) : []).slice(0, 11);
+        const elencoVisita = (typeof montarEscalacaoJogo === "function" ? montarEscalacaoJogo(visita.id) : []).slice(0, 11);
+        const estatisticas = { casa: cpNovoQuadroStats(), visita: cpNovoQuadroStats() };
+        const notas = new Map();
+        const garantirNota = (j, lado) => {
+            if (!j?.id) return null;
+            if (!notas.has(j.id)) notas.set(j.id, { nome: j.nome, lado, nota: 6.0, condicao: 100, cartao: null, gols: 0, assist: 0 });
+            return notas.get(j.id);
+        };
+        const ajustarNota = (j, lado, delta) => { const e = garantirNota(j, lado); if (e) e.nota = Math.max(3.5, Math.min(10, +(e.nota + delta).toFixed(1))); };
+        const elencoDoLado = (lado) => lado === "casa" ? elencoCasa : elencoVisita;
+
+        // O botão "Simular com visual" do Manager sempre abre a transmissão,
+        // mesmo que o jogador tenha usado a opção rápida na partida anterior.
+        window.visualPartidaAtiva = true;
+        window.prepararVisualizacaoPartida(casa.nome, visita.nome, casa.id, visita.id);
+        const timer = setInterval(() => {
+            const minuto = minutos[passo] || 90;
+            const ladoGol = eventosPorSlot[passo];
+            let textoEvento, evento = null;
+
+            if (ladoGol) {
+                const elencoAtaque = elencoDoLado(ladoGol);
+                const nomeTime = ladoGol === "casa" ? casa.nome : visita.nome;
+                const autor = sortearPonderado(elencoAtaque, PESO_GOL_POS) || { nome: "Autor desconhecido" };
+                const assist = Math.random() < 0.6 ? sortearPonderado(elencoAtaque.filter(j => j.id !== autor.id), PESO_AST_POS) : null;
+                if (ladoGol === "casa") exibidosCasa++; else exibidosVisita++;
+                textoEvento = `GOLO do ${nomeTime}! ${autor.nome}${assist ? ` (assist. ${assist.nome})` : ""} balança as redes.`;
+                estatisticas[ladoGol].remates++; estatisticas[ladoGol].alvo++; estatisticas[ladoGol].area++;
+                estatisticas[ladoGol].xg = +(estatisticas[ladoGol].xg + 0.4 + Math.random() * 0.2).toFixed(2);
+                if (assist) estatisticas[ladoGol].xa = +(estatisticas[ladoGol].xa + 0.35).toFixed(2);
+                ajustarNota(autor, ladoGol, 1.0);
+                if (assist) ajustarNota(assist, ladoGol, 0.5);
+                evento = { tipo: "gol", minuto, lado: ladoGol, jogadorId: autor.id, jogadorNome: autor.nome, assistNome: assist?.nome || null, texto: textoEvento };
+            } else if (passo === 0) {
+                textoEvento = "Início de jogo";
+            } else {
+                const ladoAtaque = Math.random() < 0.5 ? "casa" : "visita";
+                const nomeTime = ladoAtaque === "casa" ? casa.nome : visita.nome;
+                const lance = LANCES[passo % LANCES.length];
+                textoEvento = `${nomeTime} ${lance.texto}`;
+                const atirador = sortearPonderado(elencoDoLado(ladoAtaque), PESO_GOL_POS);
+                const statsAtaque = estatisticas[ladoAtaque];
+                let tipoEvento = "defesa";
+                if (lance.tipo === "chute") {
+                    statsAtaque.remates++; statsAtaque.alvo++; statsAtaque.area++;
+                    statsAtaque.xg = +(statsAtaque.xg + 0.15 + Math.random() * 0.1).toFixed(2);
+                } else if (lance.tipo === "fora") {
+                    statsAtaque.remates++; statsAtaque.fora++;
+                    statsAtaque.xg = +(statsAtaque.xg + 0.05 + Math.random() * 0.08).toFixed(2);
+                    tipoEvento = "trave";
+                } else if (lance.tipo === "escanteio") {
+                    statsAtaque.escanteios++;
+                    tipoEvento = "escanteio";
+                }
+                evento = { tipo: tipoEvento, minuto, lado: ladoAtaque, jogadorId: atirador?.id || null, jogadorNome: atirador?.nome || null, texto: textoEvento };
+            }
+
+            estatisticas.casa.posse = Math.max(35, Math.min(65, Math.round(estatisticas.casa.posse + (Math.random() * 10 - 5))));
+            estatisticas.visita.posse = 100 - estatisticas.casa.posse;
+            notas.forEach(n => { n.condicao = Math.max(70, Math.round(100 - (minuto / 90) * 20 - Math.random() * 3)); });
+            const snapshot = { estatisticas: { casa: { ...estatisticas.casa }, visita: { ...estatisticas.visita } }, notas: Array.from(notas.entries()).map(([id, d]) => ({ id, ...d })), evento };
+
+            setText("uiMinutoJogo", `${minuto}'`); setText("placarMarcadorCasa", exibidosCasa); setText("placarMarcadorVisita", exibidosVisita);
+            window.atualizarVisualizacaoPartida(minuto, textoEvento, exibidosCasa, exibidosVisita);
+            window.atualizarCentralPartida(minuto, textoEvento, snapshot);
+            passo++;
+            if (passo >= minutos.length) {
+                clearInterval(timer);
+                setText("placarMarcadorCasa", golsCasa); setText("placarMarcadorVisita", golsVisita);
+                const listaEventos = document.getElementById("cpEventosList");
+                if (listaEventos) listaEventos.insertAdjacentHTML("afterbegin", `<div class="cp-event cp-event-fim"><span class="cp-event-min">90'</span><div class="cp-event-main"><span class="cp-event-badge cp-badge-fim">FIM DE JOGO</span><span class="cp-event-body">${casa.nome} ${golsCasa} x ${golsVisita} ${visita.nome}</span></div></div>`);
+                if (botaoFechar) {
+                    botaoFechar.textContent = "Confirmar Resultado ➔";
+                    botaoFechar.classList.remove("oculto");
+                    botaoFechar.onclick = () => { modal.classList.add("oculto"); resolve(); };
+                } else resolve();
+            }
+        }, 900);
+    });
+};
+
+// ==========================================
+// 🎤 COLETIVA DE IMPRENSA (pré e pós-jogo, Modo Manager)
+// ==========================================
+// Pausa o fluxo da partida (a função é async e usa await na Promise) até o
+// treinador escolher uma resposta. Cada resposta mexe na confiança da
+// diretoria — não é só decorativo, é outra alavanca de confiança além do
+// próprio resultado do jogo.
+window.abrirColetivaImprensa = function(momento, ctx = {}) {
+    return new Promise(resolve => {
+        const clube = clubeManagerAtual();
+        const nomeRival = ctx.rival?.nome || "adversário";
+        let titulo, pergunta, respostas;
+
+        if (momento === "pre") {
+            titulo = "🎤 Coletiva Pré-Jogo";
+            pergunta = `Como o ${clube?.nome || "clube"} chega para o confronto contra o ${nomeRival} nesta rodada?`;
+            respostas = [
+                { texto: "🔥 \"Vamos com tudo, queremos os três pontos.\"", confianca: 2 },
+                { texto: "⚖️ \"Respeitamos o rival, mas confiamos no nosso trabalho.\"", confianca: 1 },
+                { texto: "🛡️ \"A prioridade é não tomar riscos desnecessários.\"", confianca: 0 }
+            ];
+        } else {
+            const gA = ctx.gA ?? 0, gB = ctx.gB ?? 0;
+            titulo = "🎤 Coletiva Pós-Jogo";
+            if (gA > gB) {
+                pergunta = `Vitória por ${gA} x ${gB} sobre o ${nomeRival}. Qual a sua reação?`;
+                respostas = [
+                    { texto: "🎉 \"Elenco de parabéns, jogo espetacular!\"", confianca: 3 },
+                    { texto: "📈 \"Foi só o começo, tem muito trabalho pela frente.\"", confianca: 1 },
+                    { texto: "🙏 \"Fomos felizes, mas ainda precisamos melhorar.\"", confianca: 1 }
+                ];
+            } else if (gB > gA) {
+                pergunta = `Derrota por ${gA} x ${gB} para o ${nomeRival}. Como explica o resultado?`;
+                respostas = [
+                    { texto: "🤝 \"Assumo a responsabilidade por essa derrota.\"", confianca: 1 },
+                    { texto: "😐 \"O adversário foi melhor hoje.\"", confianca: 0 },
+                    { texto: "😡 \"A arbitragem prejudicou o nosso time.\"", confianca: -3 }
+                ];
+            } else {
+                pergunta = `Empate em ${gA} x ${gB} com o ${nomeRival}. Qual o balanço da partida?`;
+                respostas = [
+                    { texto: "👍 \"Resultado justo, seguimos trabalhando.\"", confianca: 1 },
+                    { texto: "😕 \"Deveríamos ter vencido esse jogo.\"", confianca: 0 },
+                    { texto: "🛡️ \"Um ponto fora de casa sempre vale.\"", confianca: 1 }
+                ];
+            }
+        }
+
+        let modal = document.getElementById("modalColetivaImprensa");
+        if (!modal) {
+            modal = document.createElement("div");
+            modal.id = "modalColetivaImprensa";
+            modal.className = "modal oculto";
+            document.body.appendChild(modal);
+        }
+        modal.innerHTML = `
+            <div class="modal-content coletiva-modal-content">
+                <div class="coletiva-header">
+                    <span class="coletiva-flash"></span><span class="coletiva-flash"></span><span class="coletiva-flash"></span>
+                    <div class="coletiva-header-inner">
+                        <span class="coletiva-mic">🎙️</span>
+                        <div><span class="coletiva-kicker">Sala de Imprensa</span><h2>${titulo}</h2></div>
+                    </div>
+                </div>
+                <div class="coletiva-body">
+                    <div class="coletiva-pergunta">
+                        <span class="coletiva-jornalista">🗞️ Jornalista</span>
+                        <p>"${pergunta}"</p>
+                    </div>
+                    <span class="coletiva-instrucao">Escolhe a tua resposta:</span>
+                    <div id="coletivaRespostas" class="coletiva-respostas"></div>
+                </div>
+            </div>`;
+        const areaRespostas = modal.querySelector("#coletivaRespostas");
+        respostas.forEach(r => {
+            const tom = r.confianca > 0 ? "positiva" : r.confianca < 0 ? "negativa" : "neutra";
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `coletiva-resposta-btn tom-${tom}`;
+            btn.innerHTML = `<span class="coletiva-resposta-texto">${r.texto}</span><span class="coletiva-resposta-tag tom-${tom}">${r.confianca > 0 ? `+${r.confianca}` : r.confianca}</span>`;
+            btn.onclick = () => {
+                managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + r.confianca));
+                modal.classList.add("oculto");
+                if (r.confianca > 0) mostrarToast("Coletiva de Imprensa", `A diretoria gostou da resposta (+${r.confianca} confiança).`, "success");
+                else if (r.confianca < 0) mostrarToast("Coletiva de Imprensa", `A resposta não caiu bem na diretoria (${r.confianca} confiança).`, "danger");
+                resolve();
+            };
+            areaRespostas.appendChild(btn);
+        });
+        modal.classList.remove("oculto");
+    });
+};
+
+window.managerSimularPartida = async function(comVisual = true) {
     const clube = clubeManagerAtual();
     if(!clube) return;
 
@@ -8355,13 +12629,18 @@ window.managerSimularPartida = async function() {
         }
     }
 
-    // The global football calendar is shared by every mode. If the player-mode
-    // season has already run out of scheduled weeks, point the manager at the
-    // Gala instead of quietly desyncing from the rest of the world.
-    const comp = agendaTemporada[rodadaAtual - 1];
-    if(!comp) {
-        mostrarToast("Diretoria", "A época terminou para todos os clubes. Fecha a Gala de fim de temporada antes de continuar.", "info");
-        return;
+    // The global football calendar (agendaTemporada) is the PLAYER-character's
+    // personal calendar — gerarAgenda() only builds it when there is a
+    // `jogador` (it early-returns otherwise, see comment there). In a pure
+    // Manager career (no jogador at all) that array is always empty, so this
+    // guard must only apply when a personal calendar actually exists — otherwise
+    // it fired on literally the first match and made Manager Mode unplayable.
+    if (jogador && agendaTemporada.length > 0) {
+        const comp = agendaTemporada[rodadaAtual - 1];
+        if(!comp) {
+            mostrarToast("Diretoria", "A época terminou para todos os clubes. Fecha a Gala de fim de temporada antes de continuar.", "info");
+            return;
+        }
     }
 
     // Guard against managing the same club the player-character already plays
@@ -8387,6 +12666,7 @@ window.managerSimularPartida = async function() {
     if(mt.jogos >= maxJogos) {
         mostrarToast("Diretoria", "O teu clube já disputou todos os jogos da liga esta época. A avançar o resto do mundo...", "info");
         await window.simularRodadaMundialOnline();
+        gerarPropostasRecebidas(clube);
         rodadaAtual++;
         window.salvarJogo();
         if(typeof atualizarHub === 'function') atualizarHub();
@@ -8399,6 +12679,7 @@ window.managerSimularPartida = async function() {
     if(!advEntry) {
         mostrarToast("Diretoria", "Nenhum adversário disponível esta semana. A avançar a semana...", "info");
         await window.simularRodadaMundialOnline();
+        gerarPropostasRecebidas(clube);
         rodadaAtual++;
         window.salvarJogo();
         if(typeof atualizarHub === 'function') atualizarHub();
@@ -8407,16 +12688,41 @@ window.managerSimularPartida = async function() {
     }
     const rival = clubes.find(c => c.id === advEntry.id);
 
-    // Same statistical model the rest of the league uses for every other
-    // club-vs-club fixture, plus the manager's own tactical bonus and board
-    // confidence — keeps results consistent with the rest of the world instead
-    // of a separate, disconnected formula.
-    const forcaA = (clube.reputacao || 70) + bonusTaticoManager() + (managerEstado.confianca - 50) / 10;
-    const forcaB = rival?.reputacao || 70;
-    const diff = (forcaA - forcaB) / 20;
-    const gA = Math.random() + diff + 0.1 > 0.5 ? Math.floor(Math.random() * 4) : 0;
-    const gB = Math.random() - diff > 0.6 ? Math.floor(Math.random() * 3) : 0;
+    // 🎤 Coletiva pré-jogo: pausa aqui até o treinador responder.
+    await window.abrirColetivaImprensa("pre", { rival });
 
+    // 🎮 MOTOR REAL: com transmissão, o Manager passa a usar o mesmo
+    // MatchEngine (minuto a minuto, com remates/defesas/pênaltis de verdade)
+    // que já roda o Modo Jogador — os golos saem do sorteio real dentro do
+    // elenco de cada clube, não de uma fórmula de diferença de reputação à
+    // parte. O bónus tático e a confiança da diretoria continuam a valer,
+    // só que agora entram como reputação efetiva DENTRO do motor.
+    // A opção "sem transmissão" mantém a fórmula rápida antiga — é o atalho
+    // para quem só quer avançar a rodada sem esperar a simulação completa.
+    let gA, gB, resultadoMotor = null;
+    if (comVisual && rival) {
+        const jogadorFantasma = {
+            id: "npc_fantasma_manager", nome: "—", geral: 60, posicao: "Meio-Campista",
+            energia: 100, clubeId: "__nenhum__", selecaoId: "__nenhum__",
+            estatisticasAtuais: { jogos: 0, gols: 0, assistencias: 0, notas: [] }, lifestyle: {}
+        };
+        const repOriginal = clube.reputacao;
+        clube.reputacao = repOriginal + bonusTaticoManager() + (managerEstado.confianca - 50) / 10;
+        const engine = new MatchEngine(jogadorFantasma, clube.id, rival.id);
+        clube.reputacao = repOriginal;
+        resultadoMotor = await window.reproduzirSimulacaoManagerReal(engine, clube, rival || { nome: "Rival" });
+        gA = resultadoMotor.gc; gB = resultadoMotor.gv;
+    } else {
+        const forcaA = (clube.reputacao || 70) + bonusTaticoManager() + (managerEstado.confianca - 50) / 10;
+        const forcaB = rival?.reputacao || 70;
+        const diff = (forcaA - forcaB) / 20;
+        gA = Math.random() + diff + 0.1 > 0.5 ? Math.floor(Math.random() * 4) : 0;
+        gB = Math.random() - diff > 0.6 ? Math.floor(Math.random() * 3) : 0;
+        await window.reproduzirSimulacaoManager(clube, rival || { nome: "Rival" }, gA, gB, comVisual);
+    }
+
+    // Aplica o placar somente depois da transmissão: assim fechar o modal é a
+    // confirmação explícita do treinador e o mundo não avança escondido.
     mt.jogos++; advEntry.jogos++;
     mt.gols = (mt.gols || 0) + gA; mt.golsSofridos = (mt.golsSofridos || 0) + gB;
     advEntry.gols = (advEntry.gols || 0) + gB; advEntry.golsSofridos = (advEntry.golsSofridos || 0) + gA;
@@ -8430,7 +12736,9 @@ window.managerSimularPartida = async function() {
         mt.pontos += 1; advEntry.pontos += 1; mt.empates = (mt.empates || 0) + 1; advEntry.empates = (advEntry.empates || 0) + 1;
         managerEstado.confianca = Math.max(0, Math.min(100, managerEstado.confianca + 1));
     }
-    if(typeof atribuirEstatisticaNPC === 'function') {
+    if (resultadoMotor) {
+        creditarPartidaManagerReal(clube.id, rival.id, gA, gB, resultadoMotor.marcadores, clube.ligaId);
+    } else if (typeof atribuirEstatisticaNPC === 'function') {
         atribuirEstatisticaNPC(mt.id, gA, clube.ligaId, gB);
         atribuirEstatisticaNPC(advEntry.id, gB, clube.ligaId, gA);
     }
@@ -8442,12 +12750,13 @@ window.managerSimularPartida = async function() {
     } else {
         registrarNoticia("Jogo do manager", `${clube.nome} ${gA} x ${gB} ${rival?.nome || "Rival"} sob o comando de ${managerEstado.treinador?.nome}.`, "Manager");
         mostrarToast("Resultado Manager", `${clube.nome} ${gA} x ${gB} ${rival?.nome || "Rival"}`, gA >= gB ? "success" : "warning");
+        // 🎤 Coletiva pós-jogo: só faz sentido se o treinador ainda tem o cargo.
+        await window.abrirColetivaImprensa("pos", { rival, gA, gB });
     }
 
-    // Keep the rest of the footballing world moving in the same tick, so cups,
-    // internationals and every other league stay in sync with the manager's club
-    // instead of freezing while only the manager's own score changes.
+    // Mantém o calendário mundial sincronizado após a partida do Manager.
     await window.simularRodadaMundialOnline();
+    gerarPropostasRecebidas(clube);
     rodadaAtual++;
     window.salvarJogo();
     if(typeof atualizarHub === 'function') atualizarHub();
@@ -8619,8 +12928,13 @@ window.managerDragStart = function(ev, tipo, id) {
     ev.dataTransfer.setData("text/plain", JSON.stringify({ tipo, id }));
     ev.dataTransfer.effectAllowed = "move";
 };
+// 🎯 Feedback visual do alvo durante o arraste — sem isto, dava pra soltar
+// um jogador "às cegas" sem saber qual vaga ia receber a troca.
+window.managerDragEnter = function(ev) { ev.currentTarget.classList.add("drag-over"); };
+window.managerDragLeave = function(ev) { ev.currentTarget.classList.remove("drag-over"); };
 window.managerDrop = function(ev, tipoAlvo, idAlvo) {
     ev.preventDefault();
+    ev.currentTarget.classList.remove("drag-over");
     let origem; try { origem = JSON.parse(ev.dataTransfer.getData("text/plain")); } catch (e) { return; }
     if (!origem) return;
     const esc = managerEstado.escalacao;
@@ -8630,6 +12944,32 @@ window.managerDrop = function(ev, tipoAlvo, idAlvo) {
     window.managerSelecaoAtiva = null;
     window.salvarJogo();
     renderizarManagerTactics();
+};
+
+// Refaz a escalação titular a partir do zero pelos melhores OVRs por posição
+// — mesma lógica do preenchimento automático inicial, mas disponível a
+// qualquer momento como um botão "Melhor XI", sem precisar trocar de formação.
+window.managerEscalarMelhorXI = function() {
+    const clube = clubeManagerAtual();
+    if (!clube) return;
+    const slots = FORMACOES_SLOTS[managerEstado.tatica.formacao] || FORMACOES_SLOTS["4-3-3"];
+    const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado);
+    if (jogador?.clubeId === clube.id) elenco.push(jogador);
+    const esc = managerEstado.escalacao || { titulares: {}, banco: [], formacaoUsada: null };
+    const usados = new Set();
+    esc.titulares = {};
+    slots.forEach(slot => {
+        const candidato = elenco.filter(p => p.posicao === slot.pos && !usados.has(p.id)).sort((a, b) => b.geral - a.geral)[0]
+            || elenco.filter(p => !usados.has(p.id)).sort((a, b) => b.geral - a.geral)[0];
+        if (candidato) { esc.titulares[slot.id] = candidato.id; usados.add(candidato.id); }
+    });
+    esc.banco = elenco.filter(p => !usados.has(p.id)).sort((a, b) => b.geral - a.geral).slice(0, 7).map(p => p.id);
+    esc.formacaoUsada = managerEstado.tatica.formacao;
+    managerEstado.escalacao = esc;
+    window.managerSelecaoAtiva = null;
+    window.salvarJogo();
+    renderizarManagerTactics();
+    mostrarToast?.("Central Tática", "Escalação reorganizada pelos melhores OVRs por posição.", "success");
 };
 
 function renderizarManagerTactics() {
@@ -8647,24 +12987,31 @@ function renderizarManagerTactics() {
                 ${slots.map(slot => {
                     const p = jogadorManagerPorId(esc.titulares[slot.id]);
                     const selecionado = sel?.tipo === "slot" && sel.id === slot.id;
-                    if (!p) return `<div class="pitch-slot pitch-slot-vazio ${selecionado ? "selecionado" : ""}" style="top:${slot.top}%; left:${slot.left}%;" onclick="managerClicarSlot('${slot.id}')" ondragover="event.preventDefault()" ondrop="managerDrop(event,'slot','${slot.id}')"><span class="pitch-slot-badge">${slot.label}</span><span class="pitch-slot-vazio-icon">+</span></div>`;
-                    return `<div class="pitch-slot ${selecionado ? "selecionado" : ""}" draggable="true" style="top:${slot.top}%; left:${slot.left}%;" onclick="managerClicarSlot('${slot.id}')" ondragstart="managerDragStart(event,'slot','${slot.id}')" ondragover="event.preventDefault()" ondrop="managerDrop(event,'slot','${slot.id}')">
+                    if (!p) return `<div class="pitch-slot pitch-slot-vazio ${selecionado ? "selecionado" : ""}" style="top:${slot.top}%; left:${slot.left}%;" onclick="managerClicarSlot('${slot.id}')" ondragover="event.preventDefault()" ondragenter="managerDragEnter(event)" ondragleave="managerDragLeave(event)" ondrop="managerDrop(event,'slot','${slot.id}')"><span class="pitch-slot-badge">${slot.label}</span><span class="pitch-slot-vazio-icon">+</span></div>`;
+                    // ⚠ Fora de posição: o jogador não joga na posição natural do slot —
+                    // o mesmo desencaixe que agora pesa contra o bónus tático da equipa.
+                    const foraDePosicao = p.posicao !== slot.pos;
+                    const ovrEfetivo = foraDePosicao ? calcularOvrNaPosicao(p, slot.pos) : p.geral;
+                    return `<div class="pitch-slot ${selecionado ? "selecionado" : ""} ${foraDePosicao ? "fora-posicao" : ""}" draggable="true" style="top:${slot.top}%; left:${slot.left}%;" onclick="managerClicarSlot('${slot.id}')" ondragstart="managerDragStart(event,'slot','${slot.id}')" ondragover="event.preventDefault()" ondragenter="managerDragEnter(event)" ondragleave="managerDragLeave(event)" ondrop="managerDrop(event,'slot','${slot.id}')" title="${foraDePosicao ? `Fora da posição natural (${p.posicao}) — OVR cai de ${p.geral} para ${ovrEfetivo} aqui` : ""}">
                         <span class="pitch-slot-badge">${slot.label}</span>
-                        <img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
+                        ${foraDePosicao ? '<span class="pitch-slot-warning">⚠</span>' : ""}
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
                         <strong>${p.nome.split(" ").slice(-1)[0]}</strong>
-                        <small>OVR ${p.geral}</small>
+                        <small class="${foraDePosicao ? "ovr-penalizado" : ""}">OVR ${foraDePosicao ? `<s>${p.geral}</s> ${ovrEfetivo}` : p.geral}</small>
                     </div>`;
                 }).join("")}
             </div>
             <div class="pitch-bench">
-                <h4>Banco de Reservas <small>${sel ? "Clique numa vaga ou reserva para completar a troca" : "Clique num jogador e depois no lugar pra onde ele vai"}</small></h4>
-                <div class="pitch-bench-list" ondragover="event.preventDefault()">
+                <h4>Banco de Reservas <small>${sel ? "Clique numa vaga ou reserva para completar a troca" : "Clique num jogador e depois no lugar pra onde ele vai"}</small>
+                    <button type="button" class="btn-melhor-xi" onclick="managerEscalarMelhorXI()">⚡ Melhor XI</button>
+                </h4>
+                <div class="pitch-bench-list" ondragover="event.preventDefault()" ondragenter="managerDragEnter(event)" ondragleave="managerDragLeave(event)">
                     ${esc.banco.map(id => {
                         const p = jogadorManagerPorId(id);
                         if (!p) return "";
                         const selecionado = sel?.tipo === "banco" && sel.id === id;
-                        return `<div class="pitch-bench-item ${selecionado ? "selecionado" : ""}" draggable="true" onclick="managerClicarBanco('${id}')" ondragstart="managerDragStart(event,'banco','${id}')" ondrop="managerDrop(event,'banco','${id}')">
-                            <img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
+                        return `<div class="pitch-bench-item ${selecionado ? "selecionado" : ""}" draggable="true" onclick="managerClicarBanco('${id}')" ondragstart="managerDragStart(event,'banco','${id}')" ondragenter="managerDragEnter(event)" ondragleave="managerDragLeave(event)" ondrop="managerDrop(event,'banco','${id}')">
+                            <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
                             <span><strong>${p.nome}</strong><small>${p.posicao} • OVR ${p.geral}</small></span>
                         </div>`;
                     }).join("") || `<p style="color:#888; padding:8px;">Banco vazio.</p>`}
@@ -8680,9 +13027,9 @@ function renderizarManagerTactics() {
         const capitaoId = (jogador?.clubeId === clube.id && jogador.eCapitao) ? "player" : (clube.capitaoId || null);
         squadListEl.innerHTML = elenco.map(p => {
             const ehCapitao = p.id === capitaoId;
-            return `<div class="squad-player-item ${titularesIds.has(p.id) ? "titular" : ""}">
-            <img class="squad-player-avatar-img" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
-            <div class="squad-player-info"><span class="squad-player-name">${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</span><span class="squad-player-pos">${p.posicao}${titularesIds.has(p.id) ? " • Titular" : ""}</span></div>
+            return `<div class="squad-player-item ${titularesIds.has(p.id) ? "titular" : ""}" oncontextmenu="abrirMenuContextoJogador(event, '${p.id}')">
+            <img loading="lazy" decoding="async" class="squad-player-avatar-img" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'" onclick="abrirPerfilJogador('${p.id}')" style="cursor:pointer">
+            <div class="squad-player-info"><span class="squad-player-name" onclick="abrirPerfilJogador('${p.id}')" style="cursor:pointer">${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</span><span class="squad-player-pos">${p.posicao}${titularesIds.has(p.id) ? " • Titular" : ""}</span></div>
             <span class="squad-player-ovr">${p.geral}</span>
         </div>`;
         }).join("");
@@ -8706,43 +13053,130 @@ function renderizarManagerFullSquad() {
     if (!clube || !el) return;
     const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado).sort((a, b) => b.geral - a.geral);
     if (jogador?.clubeId === clube.id) elenco.unshift(jogador);
-    // 🆕 Braçadeira (C) e "Titular": usa a escalação REAL do treinador (a mesma
-    // do campo tático, com os ajustes manuais dele) como fonte da verdade para
-    // este clube — e não o cálculo automático genérico (esse é só para simular
-    // estatísticas dos milhares de clubes que ninguém gerencia diretamente).
-    // Se o próprio jogador já conquistou a braçadeira (conversa com o técnico),
-    // isso tem prioridade sobre qualquer outro cálculo.
     const esc = garantirEscalacaoManager(clube);
     const idsTitulares = new Set(Object.values(esc.titulares));
-    obterTitularesClube(clube.id); // garante fallback (capitaoId) computado, caso o jogador não seja capitão
+    obterTitularesClube(clube.id);
     const capitaoId = (jogador?.clubeId === clube.id && jogador.eCapitao) ? "player" : (clube.capitaoId || null);
     el.innerHTML = `<div class="manager-full-squad-list">${elenco.map(p => {
         const ehCapitao = p.id === capitaoId;
         const ehTitular = idsTitulares.has(p.id) || ehCapitao;
+        const ehJogadorReal = p.id === "player" || (jogador && p.id === jogador.id);
         return `
-        <div class="manager-row ${ehTitular ? 'manager-row-titular' : ''}" onclick="abrirPerfilJogador('${p.id}')">
-            <img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
-            <span><strong>${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong><small>${p.posicao} • ${p.idade || "-"} anos${ehTitular ? ' • Titular' : ''}</small></span>
-            <em>OVR ${p.geral}</em>
-            <em>${formatarMoeda(p.valorMercadoNum || calcularValorMercadoJogador(p))}</em>
+        <div class="manager-row ${ehTitular ? 'manager-row-titular' : ''}" oncontextmenu="abrirMenuContextoJogador(event, '${p.id}')">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'" onclick="abrirPerfilJogador('${p.id}')" style="cursor:pointer">
+            <span onclick="abrirPerfilJogador('${p.id}')" style="cursor:pointer">
+                <strong>${p.nome}${ehCapitao ? ' <span class="badge-capitao" title="Capitão">C</span>' : ''}</strong>
+                <small>${p.posicao} • ${p.idade || "-"} anos${ehTitular ? ' • <span style="color:#10b981; font-weight:700;">Titular</span>' : ''}</small>
+            </span>
+            <span class="squad-player-ovr">OVR ${p.geral}</span>
+            <em style="color:#cbd5e1; font-weight:700; margin-left:8px;">${formatarMoeda(p.valorMercadoNum || calcularValorMercadoJogador(p))}</em>
+            ${ehJogadorReal ? "" : `<button class="btn btn-danger btn-sm" type="button" onclick="event.stopPropagation(); managerVenderJogador('${p.id}')" title="Vender jogador">Vender</button>`}
         </div>`;
-    }).join("") || `<p style="color:#aaa;">Elenco vazio.</p>`}</div>`;
+    }).join("") || `<p style="color:#94a3b8; text-align:center; padding:20px;">Elenco vazio.</p>`}</div>`;
+}
+
+// 🔍 Estado dos filtros do mercado do manager (posição, idade, nacionalidade,
+// valor). Persiste entre re-renderizações da aba, mas é só um filtro de
+// exibição — não altera elenco, valores nem nenhuma regra do jogo.
+window.filtroMercadoManager = window.filtroMercadoManager || { posicao: "", idadeMax: "", nacionalidade: "", valorMax: "" };
+
+function montarFiltrosMercadoManager(el) {
+    if (document.getElementById("transferFiltrosManager")) return;
+    const nacionalidades = [...new Set(jogadoresIA.map(p => p.nacionalidade).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const barra = document.createElement("div");
+    barra.id = "transferFiltrosManager";
+    barra.className = "transfer-filtros";
+    barra.innerHTML = `
+        <select id="filtroMercadoPosicao" title="Posição">
+            <option value="">Posição (todas)</option>
+            ${["Goleiro", "Zagueiro", "Lateral", "Volante", "Meio-Campista", "Meia Ofensivo", "Ponta", "Atacante"].map(p => `<option value="${p}">${p}</option>`).join("")}
+        </select>
+        <select id="filtroMercadoIdade" title="Idade">
+            <option value="">Idade (todas)</option>
+            <option value="21">Até 21 anos</option>
+            <option value="23">Até 23 anos</option>
+            <option value="27">Até 27 anos</option>
+            <option value="30">Até 30 anos</option>
+            <option value="99">Acima de 30 anos</option>
+        </select>
+        <select id="filtroMercadoNacionalidade" title="Nacionalidade">
+            <option value="">Nacionalidade (todas)</option>
+            ${nacionalidades.map(n => `<option value="${n}">${n}</option>`).join("")}
+        </select>
+        <select id="filtroMercadoValor" title="Valor de mercado">
+            <option value="">Valor (todos)</option>
+            <option value="5000000">Até €5M</option>
+            <option value="20000000">Até €20M</option>
+            <option value="50000000">Até €50M</option>
+            <option value="999000000">Acima de €50M</option>
+        </select>
+        <button id="btnLimparFiltroMercado" class="btn" type="button">Limpar filtros</button>`;
+    el.parentElement.insertBefore(barra, el);
+    const aplicar = () => {
+        const f = window.filtroMercadoManager;
+        f.posicao = document.getElementById("filtroMercadoPosicao").value;
+        f.idadeMax = document.getElementById("filtroMercadoIdade").value;
+        f.nacionalidade = document.getElementById("filtroMercadoNacionalidade").value;
+        f.valorMax = document.getElementById("filtroMercadoValor").value;
+        renderizarManagerTransfers(document.getElementById("transfer-search-input")?.value || "");
+    };
+    barra.querySelectorAll("select").forEach(s => s.addEventListener("change", aplicar));
+    document.getElementById("btnLimparFiltroMercado").addEventListener("click", () => {
+        window.filtroMercadoManager = { posicao: "", idadeMax: "", nacionalidade: "", valorMax: "" };
+        barra.querySelectorAll("select").forEach(s => s.value = "");
+        renderizarManagerTransfers(document.getElementById("transfer-search-input")?.value || "");
+    });
 }
 
 function renderizarManagerTransfers(termoBusca = "") {
     const clube = clubeManagerAtual();
     const el = document.getElementById("transfer-results");
     if (!clube || !el) return;
+    montarFiltrosMercadoManager(el);
+    const f = window.filtroMercadoManager;
+    // Mantém os selects sincronizados com o estado ao re-renderizar (ex.:
+    // depois de trocar de aba e voltar para o mercado).
+    const elPos = document.getElementById("filtroMercadoPosicao"); if (elPos) elPos.value = f.posicao;
+    const elIda = document.getElementById("filtroMercadoIdade"); if (elIda) elIda.value = f.idadeMax;
+    const elNac = document.getElementById("filtroMercadoNacionalidade"); if (elNac) elNac.value = f.nacionalidade;
+    const elVal = document.getElementById("filtroMercadoValor"); if (elVal) elVal.value = f.valorMax;
+
+    const passaFiltros = (p) => {
+        if (f.posicao && p.posicao !== f.posicao) return false;
+        if (f.idadeMax) {
+            const max = Number(f.idadeMax);
+            const idade = p.idade || 24;
+            if (max === 99 ? !(idade > 30) : !(idade <= max)) return false;
+        }
+        if (f.nacionalidade && p.nacionalidade !== f.nacionalidade) return false;
+        if (f.valorMax) {
+            const max = Number(f.valorMax);
+            const valor = p.valorMercadoNum || calcularValorMercadoJogador(p);
+            if (max === 999000000 ? !(valor > 50000000) : !(valor <= max)) return false;
+        }
+        return true;
+    };
+    const temFiltroAtivo = !!(f.posicao || f.idadeMax || f.nacionalidade || f.valorMax);
+
     let lista;
     if (termoBusca.trim()) {
         const termo = termoBusca.trim().toLowerCase();
-        lista = jogadoresIA.filter(p => p.clubeId !== clube.id && !p.aposentado && p.nome.toLowerCase().includes(termo)).slice(0, 20);
+        lista = jogadoresIA.filter(p => p.clubeId !== clube.id && !p.aposentado && p.nome.toLowerCase().includes(termo) && passaFiltros(p)).slice(0, 30);
     } else {
-        lista = jogadoresIA.filter(p => p.clubeId !== clube.id && !p.aposentado && p.geral <= (clube.reputacao || 70) + 12)
-            .sort((a, b) => b.geral - a.geral).slice(0, 12);
+        lista = jogadoresIA.filter(p => p.clubeId !== clube.id && !p.aposentado && passaFiltros(p) && (temFiltroAtivo || p.geral <= (clube.reputacao || 70) + 12))
+            .sort((a, b) => b.geral - a.geral).slice(0, 30);
     }
-    el.innerHTML = lista.map(p => `<div class="manager-row"><img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'"><span><strong>${p.nome}</strong><small>${p.posicao} • OVR ${p.geral} • ${clubes.find(c => c.id === p.clubeId)?.nome || "Sem clube"}</small></span><button class="btn btn-primary" onclick="managerEnviarProposta('${p.id}')">${formatarMoeda(p.valorMercadoNum || calcularValorMercadoJogador(p))}</button></div>`).join("")
-        || `<p style="color:#aaa;">Nenhum jogador encontrado.</p>`;
+    el.innerHTML = lista.map(p => `
+        <div class="manager-row">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
+            <span>
+                <strong>${p.nome}</strong>
+                <small>${p.posicao} • ${p.idade || "?"} anos • ${p.nacionalidade || "—"} • ${clubes.find(c => c.id === p.clubeId)?.nome || "Sem clube"}</small>
+            </span>
+            <span class="squad-player-ovr" style="margin-right:8px;">OVR ${p.geral}</span>
+            <button class="btn btn-primary btn-sm" onclick="managerAbrirNegociacaoContratacao('${p.id}')">💰 ${formatarMoeda(p.valorMercadoNum || calcularValorMercadoJogador(p))}</button>
+        </div>`).join("")
+        || `<p style="color:#94a3b8; text-align:center; padding:20px;">Nenhum jogador encontrado com estes filtros.</p>`;
 }
 
 function renderizarManagerFinance() {
@@ -8775,17 +13209,174 @@ function renderizarManagerFinance() {
         <div class="finance-overview">
             <div class="finance-card"><h4>Orçamento de Transferências</h4><strong id="finance-transfer-budget">${formatarMoeda(managerEstado.orcamentoTransferencias)}</strong></div>
             <div class="finance-card"><h4>Folha Salarial Anual</h4><strong id="finance-wage-budget">${formatarMoeda(managerEstado.folhaSalarial)}</strong></div>
-            <div class="finance-card"><h4>Confiança da Diretoria</h4><strong>${managerEstado.confianca}%</strong></div>
+            <div class="finance-card">
+                <h4>Confiança da Diretoria</h4><strong>${managerEstado.confianca}%</strong>
+                <div class="manager-confidence-track"><div class="manager-confidence-fill" style="width:${Math.max(0, Math.min(100, managerEstado.confianca))}%; background:${managerEstado.confianca >= 60 ? "#10b981" : managerEstado.confianca >= 30 ? "#f59e0b" : "#ef4444"};"></div></div>
+            </div>
         </div>
-        <section class="manager-panel" style="margin-top:16px;">
-            <h3>Posição na Liga</h3>
-            ${posicaoHtml}
-            <button class="btn btn-primary" style="margin-top:12px;" onclick="managerSimularPartida()">${temporadaCompleta ? "Avançar Época" : "Simular Próximo Jogo"}</button>
+        <div class="manager-grid-2col" style="margin-top:16px;">
+            <div>
+                <section class="manager-panel">
+                    <h3>Posição na Liga</h3>
+                    ${posicaoHtml}
+                    <button class="btn btn-primary" style="margin-top:12px;" onclick="managerSimularPartida()">${temporadaCompleta ? "Avançar Época" : "Simular Próximo Jogo"}</button>
+                </section>
+            </div>
+            <div>
+                <section class="manager-panel">
+                    <h3>Categoria de Base <small style="color:#aaa; font-weight:400; text-transform:none;">(${managerEstado.promocoesBaseTemporada || 0}/${LIMITE_PROMOCOES_BASE_POR_TEMPORADA} promoções usadas nesta temporada)</small></h3>
+                    ${(managerEstado.base || []).map(p => `<div class="manager-row"><img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'"><span><strong>${p.nome}</strong><small>${p.posicao} • OVR ${p.geral} • POT ${p.potencial}</small></span><button class="btn btn-success" ${(managerEstado.promocoesBaseTemporada || 0) >= LIMITE_PROMOCOES_BASE_POR_TEMPORADA ? "disabled title=\"Limite de promoções da temporada atingido\"" : ""} onclick="managerPromoverJovem('${p.id}')">Promover</button></div>`).join("") || `<p style="color:#aaa;">Sem jovens na base.</p>`}
+                </section>
+                <section class="manager-panel" style="margin-top:16px;">
+                    <h3>Comissão Técnica</h3>
+                    ${managerEstado.auxiliarTecnico ? `
+                        <div class="manager-row"><span style="font-size:1.6rem;">${managerEstado.auxiliarTecnico.icone}</span><span><strong>${managerEstado.auxiliarTecnico.nome}</strong><small>${managerEstado.auxiliarTecnico.tipo} • ${managerEstado.auxiliarTecnico.nacionalidade} • ${formatarMoeda(managerEstado.auxiliarTecnico.custoAnual)}/ano</small></span><button class="btn btn-danger" onclick="managerDemitirAuxiliar()">Demitir</button></div>
+                        <p style="color:#aaa; font-size:0.85rem; margin-top:8px;">${managerEstado.auxiliarTecnico.desc}</p>
+                    ` : `
+                        <p style="color:#aaa; margin-bottom:10px;">Nenhum auxiliar técnico contratado — contrate um da comissão disponível abaixo.</p>
+                        ${(managerEstado.auxiliaresDisponiveis || []).map(a => `<div class="manager-row"><span style="font-size:1.6rem;">${a.icone}</span><span><strong>${a.nome}</strong><small>${a.tipo} • ${a.nacionalidade} • ${formatarMoeda(a.custoAnual)}/ano</small></span><button class="btn btn-success" onclick="managerContratarAuxiliar('${a.id}')">Contratar</button></div>`).join("") || `<p style="color:#aaa;">Nenhum candidato disponível no momento.</p>`}
+                    `}
+                </section>
+            </div>
+        </div>`;
+}
+
+// 📄 Aba "Contratos": inbox de propostas recebidas de outros clubes pelos
+// teus jogadores (aceitar/recusar/contrapropor) + lista do elenco com anos
+// de contrato restantes e um painel de renovação por jogador.
+function renderizarManagerContratos() {
+    const clube = clubeManagerAtual();
+    const el = document.getElementById("manager-contracts-panel");
+    if (!clube || !el) return;
+
+    const propostas = (managerEstado.propostasRecebidas || []).filter(o => o.status === "pendente");
+    const elenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado && p.id !== "player" && !(jogador && p.id === jogador.id))
+        .sort((a, b) => (a.contrato ?? 99) - (b.contrato ?? 99));
+
+    const propostasHtml = propostas.length ? propostas.map(o => `
+        <div class="manager-row" style="flex-wrap:wrap;">
+            <span style="flex:1 1 100%;"><strong>${o.jogadorNome}</strong><small>Proposta do ${o.clubeCompradorNome} • ${formatarMoeda(o.valor)}</small></span>
+            <button class="btn btn-success btn-sm" onclick="managerResponderProposta('${o.id}','aceitar')">Aceitar</button>
+            <button class="btn btn-sm" onclick="managerResponderProposta('${o.id}','contraproposta')">Contrapropor (+20%)</button>
+            <button class="btn btn-danger btn-sm" onclick="managerResponderProposta('${o.id}','rejeitar')">Recusar</button>
+        </div>`).join("") : `<p style="color:#aaa;">Nenhuma proposta pendente no momento.</p>`;
+
+    const contratosHtml = elenco.map(p => {
+        const anos = p.contrato ?? 0;
+        const salario = salarioAtualJogador(p);
+        const alerta = anos <= 1;
+        const anosSugeridos = Math.max(2, Math.min(5, 6 - Math.floor((p.idade || 24) / 8)));
+        const salarioSugerido = Math.floor(salario * 1.12);
+        return `
+        <div class="manager-row" style="flex-wrap:wrap;">
+            <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
+            <span><strong>${p.nome}</strong><small>${p.posicao} • OVR ${p.geral} • ${formatarMoeda(salario)}/sem</small></span>
+            <em style="${alerta ? 'color:var(--danger);' : ''}">${anos} ano(s)</em>
+            <button class="btn btn-sm" type="button" onclick="managerAbrirNegociacaoContrato('${p.id}')">Renovar</button>
+            <div id="negociacao-contrato-${p.id}" class="negociacao-contrato-painel">
+                <div class="negociacao-contrato-campos">
+                    <label>Anos <input type="number" id="renovar-anos-${p.id}" data-campo="anos" min="1" max="6" value="${anosSugeridos}"></label>
+                    <label>Salário/sem <input type="number" id="renovar-salario-${p.id}" data-campo="salario" step="1000" value="${salarioSugerido}"></label>
+                </div>
+                <button class="btn btn-primary btn-sm" type="button" onclick="managerPropoRenovacao('${p.id}')">Propor renovação</button>
+            </div>
+        </div>`;
+    }).join("") || `<p style="color:#aaa;">Elenco vazio.</p>`;
+
+    el.innerHTML = `
+        <section class="manager-panel">
+            <h3>📨 Propostas Recebidas</h3>
+            ${propostasHtml}
         </section>
         <section class="manager-panel" style="margin-top:16px;">
-            <h3>Categoria de Base</h3>
-            ${(managerEstado.base || []).map(p => `<div class="manager-row"><img src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'"><span><strong>${p.nome}</strong><small>${p.posicao} • OVR ${p.geral} • POT ${p.potencial}</small></span><button class="btn btn-success" onclick="managerPromoverJovem('${p.id}')">Promover</button></div>`).join("") || `<p style="color:#aaa;">Sem jovens na base.</p>`}
+            <h3>📄 Contratos do Elenco</h3>
+            <p class="manager-mini-note">Contrato em vermelho = 1 ano ou menos restante — o jogador pode sair de graça no fim da época.</p>
+            ${contratosHtml}
         </section>`;
+}
+
+// Abre uma área interna da Central do Manager. A função é usada tanto pelas
+// abas superiores quanto pelos atalhos próprios da barra lateral.
+window.abrirAbaManager = function(id = "view-manager-tactics") {
+    const alvo = document.getElementById(id);
+    if (!alvo) return;
+    window.managerAbaAtiva = id;
+    document.querySelectorAll("#view-manager .manager-tab").forEach(b => b.classList.toggle("active", b.dataset.view === id));
+    document.querySelectorAll("#view-manager .manager-view").forEach(v => v.classList.toggle("active", v.id === id));
+};
+
+// Reaproveita o layout do Hub da Época, mas troca completamente os números e
+// ações pessoais por informações do clube que o treinador comanda.
+function renderizarHubManager() {
+    if (window.gameMode !== "manager") return;
+    const hub = document.getElementById("view-home");
+    if (!hub) return;
+    const clube = clubeManagerAtual();
+    if (!managerEstado.ativo || !clube) {
+        hub.innerHTML = `<div class="manager-shell">
+            <div class="manager-hero">
+                <div><span class="comp-int-kicker">Carreira de treinador</span><h2>🧠 O teu Hub de Manager está pronto</h2><p>Escolhe um clube para desbloquear central tática, banco de reservas, mercado de transferências, contratos e simulação visual das partidas.</p></div>
+                <button class="btn btn-warning enhanced-btn" style="padding:16px 26px; font-size:1rem;" onclick="document.querySelector('.menu-item[data-view=\'view-manager\']')?.click()">🏟️ Escolher clube ➔</button>
+            </div>
+            <div class="manager-hub-grid">
+                <section class="manager-panel"><h3>⚽ Central Tática</h3><p style="color:#94a3b8; margin:0;">Monte a escalação em campo, ajuste formação, mentalidade e instruções antes de cada rodada.</p></section>
+                <section class="manager-panel"><h3>💼 Mercado & Contratos</h3><p style="color:#94a3b8; margin:0;">Negocie contratações, propostas recebidas e renovações de contrato do elenco.</p></section>
+            </div>
+        </div>`;
+        return;
+    }
+    const tabela = tabelasLigas[clube.ligaId] || [];
+    const meu = tabela.find(t => t.id === clube.id);
+    const rival = tabela.filter(t => t.id !== clube.id).sort((a, b) => (a.jogos || 0) - (b.jogos || 0))[0];
+    const clubeRival = clubes.find(c => c.id === rival?.id);
+    const posicao = meu ? [...tabela].sort((a,b) => (b.pontos || 0) - (a.pontos || 0)).findIndex(t => t.id === clube.id) + 1 : "—";
+    const confCor = managerEstado.confianca >= 60 ? "#10b981" : managerEstado.confianca >= 30 ? "#f59e0b" : "#ef4444";
+    hub.innerHTML = `<div class="manager-shell">
+        <div class="manager-hero">
+            <div style="display:flex; align-items:center; gap:16px;">
+                <img loading="lazy" decoding="async" src="${obterUrlImagem(clube, "clube")}" onerror="this.style.visibility='hidden'" style="width:58px; height:58px; object-fit:contain; background:rgba(255,255,255,.06); border-radius:14px; padding:8px; border:1px solid rgba(212,175,55,.3);">
+                <div><span class="comp-int-kicker">Central do treinador</span><h2>${clube.nome}</h2><p>🎯 ${objetivoDiretoria(clube)}. A preparação começa no campo tático.</p></div>
+            </div>
+            <div class="manager-license"><strong style="color:${confCor};">${managerEstado.confianca}%</strong><span>confiança da diretoria</span></div>
+        </div>
+        ${(managerEstado.propostasRecebidas || []).length ? `<section class="manager-panel" style="border:1px solid rgba(250,204,21,.4); margin-bottom:20px;"><h3>📨 Propostas Recebidas</h3>
+            ${managerEstado.propostasRecebidas.map((p, i) => `<div class="manager-row" style="flex-wrap:wrap;">
+                <span style="width:38px; height:38px; border-radius:50%; background:linear-gradient(135deg, rgba(212,175,55,.35), rgba(16,185,129,.25)); display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0;">${p.tipo === "clube" ? "⚽" : "🌍"}</span>
+                <span><strong>${p.tipo === "clube" ? p.nome : `Seleção ${p.nome}`}</strong><small>${p.tipo === "clube" ? `Reputação ${p.reputacao}` : "Convite internacional"}</small></span>
+                <span style="display:flex; gap:6px;"><button class="btn btn-success btn-sm" onclick="managerAceitarProposta(${i})">Aceitar</button><button class="btn btn-danger btn-sm" onclick="managerRecusarProposta(${i})">Recusar</button></span>
+            </div>`).join("")}
+        </section>` : ""}
+        <div class="manager-hub-grid">
+            <section class="manager-next-match"><span class="comp-int-kicker">Próximo compromisso</span><div class="manager-next-clubs"><span><img loading="lazy" decoding="async" src="${obterUrlImagem(clube, "clube")}" onerror="this.style.visibility='hidden'">${clube.nome}</span><b>VS</b><span>${clubeRival?.nome || "Adversário a definir"}</span></div><p style="color:#8b98a3;margin:0; font-size:.88rem;">Defina os titulares, o banco e o estilo antes de avançar a rodada.</p><div class="manager-quick-actions"><button class="btn btn-success" onclick="managerSimularPartida(true)">▶ Simular com visual</button><button class="btn" onclick="managerSimularPartida(false)">⏩ Simulação rápida</button></div></section>
+            <section class="manager-panel"><h3>📊 Resumo do clube</h3><div class="manager-summary-list"><div><span>🏆 Posição na liga</span><strong>${posicao}${meu ? `º / ${tabela.length}` : ""}</strong></div><div><span>⭐ Pontos</span><strong>${meu?.pontos || 0}</strong></div><div><span>💰 Orçamento</span><strong>${formatarMoeda(managerEstado.orcamentoTransferencias)}</strong></div><div><span>⚙️ Formação</span><strong>${managerEstado.tatica.formacao}</strong></div></div></section>
+        </div>
+        <section class="manager-panel" style="margin-top:20px"><h3>🗓️ Preparação da semana</h3><div class="manager-quick-actions"><button class="btn btn-primary" onclick="window.abrirAbaManager('view-manager-tactics'); document.querySelector('.menu-item[data-view=\'view-manager\']')?.click();">📋 Organizar escalação</button><button class="btn btn-primary" onclick="window.abrirAbaManager('view-manager-transfers'); document.querySelector('.menu-item[data-view=\'view-manager\']')?.click();">🔍 Abrir mercado</button><button class="btn btn-primary" onclick="window.abrirAbaManager('view-manager-contracts'); document.querySelector('.menu-item[data-view=\'view-manager\']')?.click();">📄 Ver contratos</button></div></section>
+        <div class="manager-hub-grid" style="margin-top:20px">
+            <section class="manager-panel">
+                <h3>📈 Retrospecto da temporada</h3>
+                <div class="manager-retrospecto-grid">
+                    <div class="retrospecto-item vitoria"><strong>${meu?.vitorias || 0}</strong><span>Vitórias</span></div>
+                    <div class="retrospecto-item empate"><strong>${meu?.empates || 0}</strong><span>Empates</span></div>
+                    <div class="retrospecto-item derrota"><strong>${meu?.derrotas || 0}</strong><span>Derrotas</span></div>
+                    <div class="retrospecto-item"><strong>${meu?.gols ?? 0}-${meu?.golsSofridos ?? 0}</strong><span>Saldo de gols</span></div>
+                </div>
+            </section>
+            <section class="manager-panel">
+                <h3>🌟 Destaques do elenco</h3>
+                ${(() => {
+                    const meuElenco = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado);
+                    const melhorOVR = [...meuElenco].sort((a, b) => b.geral - a.geral)[0];
+                    const jovemPromessa = meuElenco.filter(p => (p.idade || 30) <= 21).sort((a, b) => b.geral - a.geral)[0];
+                    const linha = (rotulo, p) => p ? `<div class="manager-row" style="margin-bottom:8px;">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(p, 'jogador')}" onerror="this.style.visibility='hidden'">
+                        <span><strong>${p.nome}</strong><small>${rotulo} • ${p.posicao} • ${p.idade || "?"} anos</small></span>
+                        <span class="squad-player-ovr">OVR ${p.geral}</span>
+                    </div>` : "";
+                    return linha("⭐ Melhor do elenco", melhorOVR) + linha("💎 Joia da base", jovemPromessa) || `<p style="color:#94a3b8; margin:0;">Elenco vazio.</p>`;
+                })()}
+            </section>
+        </div>
+    </div>`;
 }
 
 function wireManagerControls() {
@@ -8794,10 +13385,7 @@ function wireManagerControls() {
 
     document.querySelectorAll("#view-manager .manager-tab").forEach(btn => {
         btn.onclick = () => {
-            document.querySelectorAll("#view-manager .manager-tab").forEach(b => b.classList.remove("active"));
-            document.querySelectorAll("#view-manager .manager-view").forEach(v => v.classList.remove("active"));
-            btn.classList.add("active");
-            document.getElementById(btn.dataset.view)?.classList.add("active");
+            window.abrirAbaManager(btn.dataset.view);
         };
     });
 
@@ -8823,13 +13411,24 @@ function wireManagerControls() {
 function renderizarManager() {
     const el = document.getElementById("view-manager");
     if(!el) return;
+    configurarNavegacaoPorModo();
     const treinador = managerEstado.treinador || { nome: jogador?.nome ? `Mister ${jogador.nome}` : "Novo Treinador", reputacao: Math.max(45, Math.min(88, Math.round((jogador?.geral || 65) * 0.9))), ataque: 62, defesa: 62, tatica: 62 };
     managerEstado.treinador = treinador;
 
     const dashboardEl = el.querySelector(".manager-dashboard");
 
+    if (managerEstado.ativo && managerEstado.selecaoId) {
+        if (dashboardEl) dashboardEl.style.display = "none";
+        const pick = document.getElementById("manager-pick-club-screen");
+        if (pick) pick.style.display = "none";
+        renderizarManagerSelecao(el, treinador);
+        return;
+    }
+
     if(!managerEstado.ativo || !managerEstado.clubeId) {
         if (dashboardEl) dashboardEl.style.display = "none";
+        const painelSelecao = document.getElementById("manager-selecao-screen");
+        if (painelSelecao) painelSelecao.style.display = "none";
         let pick = document.getElementById("manager-pick-club-screen");
         if (!pick) { pick = document.createElement("div"); pick.id = "manager-pick-club-screen"; el.insertBefore(pick, el.firstChild); }
         pick.style.display = "block";
@@ -8844,10 +13443,15 @@ function renderizarManager() {
                     <div class="manager-license"><strong>REP ${treinador.reputacao}</strong><span>${treinador.nome}</span></div>
                 </div>
                 <div class="manager-club-grid">
-                    ${disponiveis.map(c => `<button class="manager-club-card" onclick="managerAssumirClube('${c.id}')">
-                        <img src="${obterUrlImagem(c, 'clube')}" alt="${c.nome}" onerror="this.style.visibility='hidden'">
-                        <strong>${c.nome}</strong><span>Reputacao ${c.reputacao} • ${competicoes.find(l=>l.id===c.ligaId)?.nome || "Liga"}</span>
-                    </button>`).join("")}
+                    ${disponiveis.map(c => {
+                        const estrelas = Math.max(1, Math.min(5, Math.round((c.reputacao || 60) / 20)));
+                        return `<button class="manager-club-card" onclick="managerAssumirClube('${c.id}')">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(c, 'clube')}" alt="${c.nome}" onerror="this.style.visibility='hidden'">
+                        <strong>${c.nome}</strong>
+                        <span>🏆 ${competicoes.find(l=>l.id===c.ligaId)?.nome || "Liga"}</span>
+                        <div style="margin-top:8px; color:var(--world-cup-gold); font-size:.78rem; letter-spacing:2px;" title="Reputação ${c.reputacao}">${"★".repeat(estrelas)}${"☆".repeat(5 - estrelas)}</div>
+                    </button>`;
+                    }).join("")}
                 </div>
             </div>`;
         return;
@@ -8855,6 +13459,8 @@ function renderizarManager() {
 
     const pick = document.getElementById("manager-pick-club-screen");
     if (pick) pick.style.display = "none";
+    const painelSelecaoAtivo = document.getElementById("manager-selecao-screen");
+    if (painelSelecaoAtivo) painelSelecaoAtivo.style.display = "none";
     if (dashboardEl) dashboardEl.style.display = "";
 
     const clube = clubeManagerAtual();
@@ -8863,18 +13469,54 @@ function renderizarManager() {
 
     const nomeEl = document.getElementById("manager-club-name");
     if (nomeEl) nomeEl.textContent = `${clube.nome} — ${objetivoDiretoria(clube)}`;
+    const logoEl = document.getElementById("manager-header-logo");
+    if (logoEl) { logoEl.src = obterUrlImagem(clube, "clube"); logoEl.alt = clube.nome; logoEl.style.display = ""; }
     const budgetEl = document.getElementById("manager-budget");
     if (budgetEl) budgetEl.textContent = formatarMoeda(managerEstado.orcamentoTransferencias);
     const confEl = document.getElementById("manager-confidence");
     if (confEl) confEl.textContent = `${managerEstado.confianca}%`;
+    // 📊 Barra de confiança: verde tranquilo / amarelo atenção / vermelho perigo.
+    const confFillEl = document.getElementById("manager-confidence-fill");
+    if (confFillEl) {
+        confFillEl.style.width = `${Math.max(0, Math.min(100, managerEstado.confianca))}%`;
+        confFillEl.style.background = managerEstado.confianca >= 60 ? "#10b981" : managerEstado.confianca >= 30 ? "#f59e0b" : "#ef4444";
+    }
     const squadSizeEl = document.getElementById("manager-squad-size");
     if (squadSizeEl) squadSizeEl.textContent = jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado).length;
+    const objetivoEl = document.getElementById("manager-objetivo");
+    if (objetivoEl) objetivoEl.textContent = objetivoDiretoria(clube);
+    // 🔔 Badge de propostas pendentes na aba "Contratos & Propostas" — feedback
+    // visual imediato de que há algo esperando decisão, sem precisar entrar na aba.
+    const badgeContratos = document.getElementById("manager-tab-badge-contracts");
+    if (badgeContratos) {
+        const pendentes = (managerEstado.propostasRecebidas || []).length;
+        badgeContratos.textContent = pendentes;
+        badgeContratos.classList.toggle("oculto", pendentes === 0);
+    }
+
+    // Converte o cartão lateral em identidade de treinador enquanto este modo
+    // estiver ativo, substituindo nível/idade/energia do atleta por KPIs do clube.
+    const sideNome = document.getElementById("sideNome");
+    const sideClube = document.getElementById("sideClube");
+    const sideLogo = document.getElementById("sideClubeLogo");
+    const sideAvatar = document.getElementById("sidePlayerImg");
+    const sideRows = document.querySelectorAll(".sidebar-stats .stat-row");
+    if (sideNome) sideNome.textContent = managerEstado.treinador?.nome || "Treinador";
+    if (sideClube) sideClube.textContent = clube.nome;
+    if (sideLogo) sideLogo.src = obterUrlImagem(clube, "clube");
+    if (sideAvatar) sideAvatar.src = obterUrlImagem(clube, "clube");
+    const dadosLaterais = [["Orçamento", formatarMoeda(managerEstado.orcamentoTransferencias)], ["Diretoria", `${managerEstado.confianca}%`], ["Elenco", jogadoresIA.filter(p => p.clubeId === clube.id && !p.aposentado).length], ["Objetivo", objetivoDiretoria(clube)]];
+    sideRows.forEach((row, i) => { if (dadosLaterais[i]) { row.querySelector("span").textContent = dadosLaterais[i][0]; row.querySelector("strong").textContent = dadosLaterais[i][1]; } });
+    document.querySelector(".sidebar-stats .xp-container")?.classList.add("oculto");
 
     wireManagerControls();
     renderizarManagerTactics();
     renderizarManagerFullSquad();
     renderizarManagerTransfers();
+    renderizarManagerContratos();
     renderizarManagerFinance();
+    window.abrirAbaManager(window.managerAbaAtiva || "view-manager-tactics");
+    renderizarHubManager();
 }
 
 // ==========================================
@@ -8899,7 +13541,7 @@ function renderizarCalendarioTemporada() {
         return `
             <div class="calendar-row ${idx === 0 ? "atual" : ""}" onclick="aplicarTemaCompeticao('${ev.compConfigId || ev.compId || "hub"}')">
                 <div class="calendar-date"><strong>${data.split(" • ")[0]}</strong><span>${data.split(" • ")[1] || ev.janelaCalendario || "Jogo"}</span></div>
-                <div class="calendar-logo">${logo ? `<img src="${logo}" alt="">` : "🏆"}</div>
+                <div class="calendar-logo">${logo ? `<img loading="lazy" decoding="async" src="${logo}" alt="">` : "🏆"}</div>
                 <div class="calendar-main"><strong>${ev.tipo}</strong><span>${ev.isSelecao ? "Selecao" : "Clube"} vs ${adv?.nome || "Adversario a definir"}</span></div>
                 <div class="calendar-tag">${ev.isFinal ? "Final" : (ev.isMataMata ? "Mata-mata" : "Liga")}</div>
             </div>`;
@@ -8907,6 +13549,14 @@ function renderizarCalendarioTemporada() {
 }
 
 function atualizarHub() {
+    // No Manager, o mesmo container do Hub recebe dados do clube em vez de
+    // estatísticas individuais, mantendo uma única porta de entrada por época.
+    if (window.gameMode === "manager") {
+        configurarNavegacaoPorModo();
+        renderizarHubManager();
+        if (managerEstado.ativo) renderizarManager();
+        return;
+    }
     if (jogador) { inicializarEstadoCarreiraJogador(); atualizarProgressoObjetivos(); }
     else return;
     // 🛡️ FIX: atualizarHub() é sempre chamado no fim de qualquer avanço de
@@ -8914,6 +13564,27 @@ function atualizarHub() {
     // liberando window.partidaEmAndamento (ver guarda anti-clique-duplo em
     // btnJogarHub/btnDescansar mais abaixo).
     window.partidaEmAndamento = false;
+
+    // 🌍👋 Despedida da seleção (independente de aposentar de vez): mostra o
+    // resumo internacional uma vez, mas deixa o hub seguir normal (o jogador
+    // continua em atividade pelo clube).
+    if (window.despedidaSelecaoRecente) { window.despedidaSelecaoRecente = false; mostrarModalAposentadoriaSelecao(); }
+
+    // 🎽➡️👔 Carreira encerrada: mostra a despedida (uma vez) e troca o hub
+    // pra um cartão de "Carreira Encerrada" em vez de tentar montar o próximo
+    // jogo (que não existe mais pra quem está aposentado).
+    if (jogador.aposentado) {
+        if (window.carreiraRecemEncerrada) { window.carreiraRecemEncerrada = false; mostrarModalAposentadoria(); }
+        let uiProxAp = document.getElementById("uiProximoComp");
+        if (uiProxAp) uiProxAp.innerHTML = `<div style="font-size:1.2rem; font-weight:700; color:var(--gold);">🏁 Carreira encerrada em ${jogador.anoAposentadoria || anoAtual}. Reveja tudo no Hall da Fama.</div>`;
+        setText("btnJogarHub", "📜 Ver Hall da Fama");
+        const btnAp = document.getElementById("btnJogarHub"); if (btnAp) btnAp.disabled = false;
+        setText("sideClube", "Aposentado"); setText("uiIdade", jogador.idade);
+        renderizarNoticias();
+        atualizarConteudoAbaAtiva();
+        return;
+    }
+
     normalizarAgendaCalendario();
     let meuClube = clubes.find(c => c.id === jogador.clubeId);
     jogador.valorMercadoNum = calcularValorMercadoJogador(jogador); 
@@ -8981,11 +13652,11 @@ function atualizarHub() {
                 const compLogoCard = comp.isSelecao ? (COMPETICOES_SELECOES.find(c => c.id === comp.compConfigId)?.logo || advLogoCard) : obterUrlImagem(comp.compId, 'competicao');
                 const dataCompromisso = comp.dataCalendario || formatarDataCalendario(comp);
                 uiProx.innerHTML = `
-                    <div class="next-match-meta"><span><img src="${compLogoCard}" class="comp-logo" onerror="this.style.display='none'"> 🏆 ${comp.tipo}</span><strong>${dataCompromisso}</strong></div>
+                    <div class="next-match-meta"><span><img loading="lazy" decoding="async" src="${compLogoCard}" class="comp-logo" onerror="this.style.display='none'"> 🏆 ${comp.tipo}</span><strong>${dataCompromisso}</strong></div>
                     <div style="font-size:1.4rem; display:flex; justify-content:space-between; align-items:center;">
-                        <div style="display:flex; align-items:center;"><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;margin-right:10px;"><img src="${meuLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div><span style="color:var(--theme-primary); font-weight:800; font-size:1.6rem;">${meuNomeCard}</span></div> 
+                        <div style="display:flex; align-items:center;"><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;margin-right:10px;"><img loading="lazy" decoding="async" src="${meuLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div><span style="color:var(--theme-primary); font-weight:800; font-size:1.6rem;">${meuNomeCard}</span></div> 
                         <span style="color:var(--text-muted); font-size:1rem; margin:0 15px;">VS</span> 
-                        <div style="display:flex; align-items:center;"><span style="font-weight:600; font-size:1.6rem; margin-right:10px;">${adv?.nome || 'Rival'}</span><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;"><img src="${advLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div></div>
+                        <div style="display:flex; align-items:center;"><span style="font-weight:600; font-size:1.6rem; margin-right:10px;">${adv?.nome || 'Rival'}</span><div style="width:35px;height:35px;display:flex;align-items:center;justify-content:center;"><img loading="lazy" decoding="async" src="${advLogoCard}" style="max-width:100%;max-height:100%;object-fit:contain;"></div></div>
                     </div>`;
                 const textoAcao = jogador.lesaoRodadas > 0 ? "Fora por Lesão ➔" : (jogador.titularidade >= 68 ? "Entrar em Relvado ➔" : "Entrar do Banco ➔");
                 setText("btnJogarHub", textoAcao); aplicarTemaCompeticao(comp.compConfigId || comp.compId); document.getElementById("btnJogarHub").disabled = false;
@@ -9008,11 +13679,14 @@ function inicializarInterfaceTabelasClean() {
     if(!document.getElementById("paises-grid")) {
         elDest.innerHTML = `
             <div class="classificacao-shell">
+                <div id="regioes-filtro" class="regioes-filtro"></div>
                 <div id="paises-grid" class="paises-grid"></div>
                 <div id="divisoes-container" class="divisoes-container" style="display:none;"></div>
                 <div id="areaTabelaEspecifica"></div>
             </div>`;
     }
+
+    const gridRegioes = document.getElementById("regioes-filtro");
 
     const gridPaises = document.getElementById("paises-grid");
     const divisoesCtx = document.getElementById("divisoes-container");
@@ -9034,13 +13708,22 @@ function inicializarInterfaceTabelasClean() {
         uy: { nome: "Uruguai", regiao: "CONMEBOL" },
         mx: { nome: "Mexico", regiao: "CONCACAF" },
         sco: { nome: "Escócia", regiao: "UEFA" },
+        gre: { nome: "Grecia", regiao: "UEFA" },
+        sui: { nome: "Suiça", regiao: "UEFA" },
+        nor: { nome: "Noruega", regiao: "UEFA" },
+        aut: { nome: "Austria", regiao: "UEFA" },
         nga: { nome: "Nigeria", regiao: "CONCACAF" },
         civ: { nome: "Costa Marfim", regiao: "CONCACAF" },
+        afc: { nome: "AFC", regiao: "AFC" },
+        conmebol: { nome: "CONMEBOL", regiao: "CONMEBOL" },
+        uefa: { nome: "UEFA", regiao: "UEFA" },
+        concacaf: { nome: "CONCACAF", regiao: "CONCACAF" },
+        caf: { nome: "CAF", regiao: "CAF" },
         
     };
 
     let paisesMapeados = {};
-    const compsUnicas = Array.from(new Map(competicoes.filter(c => c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual").map(c => [c.id, c])).values());
+    const compsUnicas = Array.from(new Map(competicoes.filter(c => c.tipo === "liga" || c.tipo === "liga_grupos" || c.tipo === "liga_conferencias" || c.tipo === "mata_mata" || c.tipo === "acesso_playoff" || c.tipo === "playoffs" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual").map(c => [c.id, c])).values());
     compsUnicas.forEach(comp => {
         let prefix = obterPaisCompeticaoId(comp.id);
         let info = paisInfo[prefix] || { nome: "Outros", regiao: "Mundo" };
@@ -9052,7 +13735,7 @@ function inicializarInterfaceTabelasClean() {
     });
 
     const ordenarCompeticoesPais = (lista) => lista.sort((a,b) => {
-        const peso = { liga: 0, copa: 1, supercopa: 2 };
+        const peso = { continental: 0, liga: 1, liga_grupos: 1, liga_conferencias: 1, mata_mata: 2, acesso_playoff: 2, playoffs: 2, copa: 3, supercopa: 4, continental_qualy: 5, estadual: 6 };
         return (peso[a.tipo] ?? 9) - (peso[b.tipo] ?? 9) || (a.div || 99) - (b.div || 99) || a.nome.localeCompare(b.nome);
     });
 
@@ -9062,7 +13745,7 @@ function inicializarInterfaceTabelasClean() {
         ordenarCompeticoesPais(grupo.competicoes);
         const totalCopas = grupo.competicoes.filter(c => c.tipo !== "liga").length;
         const totalLigas = grupo.competicoes.filter(c => c.tipo === "liga").length;
-        const logoHTML = grupo.info.logo ? `<span class="pais-logo"><img src="${grupo.info.logo}" alt="${pais}"></span>` : `<span class="pais-logo">${grupo.info.prefix.toUpperCase().slice(0,2)}</span>`;
+        const logoHTML = grupo.info.logo ? `<span class="pais-logo"><img loading="lazy" decoding="async" src="${grupo.info.logo}" alt="${pais}"></span>` : `<span class="pais-logo">${grupo.info.prefix.toUpperCase().slice(0,2)}</span>`;
         const btnPais = document.createElement("button");
         btnPais.className = `btn-pais-filtro ${index === 0 ? 'ativo' : ''}`; 
         // 🛡️ Pedido do utilizador: mostrar só a logo da liga principal + nome
@@ -9070,6 +13753,7 @@ function inicializarInterfaceTabelasClean() {
         btnPais.innerHTML = `${logoHTML}<span class="pais-label">${pais}</span>`;
         btnPais.dataset.pais = pais;
         btnPais.dataset.prefix = grupo.info.prefix;
+        btnPais.dataset.regiao = grupo.info.regiao;
         btnPais.onclick = () => {
             gridPaises.querySelectorAll(".btn-pais-filtro").forEach(b => b.classList.remove("ativo"));
             btnPais.classList.add("ativo");
@@ -9078,6 +13762,50 @@ function inicializarInterfaceTabelasClean() {
         };
         gridPaises.appendChild(btnPais);
     });
+
+    // 🆕 FILTRO POR REGIÃO: com muitos países/competições cadastrados, mostrar
+    // todos de uma vez vira poluição visual. Estes chips (Todos, UEFA,
+    // CONMEBOL, CONCACAF, AFC, CAF...) escondem/mostram só os países daquela
+    // confederação — o país já guarda sua região em paisInfo, então é só
+    // filtrar os botões já renderizados acima, sem duplicar lógica.
+    if (gridRegioes) {
+        const ORDEM_REGIOES = ["UEFA", "CONMEBOL", "CONCACAF", "AFC", "CAF", "Mundo"];
+        const regioesPresentes = [...new Set(Object.values(paisesMapeados).map(g => g.info.regiao))]
+            .sort((a, b) => (ORDEM_REGIOES.indexOf(a) === -1 ? 99 : ORDEM_REGIOES.indexOf(a)) - (ORDEM_REGIOES.indexOf(b) === -1 ? 99 : ORDEM_REGIOES.indexOf(b)));
+
+        const aplicarFiltroRegiao = (regiao, chipEl) => {
+            gridRegioes.querySelectorAll(".regiao-filtro-chip").forEach(c => c.classList.remove("ativo"));
+            chipEl.classList.add("ativo");
+            const botoesPais = [...gridPaises.querySelectorAll(".btn-pais-filtro")];
+            let primeiroVisivel = null;
+            botoesPais.forEach(b => {
+                const visivel = regiao === "todos" || b.dataset.regiao === regiao;
+                b.style.display = visivel ? "" : "none";
+                if (visivel && !primeiroVisivel) primeiroVisivel = b;
+            });
+            // Se o país atualmente selecionado ficou escondido pelo filtro,
+            // seleciona automaticamente o primeiro país ainda visível.
+            const ativoAtual = gridPaises.querySelector(".btn-pais-filtro.ativo");
+            if (primeiroVisivel && (!ativoAtual || ativoAtual.style.display === "none")) {
+                primeiroVisivel.click();
+            }
+        };
+
+        gridRegioes.innerHTML = "";
+        const chipTodos = document.createElement("span");
+        chipTodos.className = "regiao-filtro-chip ativo";
+        chipTodos.textContent = "🌐 Todos";
+        chipTodos.onclick = () => aplicarFiltroRegiao("todos", chipTodos);
+        gridRegioes.appendChild(chipTodos);
+        regioesPresentes.forEach(regiao => {
+            const chip = document.createElement("span");
+            chip.className = "regiao-filtro-chip";
+            chip.textContent = regiao;
+            chip.onclick = () => aplicarFiltroRegiao(regiao, chip);
+            gridRegioes.appendChild(chip);
+        });
+    }
+
     let primeirosPaises = Object.keys(paisesMapeados).sort();
     if(primeirosPaises.length > 0) {
         let primeiro = paisesMapeados[primeirosPaises[0]];
@@ -9087,27 +13815,83 @@ function inicializarInterfaceTabelasClean() {
 
 function renderizarSubdivisoesPais(competicoesDoPais, divisoesCtx, localTabela, infoPais = null) {
     divisoesCtx.style.display = "flex"; divisoesCtx.innerHTML = ""; localTabela.innerHTML = "";
-    competicoesDoPais.forEach((comp, idx) => {
+
+    const rotuloTipoDe = (comp) => {
+        if (comp.tipo === "liga" || comp.tipo === "liga_grupos" || comp.tipo === "liga_conferencias") return `${comp.div || 1}ª Divisão`;
+        if (comp.tipo === "continental") return "Continental";
+        if (comp.tipo === "supercopa") return "Supercopa";
+        if (comp.tipo === "estadual") return "Estadual";
+        if (comp.tipo === "mata_mata") return "Mata-Mata";
+        if (comp.tipo === "acesso_playoff") return "Playoff de Acesso";
+        if (comp.tipo === "playoffs") return "Playoffs";
+        if (comp.tipo === "continental_qualy") return "Qualificação";
+        return "Copa";
+    };
+
+    // 🛡️ Pedido do utilizador: mostrar só a LOGO da competição (não o nome
+    // em texto "Bundesliga / 1a divisao"). O nome fica disponível via
+    // tooltip (title) para quem passar o mouse por cima.
+    const criarBotaoDivisao = (comp, ativo) => {
         const btnDiv = document.createElement("button");
-        btnDiv.className = `btn-divisao btn-divisao-logo ${idx === 0 ? 'ativo' : ''}`;
-        // 🛡️ Pedido do utilizador: mostrar só a LOGO da competição (não o nome
-        // em texto "Bundesliga / 1a divisao"). O nome fica disponível via
-        // tooltip (title) para quem passar o mouse por cima.
-        const rotuloTipo = comp.tipo === "liga" ? `${comp.div || 1}ª Divisão` : (comp.tipo === "supercopa" ? "Supercopa" : (comp.tipo === "estadual" ? "Estadual" : "Copa"));
-        btnDiv.title = `${comp.nome} — ${rotuloTipo}`;
-        btnDiv.innerHTML = `<img src="${obterUrlImagem(comp, 'competicao')}" alt="${comp.nome}" style="width:100%; height:100%; object-fit:contain;">`;
+        btnDiv.className = `btn-divisao btn-divisao-logo ${ativo ? 'ativo' : ''}`;
+        btnDiv.title = `${comp.nome} — ${rotuloTipoDe(comp)}`;
+        btnDiv.innerHTML = `<img loading="lazy" decoding="async" src="${obterUrlImagem(comp, 'competicao')}" alt="${comp.nome}" style="width:100%; height:100%; object-fit:contain;">`;
         btnDiv.dataset.compId = comp.id;
         btnDiv.onclick = () => {
             divisoesCtx.querySelectorAll(".btn-divisao").forEach(b => b.classList.remove("ativo"));
             btnDiv.classList.add("ativo");
-            if(comp.tipo === "liga") exibirTabelaLigaCodigo(comp.id, localTabela);
+            if(comp.tipo === "liga" || comp.tipo === "liga_grupos" || comp.tipo === "liga_conferencias") exibirTabelaLigaCodigo(comp.id, localTabela);
             else exibirCompeticaoEliminatoriaCodigo(comp.id, localTabela);
         };
-        divisoesCtx.appendChild(btnDiv);
-    });
-    if (competicoesDoPais.length > 0) {
-        if(competicoesDoPais[0].tipo === "liga") exibirTabelaLigaCodigo(competicoesDoPais[0].id, localTabela);
-        else exibirCompeticaoEliminatoriaCodigo(competicoesDoPais[0].id, localTabela);
+        return btnDiv;
+    };
+
+    const principais = competicoesDoPais.filter(c => c.tipo !== "estadual");
+    const estaduais = competicoesDoPais.filter(c => c.tipo === "estadual");
+
+    const linhaPrincipal = document.createElement("div");
+    linhaPrincipal.className = "divisoes-linha-principal";
+    divisoesCtx.appendChild(linhaPrincipal);
+
+    principais.forEach((comp, idx) => linhaPrincipal.appendChild(criarBotaoDivisao(comp, idx === 0)));
+
+    // 🆕 FILTRO DE ESTADUAIS: em vez de encher a tela com um ícone pra cada um
+    // dos ~27 campeonatos estaduais, eles ficam agrupados atrás de um único
+    // botão "🗺️" — clicando, abre/fecha um painel só com eles.
+    if (estaduais.length > 0) {
+        const btnToggle = document.createElement("button");
+        btnToggle.className = "btn-divisao btn-divisao-logo btn-estaduais-toggle";
+        btnToggle.title = `Campeonatos Estaduais (${estaduais.length})`;
+        btnToggle.innerHTML = `<span style="font-size:1.6rem;">🌎</span>`;
+        linhaPrincipal.appendChild(btnToggle);
+
+        const painelEstaduais = document.createElement("div");
+        painelEstaduais.className = "painel-estaduais oculto";
+        painelEstaduais.innerHTML = `<div class="painel-estaduais-header">🌎 Campeonatos Estaduais <span>${estaduais.length}</span></div><div class="painel-estaduais-grid"></div>`;
+        const gridEstaduais = painelEstaduais.querySelector(".painel-estaduais-grid");
+        [...estaduais].sort((a, b) => a.nome.localeCompare(b.nome)).forEach(comp => {
+            const btnEstadual = criarBotaoDivisao(comp, false);
+            const onclickOriginal = btnEstadual.onclick;
+            btnEstadual.onclick = () => { onclickOriginal(); btnToggle.classList.add("ativo"); };
+            gridEstaduais.appendChild(btnEstadual);
+        });
+        divisoesCtx.appendChild(painelEstaduais);
+
+        btnToggle.onclick = () => {
+            const abrindo = painelEstaduais.classList.contains("oculto");
+            painelEstaduais.classList.toggle("oculto");
+            // Só marca como "ativo" (destacado) quando aberto E nenhum estadual
+            // específico está selecionado — assim que escolher um, o botão do
+            // estadual escolhido fica ativo e o toggle volta ao normal.
+            if (!abrindo) btnToggle.classList.remove("ativo");
+        };
+    }
+
+    if (principais.length > 0) {
+        if(principais[0].tipo === "liga" || principais[0].tipo === "liga_grupos" || principais[0].tipo === "liga_conferencias") exibirTabelaLigaCodigo(principais[0].id, localTabela);
+        else exibirCompeticaoEliminatoriaCodigo(principais[0].id, localTabela);
+    } else if (estaduais.length > 0) {
+        exibirCompeticaoEliminatoriaCodigo(estaduais[0].id, localTabela);
     }
 }
 
@@ -9120,7 +13904,7 @@ function exibirCompeticaoEliminatoriaCodigo(compId, containerTarget) {
     let compInfo = competicoes.find(c => c.id === compId);
     let estado = copasEstado[compId];
     let tipoLabel = compInfo?.tipo === "supercopa" ? "Supercopa nacional" : (compInfo?.tipo === "supercopa_continental" ? "Supercopa continental" : (compInfo?.tipo === "torneio_intercontinental" ? "Intercontinental" : "Copa nacional"));
-    let html = `<div class="liga-header-card"><div class="liga-title-wrap"><div class="liga-logo-frame"><img src="${obterUrlImagem(compInfo || compId, 'competicao')}" alt="${compInfo?.nome || 'Competicao'}"></div><div><span>${tipoLabel}</span><h2>${compInfo?.nome || 'Competicao'}</h2></div></div><div class="meta-pill">Mata-mata</div></div>`;
+    let html = `<div class="liga-header-card"><div class="liga-title-wrap"><div class="liga-logo-frame"><img loading="lazy" decoding="async" src="${obterUrlImagem(compInfo || compId, 'competicao')}" alt="${compInfo?.nome || 'Competicao'}"></div><div><span>${tipoLabel}</span><h2>${compInfo?.nome || 'Competicao'}</h2></div></div><div class="meta-pill">Mata-mata</div></div>`;
     if(!estado) {
         containerTarget.innerHTML = `<div class="comp-detail-grid"><div>${html}<div style="width:100%; text-align:center; padding:34px; color:#aaa; font-size:1.05rem; background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.1); border-radius:14px;">Sorteio ainda nao realizado.</div></div>${montarRankingCompeticao(compId)}</div>`;
         return;
@@ -9150,7 +13934,7 @@ function renderTabelaLigaSuica(estado) {
         html += `<tr style="background:${bgL}; border-left:4px solid ${zonaCor}; cursor:pointer;" onclick="abrirPerfilClube('${item.id}')">
             <td style="font-weight:bold;">${index+1}º</td>
             <td style="display:flex; align-items:center; font-weight:bold; color:${ehMeuClube ? 'var(--theme-primary)' : '#fff'};">
-                <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;margin-right:12px;"><img src="${obterUrlImagem(clb,'clube')}" style="max-width:100%;max-height:100%;object-fit:contain;"></div>
+                <div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;margin-right:12px;"><img loading="lazy" decoding="async" src="${obterUrlImagem(clb,'clube')}" style="max-width:100%;max-height:100%;object-fit:contain;"></div>
                 ${clb ? clb.nome : 'Clube'}${ehMeuClube ? ' <span class="tag-meu-clube">TU</span>' : ''}
             </td>
             <td style="color:#ffd700; font-weight:bold;">${item.pts}</td>
@@ -9169,8 +13953,80 @@ function renderTabelaLigaSuica(estado) {
 function exibirTabelaLigaCodigo(ligaId, containerTarget) {
     aplicarCorLocalCompeticao(ligaId, containerTarget);
     if (typeof aplicarTemaCompeticao === 'function') aplicarTemaCompeticao(ligaId);
-    let dadosTabela = tabelasLigas[ligaId]; let compInfo = competicoes.find(c => c.id === ligaId);
-    if (!dadosTabela || !compInfo) { containerTarget.innerHTML = "<p style='color:#aaa;'>Nenhum dado para esta liga.</p>"; return; }
+    let compInfo = competicoes.find(c => c.id === ligaId);
+    if (!compInfo) { containerTarget.innerHTML = "<p style='color:#aaa;'>Competição não encontrada.</p>"; return; }
+
+    // Para competições com formato de grupos (Série D)
+    if (compInfo.tipo === "liga_grupos") {
+        let estado = copasEstado[ligaId];
+        if (!estado) { containerTarget.innerHTML = "<p style='color:#aaa;'>Nenhum dado para esta competição.</p>"; return; }
+
+        // 🛡️ FIX ("Minha Tabela" ficava em branco assim que os grupos da
+        // Série D terminavam): esta view só sabia desenhar a TABELA de
+        // grupos (estado.grupos) — que é apagada de propósito assim que o
+        // mata-mata começa (ver processarFimGruposClube). Sem um fallback,
+        // a tela mostrava "Nenhum dado" pro resto da temporada inteira,
+        // mesmo com o mata-mata rolando normalmente nos bastidores. Agora,
+        // se os grupos já acabaram mas existe um chaveamento (confrontos),
+        // mostra o chaveamento em vez da tabela.
+        if (!estado.grupos) {
+            if (estado.tipo === "mata-mata" && estado.confrontos) {
+                let htmlBracket = `<div style="display:flex; align-items:center; margin-bottom:25px; border-bottom:1px solid #333; padding-bottom:15px;"><img loading="lazy" decoding="async" src="${obterUrlImagem(compInfo, 'competicao')}" style="width:50px; height:50px; margin-right:20px; border-radius:8px; object-fit:contain;"><h2 style="color:var(--theme-primary); margin:0; font-size:2rem;">${compInfo.nome}</h2></div>`;
+                htmlBracket += renderChaveamentoComAbas([...(estado.historicoFases || []), estado]);
+                containerTarget.innerHTML = `<div class="comp-detail-grid"><div>${htmlBracket}</div>${montarRankingCompeticao(ligaId)}</div>`;
+                return;
+            }
+            containerTarget.innerHTML = "<p style='color:#aaa;'>Nenhum dado para esta competição.</p>";
+            return;
+        }
+
+        let html = `
+            <div class="liga-header-card"><div class="liga-title-wrap"><div class="liga-logo-frame"><img loading="lazy" decoding="async" src="${obterUrlImagem(compInfo, 'competicao')}" alt="${compInfo.nome}"></div><div><span>Fase de Grupos</span><h2>${compInfo.nome}</h2></div></div><div class="meta-pill">${estado.grupos.length} grupos</div></div>
+            <div class="grupo-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:15px; margin-top:20px;">
+        `;
+
+        estado.grupos.forEach(grupo => {
+            let ord = [...grupo.equipas].sort((a,b) => b.pts - a.pts || (b.gf - b.gs) - (a.gf - a.gs));
+            html += `
+                <div class="bracket-group-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.1); border-radius:12px; overflow:hidden;">
+                    <div class="grupo-card-head" style="background:rgba(0,0,0,0.3); padding:12px 15px; display:flex; justify-content:space-between; align-items:center;">
+                        <h4 style="margin:0; color:#fff;">${grupo.nome}</h4>
+                        <span class="grupo-card-meta" style="color:#aaa; font-size:0.85rem;">${estado.avancam} classificam</span>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+                        <thead><tr style="background:rgba(0,0,0,0.2);"><th style="padding:8px 10px; text-align:left; color:#888;">Pos</th><th style="padding:8px 10px; text-align:left; color:#888;">Clube</th><th style="padding:8px 10px; text-align:center; color:#888;">Pts</th><th style="padding:8px 10px; text-align:center; color:#888;">J</th><th style="padding:8px 10px; text-align:center; color:#888;">SG</th></tr></thead>
+                        <tbody>
+            `;
+            ord.forEach((eq, idx) => {
+                let clb = clubes.find(c => c.id === eq.id);
+                let ehMeuClube = jogador && clb?.id === jogador.clubeId;
+                let bg = ehMeuClube ? "rgba(0, 255, 136, 0.15)" : (idx < estado.avancam ? "rgba(0, 255, 136, 0.08)" : (idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)"));
+                let borda = idx < estado.avancam ? "border-left:3px solid #00ff88;" : "border-left:3px solid transparent;";
+                html += `
+                    <tr style="background:${bg}; ${borda} cursor:pointer;" onclick="abrirPerfilClube('${eq.id}')">
+                        <td style="padding:8px 10px; font-weight:bold; color:${idx < estado.avancam ? '#00ff88' : '#fff'};">${idx + 1}º</td>
+                        <td style="padding:8px 10px; display:flex; align-items:center; color:${ehMeuClube ? 'var(--theme-primary)' : '#fff'};">
+                            <div style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; margin-right:10px;">
+                                <img loading="lazy" decoding="async" src="${obterUrlImagem(clb, 'clube')}" style="max-width:100%; max-height:100%; object-fit:contain;">
+                            </div>
+                            ${clb ? clb.nome : eq.id}${ehMeuClube ? ' <span class="tag-meu-clube"></span>' : ''}
+                        </td>
+                        <td style="padding:8px 10px; text-align:center; color:#ffd700; font-weight:bold;">${eq.pts}</td>
+                        <td style="padding:8px 10px; text-align:center;">${eq.j}</td>
+                        <td style="padding:8px 10px; text-align:center;">${eq.gf - eq.gs}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table></div>`;
+        });
+        html += `</div>`;
+        containerTarget.innerHTML = html;
+        return;
+    }
+
+    // Para ligas normais (tabela única)
+    let dadosTabela = tabelasLigas[ligaId];
+    if (!dadosTabela) { containerTarget.innerHTML = "<p style='color:#aaa;'>Nenhum dado para esta liga.</p>"; return; }
 
     let tabOrd = [...dadosTabela].sort((a,b) => b.pontos - a.pontos || ((b.gols||0) - (b.golsSofridos||0)) - ((a.gols||0) - (a.golsSofridos||0)) || (b.gols||0) - (a.gols||0));
     let zonas = obterZonasQualificacaoLiga(ligaId, tabOrd.length);
@@ -9178,7 +14034,7 @@ function exibirTabelaLigaCodigo(ligaId, containerTarget) {
     let legendaHTML = zonas.length ? `<div class="tabela-legenda">${zonas.map(z => `<span class="tabela-legenda-item"><i style="background:${z.cor};"></i>${z.label} (${z.fim - z.inicio})</span>`).join("")}</div>` : "";
 
     let html = `
-        <div class="liga-header-card"><div class="liga-title-wrap"><div class="liga-logo-frame"><img src="${obterUrlImagem(compInfo, 'competicao')}" alt="${compInfo.nome}"></div><div><span>Classificacao atual</span><h2>${compInfo.nome}</h2></div></div><div class="meta-pill">${dadosTabela.length} clubes</div></div>
+        <div class="liga-header-card"><div class="liga-title-wrap"><div class="liga-logo-frame"><img loading="lazy" decoding="async" src="${obterUrlImagem(compInfo, 'competicao')}" alt="${compInfo.nome}"></div><div><span>Classificacao atual</span><h2>${compInfo.nome}</h2></div></div><div class="meta-pill">${dadosTabela.length} clubes</div></div>
         ${legendaHTML}
         <table class="tabela-classificacao grupo-table" style="width:100%; border-collapse:collapse; text-align:left;">
             <thead><tr><th>Pos</th><th>Clube</th><th>Pts</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GM</th><th>GS</th><th>SG</th></tr></thead>
@@ -9196,9 +14052,9 @@ function exibirTabelaLigaCodigo(ligaId, containerTarget) {
                 <td style="font-weight:bold;">${index + 1}º</td>
                 <td style="display:flex; align-items:center; font-weight:bold; color:${ehMeuClube ? 'var(--theme-primary)' : '#fff'};">
                     <div style="width:30px; height:30px; display:flex; align-items:center; justify-content:center; margin-right:15px;">
-                        <img src="${obterUrlImagem(clb, 'clube')}" style="max-width:100%; max-height:100%; object-fit:contain;">
+                        <img loading="lazy" decoding="async" src="${obterUrlImagem(clb, 'clube')}" style="max-width:100%; max-height:100%; object-fit:contain;">
                     </div>
-                    ${clb ? clb.nome : 'Clube'}${ehMeuClube ? ' <span class="tag-meu-clube">TU</span>' : ''}
+                    ${clb ? clb.nome : 'Clube'}${ehMeuClube ? ' <span class="tag-meu-clube"></span>' : ''}
                 </td>
                 <td style="color:#ffd700; font-weight:bold;">${item.pontos}</td>
                 <td>${item.jogos}</td><td>${item.vitorias||0}</td><td>${item.empates||0}</td><td>${item.derrotas||0}</td>
@@ -9214,7 +14070,7 @@ function renderizarChaveamentosVisuais(copaSelecionada) {
     if (!estado) return `<div style="width:100%; text-align:center; padding:40px; color:#aaa; font-size:1.2rem;">Sorteio ainda não realizado.</div>`; 
 
     let comp = competicoes.find(c=>c.id===copaSelecionada);
-    let html = `<div style="display:flex; align-items:center; margin-bottom:25px; border-bottom:1px solid #333; padding-bottom:15px;"><img src="${obterUrlImagem(copaSelecionada, 'competicao')}" style="width:50px; height:50px; margin-right:20px; border-radius:8px; object-fit:contain;"><h2 style="color:var(--theme-primary); margin:0; font-size: 2rem;">${comp?.nome}</h2></div>`;
+    let html = `<div style="display:flex; align-items:center; margin-bottom:25px; border-bottom:1px solid #333; padding-bottom:15px;"><img loading="lazy" decoding="async" src="${obterUrlImagem(copaSelecionada, 'competicao')}" style="width:50px; height:50px; margin-right:20px; border-radius:8px; object-fit:contain;"><h2 style="color:var(--theme-primary); margin:0; font-size: 2rem;">${comp?.nome}</h2></div>`;
 
     if (estado.tipo === "liga_unica") {
         html += renderTabelaLigaSuica(estado);
@@ -9248,7 +14104,7 @@ function montarConfrontoCardHtml(conf) {
             : `<div class="bracket-slot-team tbd"><span class="bracket-slot-crest tbd-crest">?</span><span class="bracket-slot-name">A definir</span><span class="bracket-slot-goals">–</span></div>`;
         const elim = conf.vencedorId && conf.vencedorId !== t.id;
         return `<div class="bracket-slot-team ${win ? "winner" : ""} ${elim ? "eliminated" : ""}" onclick="abrirPerfilClube('${t.id}')">
-            <img class="bracket-slot-crest" src="${obterUrlImagem(t,'clube')}" onerror="this.style.visibility='hidden'">
+            <img loading="lazy" decoding="async" class="bracket-slot-crest" src="${obterUrlImagem(t,'clube')}" onerror="this.style.visibility='hidden'">
             <span class="bracket-slot-name">${t.nome}</span>
             <span class="bracket-slot-goals">${gols}</span>
             ${win ? '<span class="bracket-slot-check">✓</span>' : ""}
@@ -9281,7 +14137,7 @@ function renderConteudoFaseUnica(faseObj) {
                     const qualifica = i < avancam;
                     return `<tr class="${c?.id===jogador.clubeId?'bracket-row-me':''} ${qualifica?'row-qualifica':''} ${i===avancam-1?'linha-corte':''}" onclick="abrirPerfilClube('${c?.id}')">
                         <td class="col-pos"><span class="grupo-pos ${rankClass}">${i+1}</span></td>
-                        <td class="col-team"><img src="${obterUrlImagem(c,'clube')}" class="bracket-flag">${c?.nome||''}</td>
+                        <td class="col-team"><img loading="lazy" decoding="async" src="${obterUrlImagem(c,'clube')}" class="bracket-flag">${c?.nome||''}</td>
                         <td><strong>${e.pts}</strong></td><td>${e.j}</td><td>${e.gf-e.gs > 0 ? "+" : ""}${e.gf-e.gs}</td>
                     </tr>`;
                 }).join("")}</tbody></table></div>`;
@@ -9450,10 +14306,15 @@ function atualizarConteudoAbaAtiva() {
     else if (abaAtivaId === "view-transferencias") { if (typeof renderizarTransferencias === 'function') renderizarTransferencias(); }
     else if (abaAtivaId === "view-selecoes") { if (typeof renderizarSelecoes === 'function') renderizarSelecoes(); }
     else if (abaAtivaId === "view-comp-int") { if (typeof renderizarCompeticoesInternacionais === 'function') renderizarCompeticoesInternacionais(); }
-    else if (abaAtivaId === "view-manager") { if (typeof renderizarManager === 'function') renderizarManager(); }
+    else if (abaAtivaId === "view-manager") {
+        if (typeof renderizarManager === 'function') renderizarManager();
+        if (window.managerAbaAtiva) window.abrirAbaManager?.(window.managerAbaAtiva);
+    }
     else if (abaAtivaId === "view-lifestyle") { if (typeof renderLifestyleSystem === 'function') renderLifestyleSystem(); }
     else if (abaAtivaId === "view-noticias") { if (typeof renderizarNoticias === 'function') renderizarNoticias(); }
     else if (abaAtivaId === "view-historico") { if (typeof renderizarHistorico === 'function') renderizarHistorico(); }
+    else if (abaAtivaId === "view-tecnicos") { if (typeof renderizarTecnicos === 'function') renderizarTecnicos(); }
+    else if (abaAtivaId === "view-atributos") { if (typeof renderizarAtributosJogador === 'function') renderizarAtributosJogador(); }
 }
 
 // Views onde o jogador está livremente a "passear" por competições/tabelas
@@ -9479,6 +14340,9 @@ window.fecharSidebarMobile = function() {
 document.addEventListener("click", function(event) {
     const btn = event.target.closest(".menu-item");
     if (btn) {
+        // Os atalhos do menu Manager apontam para subabas da própria central,
+        // evitando que Tática, Elenco e Mercado pareçam telas do modo Jogador.
+        if (btn.dataset.managerTab) window.managerAbaAtiva = btn.dataset.managerTab;
         document.querySelectorAll(".menu-item").forEach(item => item.classList.remove("ativo")); btn.classList.add("ativo");
         document.querySelectorAll(".view-section").forEach(aba => { aba.classList.add("oculto"); aba.style.display = "none"; });
         const elDest = document.getElementById(btn.dataset.view);
@@ -9528,8 +14392,8 @@ window.abrirMinhaTabela = function() {
     if (!gridPaises || !divisoesCtx || !localTabela) return;
 
     const prefix = obterPaisCompeticaoId(ligaId);
-    const compsDoPais = competicoes.filter(c => (c.tipo === "liga" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual") && obterPaisCompeticaoId(c.id) === prefix)
-        .sort((a,b) => { const peso = { liga: 0, estadual: 1, copa: 2, supercopa: 3 }; return (peso[a.tipo] ?? 9) - (peso[b.tipo] ?? 9) || (a.div || 99) - (b.div || 99) || a.nome.localeCompare(b.nome); });
+    const compsDoPais = competicoes.filter(c => (c.tipo === "liga" || c.tipo === "liga_grupos" || c.tipo === "liga_conferencias" || c.tipo === "mata_mata" || c.tipo === "acesso_playoff" || c.tipo === "playoffs" || c.tipo === "copa" || c.tipo === "supercopa" || c.tipo === "estadual") && obterPaisCompeticaoId(c.id) === prefix)
+        .sort((a,b) => { const peso = { liga: 0, liga_grupos: 0, liga_conferencias: 0, mata_mata: 1, acesso_playoff: 1, playoffs: 1, copa: 2, supercopa: 3, estadual: 4 }; return (peso[a.tipo] ?? 9) - (peso[b.tipo] ?? 9) || (a.div || 99) - (b.div || 99) || a.nome.localeCompare(b.nome); });
 
     gridPaises.querySelectorAll(".btn-pais-filtro").forEach(b => b.classList.toggle("ativo", b.dataset.prefix === prefix));
 
@@ -9587,6 +14451,12 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
     // partida "bugada" que parecia nunca acabar e com estatísticas duplicadas.
     if (window.partidaEmAndamento) {
         console.warn("Ignorado: já existe uma partida/rodada em processamento.");
+        return;
+    }
+    // 🎽➡️👔 Jogador aposentado: o botão vira atalho pro Hall da Fama em vez
+    // de tentar simular uma partida que não existe mais para ele.
+    if (window.gameMode !== "manager" && jogador?.aposentado) {
+        document.querySelector('[data-view="view-historico"]')?.click();
         return;
     }
     window.ativarPartidaEmAndamento();
@@ -9696,7 +14566,7 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
         // gerada no próprio jogo (logo real da competição + cores oficiais).
         // ==========================================
         const COMPETICOES_COM_INTRO = new Set([
-            "uefa_cl", "uefa_el", "uefa_col", "conmebol_lib", "conmebol_sul", "concacaf_clc", "afc_cla",
+            "uefa_cl", "uefa_el", "uefa_col", "conmebol_lib", "conmebol_sul", "concacaf_clc", "afc_cla", "afc_cla2",
             "copa_mundo", "euro", "copa_america", "olimpiadas", "gold_cup", "copa_africa", "copa_asia",
             "mundial_sub17", "mundial_sub21"
         ]);
@@ -9727,7 +14597,7 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                 <video id="introCompeticaoVideo" class="intro-comp-video oculto" playsinline></video>
                 <div class="intro-comp-fallback" id="introCompeticaoFallback">
                     <div class="intro-comp-rays" style="--intro-cor:${cor};"></div>
-                    ${compInfo?.logo ? `<img src="${compInfo.logo}" class="intro-comp-logo" onerror="this.style.display='none'">` : ""}
+                    ${compInfo?.logo ? `<img loading="lazy" decoding="async" src="${compInfo.logo}" class="intro-comp-logo" onerror="this.style.display='none'">` : ""}
                     <h1 class="intro-comp-title" style="--intro-cor:${cor};">${compInfo?.nome || ""}</h1>
                     <p class="intro-comp-sub">Temporada ${anoAtual}</p>
                 </div>
@@ -9861,14 +14731,27 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
             let imgV = document.getElementById("imgTimeVisita"); if(imgV) imgV.src = isSel ? (visitaObj?.logo || "") : obterUrlImagem(visitaObj, 'clube');
             setText("placarTimeCasa", engine.nomeMandante); setText("placarTimeVisita", engine.nomeVisitante);
             setText("placarMarcadorCasa", "0"); setText("placarMarcadorVisita", "0"); setText("uiMinutoJogo", "0'");
+            // Inicializa a transmissão tática opcional para o Modo Jogador.
+            // Os mesmos callbacks abaixo atualizam relato, placar e mini-campo.
+            // 🎛️ Referência do motor em andamento para os botões de velocidade
+            // (1x/2x/4x/8x) e play/pause da transmissão tática — eles só
+            // reagendam o intervalo do tick (ver definirVelocidade/pausar/
+            // retomar em match.js), nunca mexem no resultado da partida.
+            window.engineAoVivo = engine;
+            window.prepararVisualizacaoPartida(engine.nomeMandante, engine.nomeVisitante, isSel ? null : engine.clubeMandanteId, isSel ? null : engine.clubeVisitanteId);
             const avisoEscalacao = ehConfrontoDiretoOnline
                 ? "🌐 Confronto direto! Tu e o teu amigo estão a assistir a este jogo ao mesmo tempo."
                 : (escalacao.statusAtual === "titular" ? "⚽ O árbitro apita para o início do jogo!"
                 : (escalacao.statusAtual === "banco" ? "🪑 Começas no banco. Aguarda a tua oportunidade..." : "🪑 Não estás nos relacionados de hoje para entrar em campo."));
-            setText("uiConsolePartida", `<div style='color:#00ff88; text-align:center;'>${avisoEscalacao}</div>`);
+            // 📋 A Central da Partida (feed/estatísticas/elenco) já foi montada
+            // por prepararVisualizacaoPartida logo acima; aqui só troca o card
+            // de "apito inicial" genérico por um aviso específico do teu status
+            // nesta escalação (titular/banco/fora), como o antigo texto fazia.
+            const cpListaInicial = document.getElementById("cpEventosList");
+            if (cpListaInicial) cpListaInicial.innerHTML = `<div class="cp-event cp-event-kickoff"><span class="cp-event-min">0'</span><div class="cp-event-main"><span class="cp-event-body">${avisoEscalacao}</span></div></div>`;
 
             let _ultimoMin = 0, _ultimoGc = 0, _ultimoGv = 0;
-            engine.simularPartidaAoVivo((min, gc, gv, log) => {
+            engine.simularPartidaAoVivo((min, gc, gv, log, snapshot) => {
                 _ultimoMin = min; _ultimoGc = gc; _ultimoGv = gv;
 
                 // 🌐 Sinais especiais de "pênalti em curso" vindos do amigo que está a
@@ -9882,7 +14765,7 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                         banner.id = "avisoPenaltiAmigo";
                         banner.style.cssText = "background:rgba(250,204,21,0.15); border:1px solid #facc15; color:#facc15; font-weight:800; text-align:center; padding:10px; border-radius:8px; margin-bottom:8px;";
                         banner.textContent = "⏳ O seu amigo está a bater/defender um pênalti... aguarde a cobrança!";
-                        document.getElementById("uiConsolePartida")?.prepend(banner);
+                        document.getElementById("cpEventosList")?.prepend(banner);
                     }
                     return;
                 }
@@ -9896,17 +14779,17 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                 }
                 if (min <= 1) window.tocarSom('apito_inicio'); // 🔊 apito inicial, só uma vez no começo
                 setText("uiMinutoJogo", `${min}'`); setText("placarMarcadorCasa", gc); setText("placarMarcadorVisita", gv);
-                if(log) {
-                    let c = document.getElementById("uiConsolePartida");
-                    if(c){
-                        const meuGol = log.includes("É SEU") || log.includes(jogador.nome);
-                        const substituicao = log.includes("SUBSTITUIÇÃO");
-                        const golTime = !meuGol && !substituicao && (log.includes("GOLO") || log.includes("GOL"));
-                        if (meuGol || golTime) window.tocarSom('gol', meuGol ? 0.7 : 0.5); // 🔊 som de gol (mais forte se for teu)
-                        c.innerHTML += `<div class="${meuGol ? "gol-meu" : (substituicao ? "gol-substituicao" : (golTime ? "gol-time" : ""))}">${meuGol ? "⭐ " : ""}${log}</div>`;
-                        c.scrollTop = c.scrollHeight;
-                    }
+                window.atualizarVisualizacaoPartida(min, log || "Bola em jogo", gc, gv);
+                if (log) {
+                    // 🔊 Detecção do "é meu gol" prioriza o snapshot estruturado
+                    // (jogadorId === "player", sempre confiável); só cai para o
+                    // texto quando não há snapshot (espectador online, que só
+                    // recebe o log puro via Firebase).
+                    const meuGol = snapshot ? (snapshot.evento?.tipo === "gol" && snapshot.evento?.jogadorId === "player") : (log.includes("É SEU") || log.includes(jogador.nome));
+                    const golTime = !meuGol && (log.includes("GOLO") || log.includes("GOL"));
+                    if (meuGol || golTime) window.tocarSom('gol', meuGol ? 0.7 : 0.5); // 🔊 som de gol (mais forte se for teu)
                 }
+                window.atualizarCentralPartida(min, log, snapshot);
             }, (gc, gv, marcadores, entrouEmCampo, minutosJogados) => {
                 try {
                     window.tocarSom('apito_fim'); // 🔊 apito final
@@ -9966,10 +14849,13 @@ document.getElementById("btnJogarHub")?.addEventListener("click", async () => {
                         }
                     }
 
-                    const recordePessoal = registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
+                    const { recorde: recordePessoal, nota: notaPartida } = registrarMelhorAtuacao(golsJogadorPartida, assistsJogadorPartida, advPre?.nome || comp.adversarioId);
                     if(golsJogadorPartida > 0) registrarNoticia(isSel ? "Destaque na seleção" : "Protagonista da partida", `${jogador.nome} marcou ${golsJogadorPartida} gol(s)${isSel ? " pela seleção" : " e saiu em destaque no relato ao vivo"}.`, isSel ? "Seleção" : "Partida", { nome: jogador.nome, foto: jogador.foto }, "jogador");
                     else if(assistsJogadorPartida > 0) registrarNoticia("Grande atuação", `${jogador.nome} deu ${assistsJogadorPartida} assistência(s)${isSel ? " pela seleção" : " e foi um dos destaques do jogo"}.`, isSel ? "Seleção" : "Partida", { nome: jogador.nome, foto: jogador.foto }, "jogador");
                     if(recordePessoal) registrarNoticia("Melhor atuação da carreira", `${jogador.nome} bateu a própria marca pessoal em campo.`, "Números", { nome: jogador.nome, foto: jogador.foto }, "jogador");
+                    // 🆕 XP de fim de partida: só quem realmente entrou em campo ganha,
+                    // e quanto melhor a nota da atuação, mais XP.
+                    if(entrouEmCampo) concederXPPorDesempenho(notaPartida, golsJogadorPartida, assistsJogadorPartida);
                     
                     // Allow training after playing a match
                     if(entrouEmCampo) {
@@ -10138,40 +15024,95 @@ document.getElementById("btnReset")?.addEventListener("click", () => {
     }
 });
 
+// ==========================================
+// 🏋️ NOVO SISTEMA DE TREINO — por atributo, com pontos ganhos por nível
+// ==========================================
+// Substitui o antigo botão único "Treinar" (que só dava XP aleatório e, ao
+// acumular o suficiente, subia TODOS os atributos igual, sem escolha
+// nenhuma do jogador — e não tinha relação real com o desempenho em
+// campo). Agora treinar abre um menu: cada ponto de treino (ganho ao subir
+// de nível, ver concederXPJogador/concederXPPorDesempenho) pode ser gasto
+// num atributo específico de verdade usado no jogo.
+const TREINOS_DISPONIVEIS_LINHA = [
+    { atributo: "finalizacao", nome: "Finalização", icone: "🎯" },
+    { atributo: "velocidade", nome: "Velocidade", icone: "⚡" },
+    { atributo: "passe", nome: "Passe", icone: "📐" },
+    { atributo: "defesa", nome: "Defesa", icone: "🛡️" },
+    { atributo: "cabeceamento", nome: "Cabeceamento", icone: "🗣️" },
+    { atributo: "drible", nome: "Drible", icone: "🌀" },
+    { atributo: "resistencia", nome: "Resistência", icone: "🫁" },
+    { atributo: "forca", nome: "Força", icone: "💪" },
+    { atributo: "inteligencia", nome: "Inteligência", icone: "🧠" }
+];
+const TREINOS_DISPONIVEIS_GOLEIRO = [
+    { atributo: "reflexos", nome: "Reflexos", icone: "🧤" },
+    { atributo: "reposicao", nome: "Reposição", icone: "🎯" },
+    { atributo: "jogoAereo", nome: "Jogo Aéreo", icone: "🗣️" },
+    { atributo: "velocidade", nome: "Velocidade", icone: "⚡" },
+    { atributo: "resistencia", nome: "Resistência", icone: "🫁" },
+    { atributo: "forca", nome: "Força", icone: "💪" }
+];
+
+function renderModalTreino() {
+    inicializarEstadoCarreiraJogador();
+    let modal = document.getElementById("modalTreino");
+    if (!modal) {
+        modal = document.createElement("div");
+        modal.id = "modalTreino";
+        modal.className = "modal oculto";
+        document.body.appendChild(modal);
+    }
+    const opcoes = jogador.posicao === "Goleiro" ? TREINOS_DISPONIVEIS_GOLEIRO : TREINOS_DISPONIVEIS_LINHA;
+    modal.innerHTML = `
+        <div class="modal-content" style="width:560px; max-width:94vw; position:relative;">
+            <button class="close-btn" style="position:absolute; top:16px; right:20px; font-size:1.6rem; background:none; border:none; color:#fff; cursor:pointer;" onclick="document.getElementById('modalTreino').classList.add('oculto')">✖</button>
+            <div style="padding:20px 25px;">
+                <h2 style="margin:0 0 4px;">🏋️ Treino</h2>
+                <p style="color:#ddd; margin-bottom:16px;">Nível <strong>${jogador.nivel}</strong> (${jogador.xp}/${jogador.xpProximoNivel} XP) — <strong>${jogador.pontosTreino}</strong> ponto(s) de treino disponível(is). Escolhe o que melhorar:</p>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${opcoes.map(op => `
+                        <div class="manager-row">
+                            <span style="font-size:1.5rem;">${op.icone}</span>
+                            <span><strong>${op.nome}</strong><small>Atual: ${jogador[op.atributo] ?? "–"}</small></span>
+                            <button class="btn btn-success" ${jogador.pontosTreino > 0 ? "" : "disabled"} onclick="window.executarTreino('${op.atributo}', '${op.nome}')">Treinar (1 ponto)</button>
+                        </div>
+                    `).join("")}
+                </div>
+                <p style="color:#aaa; font-size:0.82rem; margin-top:14px;">Pontos de treino são ganhos ao subir de nível — e o nível sobe com XP ganho em partidas (quanto melhor a atuação, mais XP).</p>
+            </div>
+        </div>`;
+    modal.classList.remove("oculto");
+}
+
+window.executarTreino = function(atributo, nomeAtributo) {
+    inicializarEstadoCarreiraJogador();
+    if (jogador.pontosTreino <= 0) {
+        mostrarToast("Treino", "Sem pontos de treino disponíveis.", "warning");
+        return;
+    }
+    jogador.pontosTreino--;
+    const ganho = 1 + Math.floor(Math.random() * 3); // +1 a +3
+    jogador[atributo] = Math.min(99, (jogador[atributo] || 60) + ganho);
+    jogador.geral = calcularGeralDeAtributos(jogador);
+    jogador.energia = Math.max(10, (jogador.energia ?? 100) - 8);
+    mostrarToast("Treino concluído", `${nomeAtributo} +${ganho} (agora ${jogador[atributo]}). OVR: ${jogador.geral}.`, "success");
+    registrarNoticia("Treino específico", `${jogador.nome} focou o treino em ${nomeAtributo.toLowerCase()} e evoluiu.`, "Treino");
+    atualizarUI();
+    window.salvarJogo();
+    atualizarHub();
+    renderModalTreino();
+};
+
 document.getElementById("btnTreinar")?.addEventListener("click", () => {
     inicializarEstadoCarreiraJogador();
     if(jogador.lesaoRodadas > 0) {
         mostrarToast("Treino bloqueado", "Estás lesionado. Usa descanso para recuperar.", "warning");
         return;
     }
-    
-    // Training requires playing a match first
-    if(!jogador.jogouPartidaDesdeUltimoTreino) {
-        mostrarToast("Treino bloqueado", "Precisas de jogar uma partida antes de treinar novamente.", "warning");
-        return;
+    if (jogador.pontosTreino <= 0) {
+        mostrarToast("Sem pontos de treino", `Ganha XP em partidas pra subir de nível (${jogador.xp}/${jogador.xpProximoNivel} XP até o nível ${jogador.nivel + 1}) e ganhar pontos de treino.`, "info");
     }
-    
-    let ganho = 18 + Math.floor(Math.random() * 18);
-    jogador.xpAtual = (jogador.xpAtual || 0) + ganho;
-    jogador.energia = Math.max(10, jogador.energia - 18);
-    jogador.felicidade = Math.min(100, (jogador.felicidade || 60) + 2);
-    if(Math.random() < 0.35) jogador.inteligencia = Math.min(99, (jogador.inteligencia || 60) + 1);
-    ajustarTitularidade(4);
-    jogador.jogouPartidaDesdeUltimoTreino = false; // Reset flag after training
-    
-    if(jogador.xpAtual >= (jogador.xpNecessario || 100)) {
-        jogador.xpAtual -= (jogador.xpNecessario || 100);
-        jogador.xpNecessario = Math.floor((jogador.xpNecessario || 100) * 1.18);
-        evoluirAtributosEGeral(jogador, 1);
-        registrarNoticia("Evolução nos treinos", `${jogador.nome} subiu para OVR ${jogador.geral} após uma sequência forte de trabalho.`, "Treino");
-        mostrarToast("Evolução", `OVR subiu para ${jogador.geral}!`, "success");
-    } else {
-        mostrarToast("Treino", `Ganhaste ${ganho} XP e pontos na briga por titularidade.`, "info");
-    }
-    
-    atualizarUI();
-    window.salvarJogo();
-    atualizarHub();
+    renderModalTreino();
 });
 
 // ==========================================
@@ -10195,6 +15136,49 @@ function _shootoutDecisaoAntecipada(scoreA, scoreB, tomadasA, tomadasB) {
     return (scoreA > scoreB + restantesB) || (scoreB > scoreA + restantesA);
 }
 
+// 🎯 O modelo do jogo não tem um atributo "Pênaltis" dedicado (nem
+// Compostura/Reação/Posicionamento/Elasticidade/Defesa de Pênaltis) — só os
+// 11 atributos base (finalizacao, velocidade, passe, defesa, cabeceamento,
+// drible, resistencia, forca, reflexos, reposicao, jogoAereo) + inteligência
+// e moral (só no jogador real). Por isso aproximamos cada atributo pedido
+// pelo mais próximo que já existe:
+//   Cobrador  → Pênaltis/Finalização ≈ finalizacao · Compostura ≈ inteligência (só existe no jogador; NPC usa forca) · Moral ≈ moral
+//   Goleiro   → Reflexos ≈ reflexos · Reação ≈ reflexos · Posicionamento ≈ reposicao · Elasticidade ≈ velocidade · Defesa de Pênaltis ≈ defesa
+function notaPenaltiCobranca(p) {
+    if (!p) return 60;
+    const finalizacao = p.finalizacao ?? p.geral ?? 60;
+    const compostura = p.isMe ? (p.inteligencia ?? p.geral ?? 60) : (p.forca ?? p.geral ?? 60);
+    const moral = p.isMe ? (p.moral ?? 55) : 60;
+    return finalizacao * 0.5 + compostura * 0.25 + moral * 0.25;
+}
+
+function notaPenaltiDefesa(p) {
+    if (!p) return 60;
+    const reflexos = p.reflexos ?? p.geral ?? 60;
+    const reposicao = p.reposicao ?? p.geral ?? 60;
+    const velocidade = p.velocidade ?? p.geral ?? 60;
+    const defesa = p.defesa ?? p.geral ?? 60;
+    const moral = p.isMe ? (p.moral ?? 55) : 60;
+    return reflexos * 0.35 + reposicao * 0.2 + velocidade * 0.15 + defesa * 0.2 + moral * 0.1;
+}
+
+// 🏆 Ordem de cobradores: entre quem terminou a partida em campo (titulares
+// do clube — o modelo do jogo não simula substituições jogador a jogador, e
+// os titulares são a melhor aproximação disponível de "quem está em campo"),
+// exclui goleiros e ordena do melhor pro pior atributo de cobrança. O TEU
+// jogador entra nessa mesma disputa — se teu atributo só te deixa em 3º,
+// bates 3º, nem que a posição "oficial" de cobrador durante o jogo seja
+// outra.
+function determinarOrdemCobradoresPenalti(clubeId) {
+    const clube = obterTitularesClube(clubeId);
+    const idsTitulares = new Set(clube?.titularesIds || []);
+    let pool = jogadoresIA.filter(j => idsTitulares.has(j.id) && j.posicao !== "Goleiro" && j.posicao !== "Goleiro Libero");
+    if (jogador && jogador.clubeId === clubeId && jogador.posicao !== "Goleiro" && jogador.posicao !== "Goleiro Libero") {
+        pool = [{ ...jogador, id: "player", isMe: true }, ...pool];
+    }
+    return pool.sort((a, b) => notaPenaltiCobranca(b) - notaPenaltiCobranca(a)).slice(0, 5);
+}
+
 async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
     const clubA = clubes.find(c => c.id === idA), clubB = clubes.find(c => c.id === idB);
     const nomeA = clubA?.nome || idA, nomeB = clubB?.nome || idB;
@@ -10206,9 +15190,9 @@ async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
         <div class="shootout-modal">
             <h2 class="shootout-titulo">🎯 DISPUTA DE PÊNALTIS</h2>
             <div class="shootout-placar">
-                <div class="shootout-time"><img src="${obterUrlImagem(clubA,'clube')}"><span>${nomeA}</span><strong id="shootoutScoreA">0</strong></div>
+                <div class="shootout-time"><img loading="lazy" decoding="async" src="${obterUrlImagem(clubA,'clube')}"><span>${nomeA}</span><strong id="shootoutScoreA">0</strong></div>
                 <div class="shootout-vs">×</div>
-                <div class="shootout-time"><strong id="shootoutScoreB">0</strong><span>${nomeB}</span><img src="${obterUrlImagem(clubB,'clube')}"></div>
+                <div class="shootout-time"><strong id="shootoutScoreB">0</strong><span>${nomeB}</span><img loading="lazy" decoding="async" src="${obterUrlImagem(clubB,'clube')}"></div>
             </div>
             <div class="shootout-bolas" id="shootoutBolasA"></div>
             <div class="shootout-bolas" id="shootoutBolasB"></div>
@@ -10225,37 +15209,39 @@ async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
         if (el) el.innerHTML += `<span class="shootout-bola ${converteu ? 'gol' : 'falhou'}">${converteu ? '⚽' : '❌'}</span>`;
     };
 
-    const souGoleiro = jogador.posicao === "Goleiro";
-    // 🎯 Mesma exigência da cobrança durante o jogo normal: só assumes a
-    // responsabilidade do pênalti se fores titular, tiveres a confiança do
-    // técnico, e já tiveres treinado o suficiente essa cobrança específica.
-    const ehTitular = jogador.statusEscalacaoAnterior === "titular";
-    const nivelPenaltis = jogador.lifestyle?.upgrades?.training?.penalties ?? 0;
-    const reunoRequisitosPenalti = ehTitular && (jogador.relacaoTecnico ?? 0) >= MORAL_TECNICO_MINIMA_PENALTI && nivelPenaltis >= NIVEL_PENALTIS_MINIMO;
-    const souCobradorTipico = ["Atacante","Ponta","Meia Ofensivo","Meio-Campista"].includes(jogador.posicao) && reunoRequisitosPenalti;
+    const souGoleiro = jogador.posicao === "Goleiro" || jogador.posicao === "Goleiro Libero";
+    const meuLado = meuTimeId === idA ? "A" : "B";
+
+    // 🎯 Ordem real de cobradores do TEU time, definida pelos atributos (ver
+    // determinarOrdemCobradoresPenalti) — substitui a antiga regra fixa de
+    // "só bato se for o 1º cobrador oficial do jogo". Se não estiveres entre
+    // os 5 melhores do teu time, você simplesmente não bate nesta disputa
+    // (mas ainda pode ser sorteado como goleiro, se for o caso).
+    const ordemMeuTime = souGoleiro ? [] : determinarOrdemCobradoresPenalti(meuTimeId);
+    const minhaPosicaoNaOrdem = ordemMeuTime.findIndex(p => p.id === "player") + 1; // 0 = não está no top 5
 
     // ladoSou = true quando é a cobrança do MEU clube.
     const cobrar = async (ladoSou, numeroCobranca) => {
-        const meuLado = meuTimeId === idA ? "A" : "B";
         const estaCobrandoOMeuTime = (ladoSou && meuLado === "A") || (!ladoSou && meuLado === "B");
-        const souEuQueBato = estaCobrandoOMeuTime && souCobradorTipico && numeroCobranca === 1;
+        const souEuQueBato = estaCobrandoOMeuTime && minhaPosicaoNaOrdem > 0 && numeroCobranca === minhaPosicaoNaOrdem;
         const souEuQueDefendo = !estaCobrandoOMeuTime && souGoleiro;
         let converteu;
         if (souEuQueBato || souEuQueDefendo) {
             setStatus(souEuQueBato ? "🎯 É a tua vez de cobrar!" : "🧤 Defende esta cobrança!");
-            const zonaEscolhida = await new Promise(resolve => window.abrirMiniJogoPenalti(souEuQueBato ? "cobrar" : "defender", resolve));
-            const zonas = ["esquerda", "centro", "direita"];
-            const zonaAdversario = zonas[Math.floor(Math.random() * zonas.length)];
-            const acertou = zonaEscolhida === zonaAdversario;
-            if (souEuQueBato) {
-                const finalizacaoAtributo = jogador.finalizacao ?? jogador.geral ?? 65;
-                const chanceConverter = (acertou ? 0.30 : 0.90) + Math.max(0, (finalizacaoAtributo - 65)) * 0.004;
-                converteu = Math.random() < Math.min(0.97, chanceConverter);
-            } else {
-                const defesaAtributo = jogador.reflexos ?? jogador.defesa ?? jogador.geral ?? 65;
-                const chanceDefesa = (acertou ? 0.58 : 0.10) + Math.max(0, (defesaAtributo - 65)) * 0.006;
-                converteu = !(Math.random() < Math.min(0.9, chanceDefesa));
-            }
+            const forcaRival = estaCobrandoOMeuTime ? (ladoSou ? forcaB : forcaA) : (ladoSou ? forcaA : forcaB);
+            // 🛡️ FIX (minigame ficava travado atrás do placar da disputa): o
+            // overlay #shootoutOverlay (placar + bolinhas indo e vindo) tem
+            // z-index 99997 e ficava visível o tempo TODO, inclusive quando o
+            // #modalPenaltiMinigame (mira/força) abria por cima. Como os dois
+            // ocupam a tela inteira, o placar acabava capturando os cliques e
+            // o jogador não conseguia mirar nem chutar/defender. Agora ele é
+            // escondido bem na hora de abrir o minigame, e volta a aparecer
+            // assim que a cobrança termina (o minigame já se fecha sozinho
+            // antes de resolver a Promise — ver finalizarPenalti).
+            overlay.classList.add("oculto");
+            const resultado = await new Promise(resolve => window.abrirMinigamePenalti({ ehGoleiro: souEuQueDefendo, forcaRival }, resolve));
+            overlay.classList.remove("oculto");
+            converteu = !!resultado?.gol;
         } else {
             const forcaLado = (ladoSou ? forcaA : forcaB);
             setStatus(`${ladoSou ? nomeA : nomeB} vai cobrar...`);
@@ -10268,7 +15254,11 @@ async function disputaPenaltisInterativa(idA, idB, forcaA, forcaB, meuTimeId) {
 
     let tomadasA = 0, tomadasB = 0, rodada = 1;
     while (true) {
-        const numeroCobranca = rodada <= 5 ? rodada : 99; // 99 = morte súbita (sem "cobrador designado" fixo)
+        // 🔁 Morte súbita repete o MESMO ciclo de 5 cobradores (na mesma
+        // ordem por atributo) em vez de um "sem cobrador designado" — assim
+        // o goleiro (e o cobrador, se estiver no top 5) continuam
+        // participando ativamente mesmo além da 5ª cobrança.
+        const numeroCobranca = ((rodada - 1) % 5) + 1;
         const convA = await cobrar(true, numeroCobranca); tomadasA++;
         if (convA) scoreA++; addBola("A", convA); setPlacar();
         await new Promise(r => setTimeout(r, 350));
@@ -10337,7 +15327,18 @@ async function resolverLogicaPosPartida(comp, gc, gv, golsJogador = 0, assistsJo
         }
         return;
     }
-    if (comp.isMataMata === false && comp.fase !== "Grupos") {
+    // 🛡️ FIX (Champions/Europa League travada na Rodada 1): o evento da "Fase
+    // de Liga" (formato suíço) também tem isMataMata:false e fase !== "Grupos",
+    // então caía sempre neste PRIMEIRO if — pensado só para ligas domésticas.
+    // Como tabelasLigas["uefa_cl"] não existe (tabelasLigas só guarda ligas
+    // nacionais), `t` vinha undefined e nada era feito — e o branch CORRETO do
+    // formato suíço (mais abaixo) nunca era alcançado. Resultado: a partida do
+    // jogador na Champions nunca era marcada como resolvida em estado.fixtures,
+    // e como a rodada só avança quando TODAS as partidas dela (incluindo a do
+    // jogador) estão resolvidas, a fase de liga ficava travada na Rodada 1 para
+    // sempre. Agora a "Fase de Liga" é excluída explicitamente deste if, para
+    // cair no branch correto (else if comp.fase === "Fase de Liga", abaixo).
+    if (comp.isMataMata === false && comp.fase !== "Grupos" && comp.fase !== "Fase de Liga") {
         let t = tabelasLigas[comp.compId];
         if (t) {
             let mt = t.find(x => x.id === jogador.clubeId); let advt = t.find(x => x.id === comp.adversarioId);
@@ -10476,12 +15477,70 @@ window.lobbyPlayerId = null;
 
 document.getElementById("btnModoJogador")?.addEventListener("click", () => {
     window.gameMode = 'player';
+    configurarNavegacaoPorModo();
     mudarTela("telaConexao");
 });
 
 document.getElementById("btnModoManager")?.addEventListener("click", () => {
     window.gameMode = 'manager';
-    mudarTela("telaConexao");
+    window.connectionMode = 'offline';
+    configurarNavegacaoPorModo();
+    mudarTela("telaCriacaoManager");
+    renderizarListaClubesCriacaoManager();
+});
+
+document.getElementById("btnVoltarCriacaoManager")?.addEventListener("click", () => {
+    window.gameMode = null;
+    window.clubeEscolhidoManagerCriacao = null;
+    mudarTela("telaModo");
+});
+
+// 🏟️ Lista de clubes pra escolher qual vai treinar — filtra por nome ou país
+// (usa o nome da liga como aproximação de país/competição).
+function renderizarListaClubesCriacaoManager(termo = "") {
+    const el = document.getElementById("listaClubesCriacaoManager");
+    if (!el) return;
+    const t = termo.trim().toLowerCase();
+    const lista = clubes
+        .filter(c => !t || c.nome.toLowerCase().includes(t) || (c.ligaId || "").toLowerCase().includes(t) || (competicoes.find(comp => comp.id === c.ligaId)?.nome || "").toLowerCase().includes(t))
+        .sort((a, b) => b.reputacao - a.reputacao)
+        .slice(0, 60);
+    el.innerHTML = lista.map(c => `
+        <div class="clube-criacao-manager-row ${window.clubeEscolhidoManagerCriacao === c.id ? "selecionado" : ""}" onclick="selecionarClubeCriacaoManager('${c.id}')">
+            <img src="${obterUrlImagem(c, 'clube')}" onerror="this.style.visibility='hidden'">
+            <span><strong>${c.nome}</strong><small>${competicoes.find(comp => comp.id === c.ligaId)?.nome || c.ligaId} • OVR ${c.reputacao}</small></span>
+            ${window.clubeEscolhidoManagerCriacao === c.id ? '<span class="clube-criacao-manager-check">✔</span>' : ""}
+        </div>`).join("") || `<p style="color:#888; text-align:center; padding:20px;">Nenhum clube encontrado.</p>`;
+}
+
+window.selecionarClubeCriacaoManager = function(clubeId) {
+    window.clubeEscolhidoManagerCriacao = clubeId;
+    const c = clubes.find(x => x.id === clubeId);
+    const label = document.getElementById("clubeEscolhidoManagerLabel");
+    if (label && c) { label.textContent = c.nome; label.style.color = "var(--theme-primary)"; }
+    renderizarListaClubesCriacaoManager(document.getElementById("inputBuscaClubeManager")?.value || "");
+};
+
+document.getElementById("inputBuscaClubeManager")?.addEventListener("input", (e) => renderizarListaClubesCriacaoManager(e.target.value));
+
+document.getElementById("btnConfirmarCriacaoManager")?.addEventListener("click", () => {
+    const nomeManager = document.getElementById("inputNomeManager")?.value?.trim();
+    if (!nomeManager) { mostrarToast("Criação de Manager", "Digite o teu nome antes de continuar.", "warning"); return; }
+    if (!window.clubeEscolhidoManagerCriacao) { mostrarToast("Criação de Manager", "Escolhe um clube antes de continuar.", "warning"); return; }
+
+    // 🌍 O Manager não cria nenhum jogador jogável, mas precisa do MESMO
+    // mundo pronto que o Modo Jogador monta (ligas, tabelas, orçamentos,
+    // calendário) — sem isso não haveria nem clubes nem campeonato pra gerir.
+    selecoesEstado = { convocacoes: [], ultimaChave: "", campeoes: {}, ranking: {}, nationsDiv: {}, torneios: {}, planteisTorneio: {}, premiosLigaAno: {}, vagasTorneio: {} };
+    preencherLigasVazias(); inicializarTabelas(); inicializarOrcamentosEContratos(); inicializarCopasNacionaisEContinentais(); gerarAgenda(); preencherDropdowns(); atualizarOVRClubes();
+
+    managerEstado.treinador = { nome: nomeManager, reputacao: 60, ataque: 60, defesa: 60, tatica: 60 };
+    iniciarManagerNoClube(window.clubeEscolhidoManagerCriacao);
+
+    configurarNavegacaoPorModo();
+    window.salvarJogo();
+    mudarTela("view-hub");
+    document.querySelector('.menu-item[data-view="view-manager"]')?.click();
 });
 
 document.getElementById("btnVoltarMenu")?.addEventListener("click", () => {
@@ -10660,14 +15719,118 @@ document.getElementById("btnJoinRoom")?.addEventListener("click", joinPregameRoo
 document.getElementById("btnLeaveLobby")?.addEventListener("click", leavePregameLobby);
 document.getElementById("btnStartCareer")?.addEventListener("click", startCareerFromLobby);
 
+// 🎯 ATRIBUTOS INICIAIS ALEATÓRIOS POR POSIÇÃO
+// Antes disto todo mundo nascia com o mesmo "molde" genérico (jogadorModelo)
+// e só distribuía manualmente 10 pontos extras — o resultado final quase não
+// variava de um jogador pro outro e não refletia a posição escolhida. Agora
+// os atributos nascem sorteados dentro de faixas que dependem da posição: os
+// atributos PRINCIPAIS dela saem bem mais fortes, os FRACOS saem mais baixos
+// (ex: um atacante nasce com finalização/velocidade alta e defesa baixa; um
+// zagueiro nasce forte em defesa/força e fraco em finalização).
+const PERFIS_GERACAO_INICIAL = {
+    "Goleiro":       { principais: ["reflexos", "reposicao", "jogoAereo"], secundarios: ["forca", "velocidade"], fracos: ["drible", "passe"] },
+    "Zagueiro":      { principais: ["defesa", "forca", "cabeceamento"], secundarios: ["passe", "resistencia"], fracos: ["finalizacao", "drible"] },
+    "Lateral":       { principais: ["velocidade", "resistencia", "defesa"], secundarios: ["passe", "drible"], fracos: ["finalizacao", "cabeceamento"] },
+    "Volante":       { principais: ["defesa", "passe", "resistencia"], secundarios: ["forca", "drible"], fracos: ["finalizacao", "velocidade"] },
+    "Meio-Campista": { principais: ["passe", "drible", "resistencia"], secundarios: ["finalizacao", "velocidade"], fracos: ["defesa", "forca"] },
+    "Meia Ofensivo": { principais: ["passe", "drible", "finalizacao"], secundarios: ["velocidade", "resistencia"], fracos: ["defesa", "forca"] },
+    "Ponta":         { principais: ["velocidade", "drible", "finalizacao"], secundarios: ["passe", "resistencia"], fracos: ["defesa", "forca"] },
+    "Atacante":      { principais: ["finalizacao", "velocidade", "cabeceamento"], secundarios: ["drible", "forca"], fracos: ["defesa", "passe"] }
+};
+const CAMPOS_ATRIBUTOS_GOLEIRO = ["reflexos", "reposicao", "jogoAereo", "velocidade", "resistencia", "forca", "passe", "drible"];
+const CAMPOS_ATRIBUTOS_LINHA = ["finalizacao", "velocidade", "passe", "defesa", "cabeceamento", "drible", "resistencia", "forca", "inteligencia"];
+const NOMES_ATRIBUTOS = { finalizacao: "Finalização", velocidade: "Velocidade", passe: "Passe", defesa: "Defesa", cabeceamento: "Cabeceamento", drible: "Drible", resistencia: "Resistência", forca: "Força", inteligencia: "Inteligência", reflexos: "Reflexos", reposicao: "Reposição", jogoAereo: "Jogo aéreo" };
+
+// 🎯 Classifica um valor de atributo (escala 1-99, igual ao resto do jogo)
+// em fraco/médio/forte, só pra colorir o preview — não afeta nenhum cálculo.
+function classeForcaAtributo(valor) {
+    if (valor >= 66) return "forte";
+    if (valor >= 50) return "medio";
+    return "fraco";
+}
+
+function gerarAtributosIniciaisPorPosicao(posicao) {
+    const perfil = PERFIS_GERACAO_INICIAL[posicao] || PERFIS_GERACAO_INICIAL["Meio-Campista"];
+    const campos = posicao === "Goleiro" ? CAMPOS_ATRIBUTOS_GOLEIRO : CAMPOS_ATRIBUTOS_LINHA;
+    const atributos = {};
+    campos.forEach(campo => {
+        let faixa;
+        if (perfil.principais.includes(campo)) faixa = [66, 80];
+        else if (perfil.fracos.includes(campo)) faixa = [26, 40];
+        else if (perfil.secundarios.includes(campo)) faixa = [50, 64];
+        else faixa = [44, 56];
+        atributos[campo] = Math.round(faixa[0] + Math.random() * (faixa[1] - faixa[0]));
+    });
+    return atributos;
+}
+
+// 🖼️ Desenha o grid de atributos já gerados (somente leitura) — guarda o
+// resultado em window._atributosIniciaisGerados pra "Assinar Primeiro
+// Contrato" aplicar exatamente o que está na tela, e pro botão de "Gerar
+// Novamente" poder sortear de novo sem perder a posição escolhida.
+function renderAtributosIniciaisGerados(posicao) {
+    const perfil = PERFIS_GERACAO_INICIAL[posicao] || PERFIS_GERACAO_INICIAL["Meio-Campista"];
+    const atributos = gerarAtributosIniciaisPorPosicao(posicao);
+    window._atributosIniciaisGerados = atributos;
+    const grid = document.getElementById("gridAtributosIniciaisGerados");
+    if (!grid) return;
+    grid.innerHTML = Object.entries(atributos).map(([campo, valor]) => {
+        const ehPrincipal = perfil.principais.includes(campo);
+        return `<label class="linha-atributo-inicial" style="font-size:.78rem;">${ehPrincipal ? "⭐ " : ""}${NOMES_ATRIBUTOS[campo] || campo}<span class="atributo-final ${classeForcaAtributo(valor)}" style="margin-left:auto; font-weight:800;">${valor}</span></label>`;
+    }).join("");
+}
+
+document.getElementById("btnGerarNovamenteAtributos")?.addEventListener("click", () => {
+    const posicaoEscolhida = document.getElementById("selectPosicao")?.value || "Atacante";
+    renderAtributosIniciaisGerados(posicaoEscolhida);
+});
+
 document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
+    // Passo 1: só nome, nacionalidade e posição. Os atributos já nascem
+    // sorteados automaticamente pra posição escolhida na tela seguinte.
+    const nomeInformado = document.getElementById("inputNome")?.value?.trim();
+    if (!nomeInformado) {
+        mostrarToast("Criação de jogador", "Digite o teu nome antes de continuar.", "warning");
+        return;
+    }
+    const posicaoEscolhida = document.getElementById("selectPosicao")?.value || "Atacante";
+    const resumo = document.getElementById("resumoNomeAtributos");
+    if (resumo) resumo.textContent = `${nomeInformado} (${posicaoEscolhida})`;
+    renderAtributosIniciaisGerados(posicaoEscolhida);
+    mudarTela("telaAtributosIniciais");
+});
+
+document.getElementById("btnVoltarCriacao")?.addEventListener("click", () => mudarTela("telaCriacao"));
+
+document.getElementById("btnConfirmarAtributosIniciais")?.addEventListener("click", () => {
+    const atributosGerados = window._atributosIniciaisGerados;
+    if (!atributosGerados) {
+        mostrarToast("Atributos iniciais", "Gera os atributos antes de continuar.", "warning");
+        return;
+    }
     jogador = JSON.parse(JSON.stringify(jogadorModelo));
     window.jogador = jogador; // 🛡️ FIX: mantém window.jogador (usado pelo firebase-integration.js) na mesma referência
     jogador.nome = document.getElementById("inputNome")?.value || "Craque";
     jogador.nacionalidade = document.getElementById("selectNacionalidade")?.value || "Brasil"; 
     jogador.posicao = document.getElementById("selectPosicao")?.value || "Atacante";
     inicializarEstadoCarreiraJogador();
+    // 🎯 Aplica os atributos gerados automaticamente pra posição (substituindo
+    // por completo o "molde" genérico do jogadorModelo) — o mesmo conjunto
+    // exato que foi mostrado na tela de preview, pra não haver divergência
+    // entre o que o jogador viu e o que realmente entrou em jogo.
+    Object.entries(atributosGerados).forEach(([atributo, valor]) => {
+        jogador[atributo] = valor;
+    });
+    jogador.geral = calcularGeralDeAtributos(jogador);
+    // 🆕 NÍVEL / XP: cada nível ganho concede 1 ponto de treino pra investir
+    // num atributo real (ver janela de treino). Substitui o sistema antigo
+    // de "treino genérico" que só subia tudo igual sem escolha nenhuma.
+    jogador.nivel = 1;
+    jogador.xp = 0;
+    jogador.xpProximoNivel = 100;
+    jogador.pontosTreino = 0;
     normalizarElencosEPosicoes();
+    garantirTreinadoresIniciais();
     
     let nac = jogador.nacionalidade.toLowerCase(); let ligaPrefix = "pt"; 
     if(nac.includes("brasil")) ligaPrefix = "br"; else if(nac.includes("argentina")) ligaPrefix = "arg";
@@ -10758,7 +15921,7 @@ document.getElementById("btnIniciarCarreira")?.addEventListener("click", () => {
     if(intro) intro.innerHTML = `
         <p>Três clubes demonstraram interesse em lançar tua carreira. Escolhe onde queres assinar o primeiro contrato.</p>
         <div style="display:grid; gap:10px; margin-top:15px;">
-            ${propostasIniciais.map(c => `<button class="btn btn-primary btn-block" onclick="assinarPrimeiroClube('${c.id}')" style="display:flex; align-items:center; justify-content:center; gap:10px;"><img src="${obterUrlImagem(c,'clube')}" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;">${c.nome} • OVR ${c.reputacao}</button>`).join("")}
+            ${propostasIniciais.map(c => `<button class="btn btn-primary btn-block" onclick="assinarPrimeiroClube('${c.id}')" style="display:flex; align-items:center; justify-content:center; gap:10px;"><img loading="lazy" decoding="async" src="${obterUrlImagem(c,'clube')}" style="width:28px;height:28px;object-fit:contain;background:#fff;border-radius:6px;padding:2px;">${c.nome} • OVR ${c.reputacao}</button>`).join("")}
         </div>`;
 });
 
@@ -11172,7 +16335,20 @@ window.assinarPrimeiroClube = function(clubeId) {
     if(intro) intro.innerHTML = `Assinaste com o <strong>${cD ? cD.nome : 'clube'}</strong>. Mostra o teu valor em campo. Tens um contrato de 3 anos.`;
 };
 
-document.getElementById("btnEntrarNoJogo")?.addEventListener("click", () => { window.salvarJogo(); atualizarHub(); mudarTela("view-hub"); let homeV = document.getElementById("view-home"); if(homeV) { homeV.classList.remove("oculto"); homeV.style.display="block"; } });
+document.getElementById("btnEntrarNoJogo")?.addEventListener("click", () => {
+    // Direciona cada carreira para sua porta de entrada: Hub compartilhado no
+    // jogador e a seleção/central do clube no Manager.
+    configurarNavegacaoPorModo();
+    window.salvarJogo();
+    if (window.gameMode === "manager") {
+        mudarTela("view-hub");
+        document.querySelector('.menu-item[data-view="view-manager"]')?.click();
+        return;
+    }
+    atualizarHub(); mudarTela("view-hub");
+    let homeV = document.getElementById("view-home");
+    if(homeV) { homeV.classList.remove("oculto"); homeV.style.display="block"; }
+});
 
 // ==========================================
 // GAME INITIALIZATION WITH SESSION PERSISTENCE
@@ -11573,6 +16749,25 @@ document.getElementById("btnFalarTecnico")?.addEventListener("click", () => {
         ${htmlSolicitarPosicao(relacaoTecnico)}
         ${htmlFazerPromessa()}
 
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">🎯 Pedir Feedback de Desempenho</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Pergunta ao técnico como ele avalia a tua temporada até agora, com base nos teus objetivos.</p>
+            <button onclick="pedirFeedbackTecnico()" style="width:100%; padding:10px; background:var(--theme-primary); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Pedir feedback</button>
+        </div>
+
+        <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:var(--gold);">📋 Perguntar sobre a Tática</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Descobre qual é a filosofia de jogo que o técnico quer implementar na equipa.</p>
+            <button onclick="perguntarTaticaTecnico()" style="width:100%; padding:10px; background:var(--theme-primary); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Perguntar sobre a tática</button>
+        </div>
+
+        ${(titularidade < 68 && jogador.ultimaReclamacaoMinutosAno !== anoAtual) ? `
+        <div style="margin:15px 0; padding:15px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px;">
+            <h4 style="margin:0 0 10px; color:#f87171;">🎤 Reclamar por Mais Minutos</h4>
+            <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Arriscado: pode te render mais espaço na equipa, ou irritar o técnico e piorar a relação. Só podes tentar uma vez por temporada.</p>
+            <button onclick="reclamarMinutos()" style="width:100%; padding:10px; background:#ef4444; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Reclamar por minutos</button>
+        </div>` : ''}
+
         <div style="margin:15px 0; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px; text-align:center;">
             <h4 style="margin:0 0 10px; color:var(--gold);">🗣️ Conversa Coletiva</h4>
             <p style="margin:0 0 10px; font-size:0.85rem; color:#aaa;">Fala com o grupo e o técnico sobre o momento da equipa.</p>
@@ -11646,6 +16841,82 @@ function mostrarModalConversaTecnicoExpandido(nomeTecnico, titulo, conteudoHTML,
 // baixo" (banco, promessa) não têm exigência: ninguém recusa um jogador que
 // aceita um papel menor.
 const RELACAO_MINIMA_FUNCAO = { promessa: 0, banco: 0, rodizio: 25, importante: 55, lenda: 75, capitao: 60 };
+
+// 🎯 Descrições de estilo de jogo usadas na resposta do técnico quando o
+// jogador pergunta sobre a tática (ver ROTULOS_ESTILO_TECNICO, usado na aba
+// "Técnicos", pros rótulos curtos — aqui é a versão falada, mais longa).
+const DESCRICOES_ESTILO_TECNICO = {
+    pressao: "pressão alta, recuperar a bola rápido e sufocar o adversário no campo dele",
+    posse: "controlar a posse de bola e ter paciência na construção das jogadas",
+    retranca: "solidez defensiva antes de tudo, explorando os erros do rival",
+    contra: "esperar o momento certo e ser letal nas transições de contra-ataque",
+    equilibrado: "equilíbrio entre ataque e defesa, sem exageros para nenhum dos lados"
+};
+
+// 🎯 Pedir Feedback de Desempenho — usa os objetivos já gerados no início da
+// temporada (gerarObjetivosParaClube/atualizarProgressoObjetivos) pra dar uma
+// resposta personalizada sobre como o técnico vê a época do jogador até agora.
+window.pedirFeedbackTecnico = function() {
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+    const objetivos = jogador.objetivosCarreira || [];
+    let frase;
+    if (!objetivos.length) {
+        frase = `"Ainda é cedo pra avaliar a temporada. Continua a trabalhar e conversamos mais pra frente."`;
+    } else {
+        const ratio = objetivos.filter(o => o.concluido).length / objetivos.length;
+        frase = ratio >= 0.75
+            ? `"Estás a cumprir praticamente tudo o que se esperava de ti esta época. Continua assim."`
+            : ratio >= 0.4
+            ? `"Estás no caminho certo, mas ainda há objetivos por cumprir. Não relaxes agora."`
+            : `"Sinceramente, esperava mais de ti esta temporada. Precisas de dar um passo em frente."`;
+    }
+    const detalhes = objetivos.map(o => `<li style="margin-bottom:4px;">${o.concluido ? "✅" : "❌"} ${o.desc} <strong style="color:${o.concluido ? 'var(--success)' : '#aaa'};">(${o.atual}/${o.meta})</strong></li>`).join("");
+    mostrarModalConversaTecnicoExpandido(nomeTecnico, "Feedback de Desempenho", `
+        <p class="coach-talk-quote">${frase}</p>
+        ${objetivos.length ? `<ul style="text-align:left; padding-left:20px; margin:10px 0 0; color:#ddd; font-size:0.9rem;">${detalhes}</ul>` : ""}
+    `);
+};
+
+// 📋 Perguntar sobre a Tática — revela o estiloJogo do treinador de verdade
+// (treinadoresIA), com uma pequena recompensa de relação (uma vez por
+// temporada) por mostrar interesse na filosofia da equipa.
+window.perguntarTaticaTecnico = function() {
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const t = (treinadoresIA || []).find(x => x.clubeId === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+    const estilo = t?.estiloJogo || "equilibrado";
+    const desc = DESCRICOES_ESTILO_TECNICO[estilo] || DESCRICOES_ESTILO_TECNICO.equilibrado;
+    mostrarModalConversaTecnico(nomeTecnico, "Sobre a Tática", `"A minha ideia pra esta equipa é clara: ${desc}. Quero todos alinhados com isso, tu incluído."`);
+    if (jogador.ultimaPerguntaTaticaAno !== anoAtual) {
+        jogador.ultimaPerguntaTaticaAno = anoAtual;
+        jogador.relacaoTecnico = Math.min(100, (jogador.relacaoTecnico || 50) + 1);
+        window.salvarJogo();
+    }
+};
+
+// 🎤 Reclamar por Mais Minutos — opção arriscada, só uma vez por temporada.
+// Chance de sucesso sobe com boa relação e titularidade já próxima; sucesso dá
+// um empurrão real na titularidade, fracasso custa caro na relação.
+window.reclamarMinutos = function() {
+    const clube = clubes.find(c => c.id === jogador.clubeId);
+    const nomeTecnico = clube?.tecnico || "O treinador";
+    if (jogador.ultimaReclamacaoMinutosAno === anoAtual) return;
+    jogador.ultimaReclamacaoMinutosAno = anoAtual;
+    const titularidade = jogador.titularidade || 48;
+    const relacaoTecnico = jogador.relacaoTecnico || 50;
+    const chanceSucesso = Math.max(0.05, Math.min(0.75, 0.25 + (relacaoTecnico - 50) * 0.006 + (titularidade - 40) * 0.004));
+    if (Math.random() < chanceSucesso) {
+        jogador.titularidade = Math.min(100, titularidade + 8);
+        jogador.relacaoTecnico = Math.min(100, relacaoTecnico + 3);
+        mostrarModalConversaTecnico(nomeTecnico, "Reclamação ouvida", `"Tens razão, mereces mais oportunidades. Vou pensar em te dar mais minutos."`);
+    } else {
+        jogador.relacaoTecnico = Math.max(0, relacaoTecnico - 8);
+        mostrarModalConversaTecnico(nomeTecnico, "Reclamação mal recebida", `"Minutos se conquistam no treino, não em reclamações. Volta ao trabalho."`);
+    }
+    window.salvarJogo();
+    document.getElementById("btnFalarTecnico")?.click();
+};
 
 window.mudarFuncaoElenco = function(novaFuncao) {
     const relacaoTecnico = jogador.relacaoTecnico || 50;
