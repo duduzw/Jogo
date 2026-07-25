@@ -4,7 +4,8 @@ export const competicoes = [
     { id: "br_1", nome: "Brasileirão Série A", tipo: "liga", div: 1, logo: "https://tmssl.akamaized.net//images/logo/header/bra1.png?lm=1713364599" },
     { id: "br_2", nome: "Brasileirão Série B", tipo: "liga", div: 2, logo: "https://tmssl.akamaized.net//images/logo/header/bra2.png?lm=1731436730" },
     { id: "br_3", nome: "Brasileirão Série C", tipo: "liga", div: 3, logo: "https://assets.football-logos.cc/logos/brazil/512x512/brazilian-serie-c.76235b53.png" },
-    { id: "br_4", nome: "Brasileirão Série D", tipo: "liga", div: 4, logo: "https://tmssl.akamaized.net//images/logo/header/bra4.png?lm=1682608780" },
+    { id: "br_4", nome: "Brasileirão Série D", tipo: "liga_grupos", div: 4, logo: "https://tmssl.akamaized.net//images/logo/header/bra4.png?lm=1682608780" },
+    { id: "br_4_acesso", nome: "Repescagem de Acesso Série D", tipo: "acesso_playoff", div: 4, logo: "https://tmssl.akamaized.net//images/logo/header/bra4.png?lm=1682608780" },
     { id: "copa_br", nome: "Copa do Brasil", tipo: "copa", div: 1, logo: "https://assets.football-logos.cc/logos/brazil/512x512/copa-do-brasil--no-text.98d6c38e.png" },
     { id: "supercopa_br", nome: "Supercopa do Brasil", tipo: "supercopa", div: 1, logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Supercopa_Rei_logo_%282023%29.svg/250px-Supercopa_Rei_logo_%282023%29.svg.png" },
 
@@ -19,6 +20,23 @@ export const competicoes = [
     { id: "estadual_pe", nome: "Campeonato Pernambucano", tipo: "estadual", div: 1, estado: "PE", logo: "https://tmssl.akamaized.net/images/logo/medium/brpe.png" },
     { id: "estadual_ba", nome: "Campeonato Baiano", tipo: "estadual", div: 1, estado: "BA", logo: "https://tmssl.akamaized.net/images/logo/medium/brcb.png" },
     { id: "estadual_ce", nome: "Campeonato Cearense", tipo: "estadual", div: 1, estado: "CE", logo: "https://tmssl.akamaized.net/images/logo/medium/brce.png" },
+    { id: "estadual_es", nome: "Campeonato Capixaba", tipo: "estadual", div: 1, estado: "ES", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/32_espirito_santo_imgbank.png" },
+    { id: "estadual_df", nome: "Campeonato Candango", tipo: "estadual", div: 1, estado: "DF", logo: "https://www.ffdf.com.br/assets/uploads/171562194220.jpeg" },
+    { id: "estadual_mt", nome: "Campeonato Mato-Grossense", tipo: "estadual", div: 1, estado: "MT", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/35_mato_grosso_imgbank.png" },
+    { id: "estadual_ms", nome: "Campeonato Sul-Mato-Grossense", tipo: "estadual", div: 1, estado: "MS", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/36_mato_grosso_do_sul_imgbank.png" },
+    { id: "estadual_pa", nome: "Campeonato Paraense", tipo: "estadual", div: 1, estado: "PA", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/37_para_imgbank.png" },
+    { id: "estadual_am", nome: "Campeonato Amazonense", tipo: "estadual", div: 1, estado: "AM", logo: "https://upload.wikimedia.org/wikipedia/pt/a/ae/Barez%C3%A3o_logo.png?_=20260130194349" },
+    { id: "estadual_ma", nome: "Campeonato Maranhense", tipo: "estadual", div: 1, estado: "MA", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/34_maranhao_imgbank.png" },
+    { id: "estadual_pb", nome: "Campeonato Paraibano", tipo: "estadual", div: 1, estado: "PB", logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/d/d3/Paraibano2020.png/250px-Paraibano2020.png" },
+    { id: "estadual_rn", nome: "Campeonato Potiguar", tipo: "estadual", div: 1, estado: "RN", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/43_rio_grande_do_norte_imgbank.png" },
+    { id: "estadual_al", nome: "Campeonato Alagoano", tipo: "estadual", div: 1, estado: "AL", logo: "https://upload.wikimedia.org/wikipedia/pt/a/a0/Campeonato_Alagoano_2026.png" },
+    { id: "estadual_se", nome: "Campeonato Sergipano", tipo: "estadual", div: 1, estado: "SE", logo: "https://cdn-img.staticzz.com/img/logos/competicoes/1857_imgbank_ser_20181114125542.png" },
+    { id: "estadual_pi", nome: "Campeonato Piauiense", tipo: "estadual", div: 1, estado: "PI", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/41_piaui_imgbank.png" },
+    { id: "estadual_ro", nome: "Campeonato Rondoniense", tipo: "estadual", div: 1, estado: "RO", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/44_rondonia_imgbank.png" },
+    { id: "estadual_to", nome: "Campeonato Tocantinense", tipo: "estadual", div: 1, estado: "TO", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/49_tocantins_imgbank.png" },
+    { id: "estadual_ac", nome: "Campeonato Acreano", tipo: "estadual", div: 1, estado: "AC", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/23_acre_imgbank.png" },
+    { id: "estadual_rr", nome: "Campeonato Roraimense", tipo: "estadual", div: 1, estado: "RR", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/45_roraima_imgbank.png" },
+    { id: "estadual_ap", nome: "Campeonato Amapaense", tipo: "estadual", div: 1, estado: "AP", logo: "https://cdn-img.staticzz.com/img/logos/associacoes/27_amapa_imgbank.png" },
 
     // ARGENTINA
     { id: "arg_1", nome: "Liga Profesional Argentina", tipo: "liga", div: 1, logo: "https://www.ole.com.ar/collections/escudos/league/581t4mywybx21wcpmpykhyzr3.png" },
@@ -112,7 +130,8 @@ export const competicoes = [
     { id: "nga_1", nome: "Nigeria Professional Football League", tipo: "liga", div: 1, logo: "https://upload.wikimedia.org/wikipedia/pt/thumb/d/d9/NPFL_Nigeria_logo.png/250px-NPFL_Nigeria_logo.png" },
 
     // EUA
-    { id: "usa_1", nome: "MLS", tipo: "liga", div: 1, logo: "https://assets.football-logos.cc/logos/usa/512x512/mls.389fae67.png" },
+    { id: "usa_1", nome: "MLS", tipo: "liga_conferencias", div: 1, logo: "https://assets.football-logos.cc/logos/usa/512x512/mls.389fae67.png" },
+    { id: "usa_1_playoffs", nome: "MLS Cup Playoffs", tipo: "playoffs", div: 1, logo: "https://assets.football-logos.cc/logos/usa/512x512/mls.389fae67.png" },
     { id: "copa_usa", nome: "Open Cup", tipo: "copa", div: 1, logo: "https://imgs.search.brave.com/pB6PgZu_OW3OHb4_ZBjUxzDwUhSjhle8O9UPuszeuyo/rs:fit:500:0:0:0/g:ce/aHR0cHM6Ly91cGxv/YWQud2lraW1lZGlh/Lm9yZy93aWtpcGVk/aWEvcHQvNC80NS9M/YW1hcl9IdW50X1Uu/Uy5fT3Blbl9DdXAu/cG5n" },
     { id: "supercopa_usa", nome: "Leagues Cup", tipo: "supercopa", div: 1, logo: "https://imgs.search.brave.com/DHfFYR3peU25mv1w5pjDIOYRaLG--qbJLhJxclTRQsI/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93d3cu/cG5nYWxsLmNvbS93/cC1jb250ZW50L3Vw/bG9hZHMvMTcvTGVh/Z3Vlcy1DdXAtSWRl/bnRpdHktVmlzdWFs/LUNvbmNlcHQtUE5H/LnBuZw" },
     
@@ -135,6 +154,8 @@ export const competicoes = [
     { id: "conmebol_sul", nome: "Sulamericana", tipo: "continental", div: 2, logo: "https://logodownload.org/wp-content/uploads/2018/10/copa-sulamericana-logo.png" },
     { id: "concacaf_clc", nome: "Concacaf Champions Cup", tipo: "continental", div: 1, logo: "https://assets.football-logos.cc/logos/tournaments/512x512/concacaf-champions-cup.fcd3ac56.png" },
     { id: "afc_cla", nome: "AFC Champions", tipo: "continental", div: 1, logo: "https://assets.football-logos.cc/logos/tournaments/512x512/afc-champions-league-elite.bb0766a4.png" },
+    { id: "afc_cla2", nome: "AFC Champions 2", tipo: "continental", div: 2, logo: "https://upload.wikimedia.org/wikipedia/en/thumb/8/81/AFC_Champions_League_Two.svg/250px-AFC_Champions_League_Two.svg.png" },
+    { id: "afc_qualy", nome: "AFC Qualification Zone", tipo: "continental_qualy", div: 3, logo: "https://upload.wikimedia.org/wikipedia/en/thumb/8/81/AFC_Champions_League_Two.svg/250px-AFC_Champions_League_Two.svg.png" },
 
     // ==========================================
     // 🌍 SUPERCOPAS E INTERCONTINENTAL (NOVOS)
