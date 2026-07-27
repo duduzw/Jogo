@@ -641,6 +641,7 @@ export const clubes = [
     { id: "c_mia", nome: "Inter Miami", ligaId: "usa_1", reputacao: 80, cor: "#f7b5cd", logo: "https://assets.football-logos.cc/logos/usa/512x512/inter-miami-cf.a3f76de3.png" },
     { id: "c_lafc", nome: "Los Angeles FC", ligaId: "usa_1", reputacao: 78, cor: "#000000", logo: "https://cdn-img.staticzz.com/img/logos/equipas/96424_imgbank_1686736713.png" },
     { id: "c_lag", nome: "LA Galaxy", ligaId: "usa_1", reputacao: 77, cor: "#00245d", logo: "" },
+    { id: "c_orl", nome: "Orlando City", ligaId: "usa_1", reputacao: 78, cor: "#00245d", logo: "https://cdn-img.staticzz.com/img/logos/equipas/55657_imgbank_1686736594.png" },
     { id: "c_nycfc", nome: "New York City FC", ligaId: "usa_1", reputacao: 76, cor: "#6cace4", logo: "" },
     { id: "c_atl", nome: "Atlanta United", ligaId: "usa_1", reputacao: 76, cor: "#800000", logo: "" },
     { id: "c_sea", nome: "Seattle Sounders", ligaId: "usa_1", reputacao: 75, cor: "#5d9732", logo: "" },
